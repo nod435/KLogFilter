@@ -516,84 +516,109 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             if(nIndex != LogFilterTableModel.COMUMN_MESSAGE && nIndex != LogFilterTableModel.COMUMN_TAG) return strText;
 
             String strFind = nIndex == LogFilterTableModel.COMUMN_MESSAGE ? GetFilterFind() : GetFilterShowTag();
-            m_bChanged = false;
-
-            strText = strText.replace( " ", "\u00A0" );
+            String[] arHighlightColor;
             if(LogColor.COLOR_HIGHLIGHT != null && LogColor.COLOR_HIGHLIGHT.length > 0)
-                strText = remakeFind(strText, GetHighlight(), LogColor.COLOR_HIGHLIGHT, true);
+            {
+                arHighlightColor = new String[LogColor.COLOR_HIGHLIGHT.length];
+                for(int i = 0; i < arHighlightColor.length; i++)
+                    arHighlightColor[i] = "#" + LogColor.COLOR_HIGHLIGHT[i];
+            }
             else
-                strText = remakeFind(strText, GetHighlight(), "#00FF00", true);
-            strText = remakeFind(strText, strFind, "#FF0000", false);
-            if(m_bChanged)
-                strText = "<html><nobr>" + strText + "</nobr></html>";
+                arHighlightColor = new String[] { "#00FF00" };
 
-            return strText.replace("\t", "    ");
+            // 1) \uC6D0\uBB38\uC5D0\uC11C \uC77C\uCE58 \uAD6C\uAC04\uC744 \uAE00\uC790 \uB2E8\uC704\uB85C \uD45C\uC2DC (\uB300\uC18C\uBB38\uC790 \uBB34\uC2DC)
+            String[] arBackground = new String[strText.length()];
+            boolean[] arFind      = new boolean[strText.length()];
+            m_bChanged = false;
+            markMatch(strText, GetHighlight(), arHighlightColor, arBackground, null);
+            markMatch(strText, strFind, null, null, arFind);
+
+            if(!m_bChanged)
+                return strText.replace(" ", "\u00A0").replace("\t", "    ");
+
+            // 2) \uAD6C\uAC04 \uC815\uBCF4\uB85C HTML\uC744 \uD55C \uBC88\uC5D0 \uC0DD\uC131 (\uC6D0\uBB38\uC758 &, <, >\uB294 \uC774\uC2A4\uCF00\uC774\uD504)
+            StringBuilder sb = new StringBuilder(strText.length() * 2 + 64);
+            sb.append("<html><nobr>");
+            String strCurBg = null;
+            boolean bCurFind = false;
+            for(int i = 0; i < strText.length(); i++)
+            {
+                if(i == 0 || !equalsColor(strCurBg, arBackground[i]) || bCurFind != arFind[i])
+                {
+                    closeStyle(sb, strCurBg, bCurFind);
+                    strCurBg = arBackground[i];
+                    bCurFind = arFind[i];
+                    openStyle(sb, strCurBg, bCurFind);
+                }
+                appendEscaped(sb, strText.charAt(i));
+            }
+            closeStyle(sb, strCurBg, bCurFind);
+            sb.append("</nobr></html>");
+            return sb.toString();
         }
 
-        String remakeFind(String strText, String strFind, String[] arColor, boolean bUseSpan)
+        /**
+         * strFilter('|' \uAD6C\uBD84)\uC758 \uAC01 \uD1A0\uD070\uC774 strText\uC5D0 \uB098\uC624\uB294 \uC704\uCE58\uB97C \uD45C\uC2DC\uD55C\uB2E4.
+         * arBackground\uAC00 \uC788\uC73C\uBA74 \uD1A0\uD070\uBCC4 \uC0C9\uC0C1(arColor \uC21C\uD658)\uC744, arFind\uAC00 \uC788\uC73C\uBA74 true\uB97C \uAE30\uB85D\uD55C\uB2E4.
+         */
+        void markMatch(String strText, String strFilter, String[] arColor, String[] arBackground, boolean[] arFind)
         {
-            if(strFind == null || strFind.length() <= 0) return strText;
+            if(strFilter == null || strFilter.length() <= 0) return;
 
-            strFind = strFind.replace( " ", "\u00A0" );
-            StringTokenizer stk = new StringTokenizer(strFind, "|");
-            String newText;
-            String strToken;
-            int nIndex = 0;
+            String strLower = strText.toLowerCase();
+            StringTokenizer stk = new StringTokenizer(strFilter, "|");
+            int nColor = 0;
 
             while (stk.hasMoreElements())
             {
-                if(nIndex >= arColor.length)
-                    nIndex = 0;
-                strToken = stk.nextToken();
+                String strToken = stk.nextToken().toLowerCase();
+                int nPos = strLower.indexOf(strToken);
+                if(nPos < 0) continue;
 
-                if(strText.toLowerCase().contains(strToken.toLowerCase()))
+                String strColor = arColor != null ? arColor[nColor % arColor.length] : null;
+                while(nPos >= 0)
                 {
-                    if(bUseSpan)
-                        newText = "<span style=\"background-color:#" + arColor[nIndex] + "\"><b>";
-                    else
-                        newText = "<font color=#" + arColor[nIndex] + "><b>";
-                    newText += strToken;
-                    if(bUseSpan)
-                        newText += "</b></span>";
-                    else
-                        newText += "</b></font>";
-                    strText = strText.replace(strToken, newText);
-                    m_bChanged = true;
-                    nIndex++;
+                    for(int i = nPos; i < nPos + strToken.length(); i++)
+                    {
+                        if(arBackground != null) arBackground[i] = strColor;
+                        if(arFind != null)       arFind[i] = true;
+                    }
+                    nPos = strLower.indexOf(strToken, nPos + strToken.length());
                 }
+                m_bChanged = true;
+                nColor++;
             }
-            return strText;
         }
 
-        String remakeFind(String strText, String strFind, String strColor, boolean bUseSpan)
+        boolean equalsColor(String a, String b)
         {
-            if(strFind == null || strFind.length() <= 0) return strText;
+            return a == null ? b == null : a.equals(b);
+        }
 
-            strFind = strFind.replace( " ", "\u00A0" );
-            StringTokenizer stk = new StringTokenizer(strFind, "|");
-            String newText;
-            String strToken;
+        void openStyle(StringBuilder sb, String strBackground, boolean bFind)
+        {
+            if(strBackground != null) sb.append("<span style=\"background-color:").append(strBackground).append("\"><b>");
+            if(bFind)                 sb.append("<font color=#FF0000><b>");
+        }
 
-            while (stk.hasMoreElements())
+        void closeStyle(StringBuilder sb, String strBackground, boolean bFind)
+        {
+            if(bFind)                 sb.append("</b></font>");
+            if(strBackground != null) sb.append("</b></span>");
+        }
+
+        void appendEscaped(StringBuilder sb, char c)
+        {
+            switch(c)
             {
-                strToken = stk.nextToken();
-
-                if(strText.toLowerCase().contains(strToken.toLowerCase()))
-                {
-                    if(bUseSpan)
-                        newText = "<span style=\"background-color:" + strColor + "\"><b>";
-                    else
-                        newText = "<font color=" + strColor + "><b>";
-                    newText += strToken;
-                    if(bUseSpan)
-                        newText += "</b></span>";
-                    else
-                        newText += "</b></font>";
-                    strText = strText.replace(strToken, newText);
-                    m_bChanged = true;
-                }
+                case '&':  sb.append("&amp;");  break;
+                case '<':  sb.append("&lt;");   break;
+                case '>':  sb.append("&gt;");   break;
+                case '"':  sb.append("&quot;"); break;
+                case ' ':  sb.append("&nbsp;"); break;
+                case '\t': sb.append("&nbsp;&nbsp;&nbsp;&nbsp;"); break;
+                default:   sb.append(c);
             }
-            return strText;
         }
     }
 

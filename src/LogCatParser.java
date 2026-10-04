@@ -15,7 +15,7 @@ public class LogCatParser implements ILogParser
     final String TOKEN_SLASH = "/";
     final String TOKEN       = "/()";
     final String TOKEN_PID   = "/() ";
-    final String TOKEN_MESSAGE = "'";
+    final String TOKEN_REST    = "";    // 구분자 없음 → nextToken()이 남은 문자열 전체를 반환
     
     public Color getColor(LogInfo logInfo)
     {
@@ -131,11 +131,8 @@ public class LogCatParser implements ILogParser
             logInfo.m_strPid = stk.nextToken().trim();
         if(stk.hasMoreElements())
         {
-            logInfo.m_strMessage = stk.nextToken(TOKEN_MESSAGE);
-            while(stk.hasMoreElements())
-            {
-                logInfo.m_strMessage += stk.nextToken(TOKEN_MESSAGE);
-            }
+            // 구분자 없이 남은 문자열 전체를 메시지로 사용 (메시지 안의 ' 보존)
+            logInfo.m_strMessage = stk.nextToken(TOKEN_REST);
             logInfo.m_strMessage = logInfo.m_strMessage.replaceFirst("\\): ", "");
         }
         logInfo.m_TextColor = getColor(logInfo);
@@ -161,11 +158,8 @@ public class LogCatParser implements ILogParser
             logInfo.m_strTag = stk.nextToken();
         if(stk.hasMoreElements())
         {
-            logInfo.m_strMessage = stk.nextToken(TOKEN_MESSAGE);
-            while(stk.hasMoreElements())
-            {
-                logInfo.m_strMessage += stk.nextToken(TOKEN_MESSAGE);
-            }
+            // 구분자 없이 남은 문자열 전체를 메시지로 사용 (메시지 안의 ' 보존)
+            logInfo.m_strMessage = stk.nextToken(TOKEN_REST);
             logInfo.m_strMessage = logInfo.m_strMessage.replaceFirst("\\): ", "");
         }
         logInfo.m_TextColor = getColor(logInfo);

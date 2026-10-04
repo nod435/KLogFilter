@@ -1,0 +1,1567 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KLogFilter 소스 구조</title>
+<style>
+:root{
+  --bg:#f6f6f3; --surface:#ffffff; --surface-2:#f0f0ec; --ink:#1f2328; --ink-2:#3d434b; --muted:#646b75;
+  --line:#dcdcd6; --line-strong:#b9bab3; --accent:#2f5bd3; --accent-soft:#e7edfc;
+  --thread:#7b4bb7; --thread-soft:#f2ebfb; --warn:#b3261e; --warn-soft:#fbe9e7;
+  --caution:#9a6700; --caution-soft:#fff4d6; --ok:#1f7a3a; --ok-soft:#e5f4ea;
+  --note:#fff8dc; --note-line:#dcc36a; --frame-fill:rgba(60,70,90,.035); --frame-line:#a9adb5;
+  --code-bg:#eeefea;
+  --font: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  --mono: ui-monospace, "Cascadia Code", Consolas, "D2Coding", monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15171a; --surface:#1d2024; --surface-2:#24282d; --ink:#e7e9ec; --ink-2:#c9cdd3; --muted:#9aa1ab;
+    --line:#33383f; --line-strong:#4a5059; --accent:#8fb0ff; --accent-soft:#1f2b48;
+    --thread:#c3a2f0; --thread-soft:#2c2340; --warn:#ff9a8f; --warn-soft:#3a1f1d;
+    --caution:#f0c35a; --caution-soft:#352b14; --ok:#7fd49a; --ok-soft:#173022;
+    --note:#2f2a17; --note-line:#8a7a3a; --frame-fill:rgba(255,255,255,.03); --frame-line:#5d636c;
+    --code-bg:#262a30;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15171a; --surface:#1d2024; --surface-2:#24282d; --ink:#e7e9ec; --ink-2:#c9cdd3; --muted:#9aa1ab;
+  --line:#33383f; --line-strong:#4a5059; --accent:#8fb0ff; --accent-soft:#1f2b48;
+  --thread:#c3a2f0; --thread-soft:#2c2340; --warn:#ff9a8f; --warn-soft:#3a1f1d;
+  --caution:#f0c35a; --caution-soft:#352b14; --ok:#7fd49a; --ok-soft:#173022;
+  --note:#2f2a17; --note-line:#8a7a3a; --frame-fill:rgba(255,255,255,.03); --frame-line:#5d636c;
+  --code-bg:#262a30;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.65;-webkit-text-size-adjust:100%}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,pre,kbd{font-family:var(--mono);font-size:.88em}
+code{background:var(--code-bg);padding:.1em .38em;border-radius:4px}
+pre{background:var(--code-bg);padding:12px 14px;border-radius:8px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0}
+kbd{border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:4px;padding:0 .35em;background:var(--surface)}
+
+.layout{display:grid;grid-template-columns:1fr;max-width:1240px;margin:0 auto;padding:0 16px}
+@media (min-width:1100px){.layout{grid-template-columns:230px minmax(0,1fr);gap:40px;padding:0 28px}}
+nav.toc{display:none}
+@media (min-width:1100px){
+  nav.toc{display:block;position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;padding:32px 0 32px}
+  nav.toc .t{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+  nav.toc a{display:block;color:var(--ink-2);font-size:13.5px;padding:3px 0 3px 10px;border-left:2px solid transparent}
+  nav.toc a.sub{padding-left:22px;font-size:13px;color:var(--muted)}
+  nav.toc a:hover{border-left-color:var(--accent);text-decoration:none;color:var(--ink)}
+}
+.inline-toc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:16px 0 8px}
+.inline-toc ol{margin:0;padding-left:20px;columns:2;column-gap:24px}
+@media (max-width:560px){.inline-toc ol{columns:1}}
+@media (min-width:1100px){.inline-toc{display:none}}
+
+main{min-width:0;padding:28px 0 80px}
+header.doc{padding:8px 0 18px;border-bottom:1px solid var(--line);margin-bottom:8px}
+header.doc h1{font-size:30px;line-height:1.25;margin:0 0 6px;letter-spacing:-.01em}
+header.doc .meta{color:var(--muted);font-size:13.5px}
+header.doc .lead{margin:14px 0 0;color:var(--ink-2);max-width:72ch}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chip{font-size:12.5px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--ink-2)}
+.chip b{color:var(--ink)}
+
+h2{font-size:22px;margin:48px 0 12px;padding-top:8px;letter-spacing:-.01em}
+h2 .no{color:var(--accent);margin-right:8px}
+h3{font-size:17px;margin:30px 0 8px}
+h4{font-size:15px;margin:20px 0 6px}
+p{margin:8px 0;max-width:80ch}
+ul,ol{padding-left:22px}
+li{margin:3px 0}
+
+.tbl{overflow-x:auto;margin:12px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.8px}
+th,td{text-align:left;vertical-align:top;padding:8px 12px;border-bottom:1px solid var(--line)}
+th{background:var(--surface-2);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.nw{white-space:nowrap}
+
+.badge{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.b-core{background:var(--accent-soft);color:var(--accent)}
+.b-use{background:var(--ok-soft);color:var(--ok)}
+.b-dead{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.b-red{background:var(--warn-soft);color:var(--warn)}
+.b-org{background:var(--caution-soft);color:var(--caution)}
+.b-yel{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line)}
+.stars{color:var(--caution);letter-spacing:1px;white-space:nowrap}
+
+.callout{border:1px solid var(--line);border-left:4px solid var(--accent);background:var(--surface);border-radius:8px;padding:10px 14px;margin:14px 0}
+.callout.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.callout.caution{border-left-color:var(--caution);background:var(--caution-soft)}
+.callout p{margin:4px 0}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+
+/* architecture block diagram */
+.arch{display:grid;gap:12px}
+.arch .main-box{border:2px solid var(--accent);border-radius:12px;padding:12px 14px;background:var(--accent-soft)}
+.arch .main-box .h{font-weight:700;margin-bottom:8px}
+.arch .main-box .h small{font-weight:500;color:var(--muted);margin-left:6px}
+.arch .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.arch .cell{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
+.arch .cell b{display:block;font-size:13.5px}
+.arch .cell span{color:var(--muted)}
+.arch .conn{text-align:center;color:var(--muted);font-size:13px}
+.arch .shared{border:1px dashed var(--line-strong);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--ink-2)}
+
+/* sequence diagrams */
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;color:var(--ink-2);margin:10px 0 4px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend svg{flex:none}
+figure.seq{margin:14px 0 6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+figure.seq .scroll{overflow-x:auto;padding:12px 8px 6px}
+figure.seq svg{display:block;margin:0 auto}
+figure.seq figcaption{font-size:13px;color:var(--muted);padding:8px 14px;border-top:1px solid var(--line);background:var(--surface-2)}
+.seq-svg text{font-family:var(--font);font-size:12px;fill:var(--ink)}
+.seq-svg text.halo{paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+.seq-svg .pbox{fill:var(--surface);stroke:var(--ink-2);stroke-width:1.2}
+.seq-svg .pbox.thread{fill:var(--thread-soft);stroke:var(--thread)}
+.seq-svg .pbox.actor{fill:var(--accent-soft);stroke:var(--accent)}
+.seq-svg .pbox.ext{fill:var(--surface-2);stroke:var(--line-strong);stroke-dasharray:4 3}
+.seq-svg .plabel{font-size:13px;font-weight:650}
+.seq-svg .psub{font-size:11px;fill:var(--muted)}
+.seq-svg .life{stroke:var(--line-strong);stroke-dasharray:3 4;stroke-width:1}
+.seq-svg .msg{stroke:var(--ink-2);fill:none;stroke-width:1.3}
+.seq-svg .msg.ret{stroke:var(--muted);stroke-dasharray:5 4}
+.seq-svg .msg.async{stroke:var(--thread);stroke-width:1.5}
+.seq-svg .ah{fill:var(--ink-2)}
+.seq-svg .ah-ret{fill:none;stroke:var(--muted);stroke-width:1.3}
+.seq-svg .ah-async{fill:var(--thread)}
+.seq-svg .num{font-weight:700;fill:var(--accent)}
+.seq-svg .warn{fill:var(--warn)}
+.seq-svg .frame{fill:var(--frame-fill);stroke:var(--frame-line);stroke-width:1}
+.seq-svg .ftab{fill:var(--surface-2);stroke:var(--frame-line);stroke-width:1}
+.seq-svg .fkind{font-weight:700;font-size:11.5px}
+.seq-svg .flabel{font-size:11.5px;fill:var(--ink-2)}
+.seq-svg .felse{stroke:var(--frame-line);stroke-dasharray:6 4}
+.seq-svg .note{fill:var(--note);stroke:var(--note-line)}
+.seq-svg .ntext{font-size:11.5px;fill:var(--ink-2)}
+.flow-points{margin:6px 0 0;font-size:14px}
+.flow-points li{margin:2px 0}
+
+/* class overview diagram */
+figure.cls svg{max-width:100%;height:auto}
+.cd-svg text{font-family:var(--font);fill:var(--ink)}
+.cd-svg .cd-node{fill:var(--surface);stroke:var(--ink-2);stroke-width:1.3}
+.cd-svg .cd-node.core{fill:var(--accent-soft);stroke:var(--accent)}
+.cd-svg .cd-node.iface{fill:var(--ok-soft);stroke:var(--ok)}
+.cd-svg .cd-node.swing{fill:var(--surface-2);stroke:var(--line-strong);stroke-dasharray:4 3}
+.cd-svg .cd-node.inner{fill:var(--thread-soft);stroke:var(--thread);stroke-dasharray:5 3}
+.cd-svg .cd-node.util{fill:var(--surface-2)}
+.cd-svg .cd-name{font-size:12.5px;font-weight:650}
+.cd-svg .cd-name.abs{font-style:italic}
+.cd-svg .cd-stereo{font-size:10.5px;fill:var(--muted)}
+.cd-svg .cd-sub{font-size:10.5px;fill:var(--muted)}
+.cd-svg .cd-edge{stroke:var(--ink-2);fill:none;stroke-width:1.3}
+.cd-svg .cd-edge.dash{stroke-dasharray:6 4}
+.cd-svg .mk-fill{fill:var(--ink-2)}
+.cd-svg .mk-hollow{fill:var(--surface);stroke:var(--ink-2);stroke-width:1.3}
+.cd-svg .mk-open{fill:none;stroke:var(--ink-2);stroke-width:1.3}
+.cd-svg .cd-label{font-size:11px;fill:var(--ink-2);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+
+/* UML class cards */
+.uml-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin:12px 0;align-items:start}
+@media (max-width:420px){.uml-grid{grid-template-columns:1fr}}
+.uml{background:var(--surface);border:1.5px solid var(--ink-2);border-radius:8px;overflow:hidden;min-width:0}
+.uml.wide{grid-column:1/-1}
+.uml-h{text-align:center;padding:8px 10px 7px;background:var(--accent-soft);border-bottom:1.5px solid var(--ink-2)}
+.uml.iface .uml-h{background:var(--ok-soft)}
+.uml.util .uml-h,.uml.dead .uml-h{background:var(--surface-2)}
+.uml.dead{border-color:var(--line-strong);border-style:dashed}
+.uml.dead .uml-h{border-bottom-color:var(--line-strong)}
+.uml-h .st{font-size:11px;color:var(--muted)}
+.uml-h .nm{font-weight:700;font-size:15px;font-family:var(--mono)}
+.uml-h .nm.abs{font-style:italic}
+.uml-h .rel{font-size:12px;color:var(--ink-2);margin-top:2px}
+.uml-h .file{font-size:11.5px;color:var(--muted)}
+.uml-body{display:grid;grid-template-columns:1fr}
+.uml.wide .uml-body{grid-template-columns:1fr}
+@media (min-width:900px){.uml.wide .uml-body{grid-template-columns:1fr 1fr}.uml.wide .uml-sec.f{border-right:1px solid var(--line)}}
+.uml-sec{padding:6px 10px 8px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:12px;line-height:1.55;min-width:0}
+.uml-body .uml-sec:last-child{border-bottom:none}
+@media (min-width:900px){.uml.wide .uml-body .uml-sec{border-bottom:none}}
+.uml-sec .cap{font-family:var(--font);font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.03em;margin-bottom:2px}
+.uml-sec .grp{font-family:var(--font);font-size:11.5px;font-weight:650;color:var(--accent);margin:6px 0 1px}
+.uml-sec .m{display:flex;gap:6px;overflow-wrap:anywhere}
+.uml-sec .m .v{flex:none;width:1.1ch;color:var(--muted);font-weight:700}
+.uml-sec .m.s .sig{text-decoration:underline;text-underline-offset:2px}
+.uml-sec .m.a .sig{font-style:italic}
+.uml-sec .m.x .sig{color:var(--muted)}
+.uml-sec .tg{font-family:var(--font);font-size:10.5px;font-weight:600;border-radius:999px;padding:0 6px;margin-left:4px;white-space:nowrap}
+.uml-sec .tg.x{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.uml-sec .tg.l{background:var(--caution-soft);color:var(--caution)}
+.uml-sec .empty{color:var(--muted);font-family:var(--font);font-size:12px}
+.uml-inner{padding:8px 10px 10px;border-top:1px solid var(--line);background:var(--surface-2)}
+.uml-inner .cap{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.uml-inner .uml{border-width:1px;margin-top:8px}
+.uml-inner .uml:first-of-type{margin-top:0}
+.uml-inner .uml-h{padding:5px 8px;border-bottom-width:1px}
+.uml-inner .uml-h .nm{font-size:13px}
+.uml-note{font-family:var(--font);font-size:12px;color:var(--muted);padding:6px 10px;border-top:1px solid var(--line)}
+.vis-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--ink-2);margin:8px 0}
+.vis-legend code{font-weight:700}
+
+.theme-btn{position:fixed;right:16px;bottom:16px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+@media print{nav.toc,.theme-btn,.inline-toc{display:none}.layout{display:block}figure.seq .scroll{overflow:visible}}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <div class="t">목차</div>
+  <a href="#s1">1. 개요</a>
+  <a class="sub" href="#s1-diff">1.1 GitHub 대비 변경</a>
+  <a href="#s2">2. 파일 구성</a>
+  <a href="#s3">3. 아키텍처</a>
+  <a href="#s4">4. 동작 흐름 (시퀀스)</a>
+  <a class="sub" href="#seq-start">4.1 앱 시작</a>
+  <a class="sub" href="#seq-file">4.2 로그 파일 열기</a>
+  <a class="sub" href="#seq-logcat">4.3 logcat 실시간 수집</a>
+  <a class="sub" href="#seq-filter">4.4 필터 재계산</a>
+  <a class="sub" href="#seq-render">4.5 셀 렌더링</a>
+  <a class="sub" href="#seq-bookmark">4.6 북마크 · 인디케이터</a>
+  <a class="sub" href="#seq-copy">4.7 복사 · 태그 단축키</a>
+  <a class="sub" href="#seq-exit">4.8 종료</a>
+  <a class="sub" href="#threads">4.9 스레드 모델</a>
+  <a href="#s5">5. 클래스별 상세</a>
+  <a class="sub" href="#s5-overview">5.1 전체 클래스 관계도</a>
+  <a class="sub" href="#s5-uml">5.2 클래스별 구조</a>
+  <a class="sub" href="#s5-desc">5.3 클래스별 설명</a>
+  <a href="#s6">6. 설정 파일</a>
+  <a href="#s7">7. 발견된 문제점</a>
+  <a href="#s8">8. 최적화 가능 요소</a>
+  <a href="#s9">9. 권장 진행 순서</a>
+</nav>
+
+<main>
+<header class="doc">
+  <h1>KLogFilter 소스 구조 및 동작 흐름</h1>
+  <div class="meta">작성일 2026-10-02 · 대상 버전 LogFilter Version 1.8 · 기준 소스 <a href="https://github.com/nod435/KLogFilter">github.com/nod435/KLogFilter</a> <code>fd5e19f</code> + 로컬 변경분(<a href="#s1-diff">1.1</a>)</div>
+  <p class="lead">Android <code>logcat</code> 로그를 보면서 필터링하는 Java Swing 데스크톱 툴의 클래스 구성, 실행 흐름, 문제점과 최적화 방향을 정리한 문서입니다. 동작 흐름은 시퀀스 다이어그램으로 표현했습니다.</p>
+  <div class="chips">
+    <span class="chip"><b>18</b> 파일</span>
+    <span class="chip">약 <b>4,400</b> 줄</span>
+    <span class="chip">사용 안 하는 클래스 <b>7</b>개</span>
+    <span class="chip">스레드 <b>5</b>종</span>
+    <span class="chip">발견 이슈 <b>13</b>건</span>
+    <span class="chip">외부 의존성 <b>없음</b></span>
+  </div>
+</header>
+
+<div class="inline-toc">
+  <ol>
+    <li><a href="#s1">개요</a></li><li><a href="#s2">파일 구성</a></li><li><a href="#s3">아키텍처</a></li>
+    <li><a href="#s4">동작 흐름 (시퀀스)</a></li><li><a href="#s5">클래스별 상세</a></li><li><a href="#s6">설정 파일</a></li>
+    <li><a href="#s7">발견된 문제점</a></li><li><a href="#s8">최적화 가능 요소</a></li><li><a href="#s9">권장 진행 순서</a></li>
+  </ol>
+</div>
+
+<!-- 1 -->
+<h2 id="s1"><span class="no">1</span>개요</h2>
+<ul>
+  <li><b>입력:</b> 저장된 로그 파일(Open, Recent, 드래그&amp;드롭, 실행 인자)을 읽거나, <code>adb logcat</code> 출력을 실시간으로 받습니다.</li>
+  <li><b>기능:</b> 워드/태그/PID/TID/레벨 필터, 하이라이트, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사</li>
+  <li><b>빌드 환경:</b> Eclipse Java 프로젝트이며 <code>.classpath</code>에는 JavaSE-1.6이 설정되어 있습니다. 현재는 JDK 8(Zulu 1.8.0_382)로 빌드했습니다.</li>
+  <li><b>패키지:</b> default 패키지만 사용하고, 외부 라이브러리 의존성은 없습니다.</li>
+</ul>
+<pre><code># 빌드 — 로컬 소스(UTF-8)
+javac -encoding UTF-8 -d bin src\*.java
+
+# 빌드 — GitHub 원본(MS949)
+javac -encoding MS949 -d bin src\*.java
+
+# 실행 — ini 파일을 현재 작업 디렉터리에서 읽으므로 반드시 KLogFilter 폴더에서 실행
+java -cp bin LogFilterMain [로그파일]</code></pre>
+
+<h3 id="s1-diff">1.1 GitHub 원본 대비 로컬 변경 사항</h3>
+<p>이 문서는 <a href="https://github.com/nod435/KLogFilter">nod435/KLogFilter</a>의 유일한 커밋 <code>fd5e19f</code>("파일 등록")를 기준으로 하고, 로컬 작업 폴더(<code>D:\work\source\KLogFilter\KLogFilter</code>)에만 있는 변경분을 함께 설명합니다. 코드가 바뀐 파일은 <code>LogFilterMain.java</code>, <code>LogCatParser.java</code>, <code>LogTable.java</code>, <code>T.java</code> 네 개입니다(뒤의 셋은 2026-10-04 버그 수정).</p>
+<div class="tbl"><table>
+<thead><tr><th>구분</th><th>파일</th><th>내용</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td class="nw">기능 추가</td><td class="nw"><code>LogFilterMain.java</code></td><td><code>installUndoRedo()</code>: 필터 입력창 6개와 Highlight 입력창에 <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> 실행 취소/다시 실행</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">기능 추가</td><td class="nw"><code>LogFilterMain.java</code></td><td><code>installInputHistory()</code>: 입력창별 최근 입력 10개, <kbd>↑</kbd>/<kbd>↓</kbd>로 불러오기</td><td><span class="badge b-org">호출 안 됨</span></td></tr>
+<tr><td class="nw">UI 변경</td><td class="nw"><code>LogFilterMain.java</code></td><td>Highlight 입력창을 FlowLayout 패널 안에 넣고 폭을 300px로 고정(원본은 남은 폭 전체 사용)</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">버그 수정</td><td class="nw"><code>LogFilterMain</code> · <code>LogCatParser</code> · <code>LogTable</code> · <code>T</code></td><td>2026-10-04: B1(<code>==</code> → <code>equals</code>), B2(메시지의 <code>'</code> 보존), B3·B9(HTML 이스케이프, 대소문자 무시 하이라이트), B10(날짜 포맷), 안내 문구의 ini 키 이름(<code>INI_HIGILIGHT_n</code>)</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">import 추가</td><td class="nw"><code>LogFilterMain.java</code></td><td>위 기능용 <code>InputEvent</code>, <code>AbstractAction</code>, <code>UndoManager</code> 등 8개</td><td>—</td></tr>
+<tr><td class="nw">인코딩</td><td class="nw">전체 <code>.java</code></td><td>GitHub 원본은 <b>MS949</b>, 로컬은 <b>UTF-8</b>로 변환됨. 실제 차이는 한글 주석/문자열이 있는 <code>LogFilterMain</code>, <code>IndicatorPanel</code>, <code>ClassTaster</code>뿐이며, 줄바꿈도 CRLF → LF로 바뀜</td><td>—</td></tr>
+<tr><td class="nw">프로젝트 설정</td><td class="nw"><code>.project</code></td><td><code>node_modules|.git|__CREATED_BY_JAVA_LANGUAGE_SERVER__</code> 리소스 필터 추가(VS Code Java 확장이 생성)</td><td>—</td></tr>
+</tbody></table></div>
+<div class="callout warn">
+  <p><b>인코딩 설정 불일치:</b> 로컬의 <code>.settings/org.eclipse.core.resources.prefs</code>에는 아직 <code>encoding/&lt;project&gt;=MS949</code>가 남아 있습니다.</p>
+  <p>로컬 소스는 이미 UTF-8이라서 Eclipse로 열거나 빌드하면 한글 주석과 <code>addDesc()</code> 안내 문구가 깨집니다. 설정을 <code>UTF-8</code>로 바꾸거나, GitHub에 올릴 때 인코딩을 하나로 통일해야 합니다.</p>
+</div>
+<p><b>줄 번호:</b> 이 문서의 줄 번호는 <b>로컬 소스</b> 기준입니다. <code>LogFilterMain.java</code>는 GitHub 원본이 2,084줄, 로컬이 2,236줄이라서 GitHub 줄 번호가 앞부분(약 816행 이전)은 8, 그 뒤는 약 154 작습니다. 7장 표에는 두 줄 번호를 함께 적었습니다. 다른 파일은 줄 번호가 같습니다.</p>
+
+<!-- 2 -->
+<h2 id="s2"><span class="no">2</span>파일 구성</h2>
+<div class="tbl"><table>
+<thead><tr><th>파일</th><th>줄 수</th><th>역할</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td class="nw"><code>LogFilterMain.java</code></td><td class="num">2236<br><small style="color:var(--muted)">GitHub 2084</small></td><td>메인 프레임. UI 구성, 파일/프로세스 읽기, 필터 엔진, 설정 저장</td><td><span class="badge b-core">핵심</span></td></tr>
+<tr><td class="nw"><code>LogTable.java</code></td><td class="num">712</td><td>로그 테이블(JTable). 셀 렌더링(하이라이트), 키/마우스 처리, 복사, 필터 문자열 보관</td><td><span class="badge b-core">핵심</span></td></tr>
+<tr><td class="nw"><code>LogCatParser.java</code></td><td class="num">212</td><td>로그 한 줄을 <code>LogInfo</code>로 파싱(time / threadtime / kernel 형식)</td><td><span class="badge b-core">핵심</span></td></tr>
+<tr><td class="nw"><code>IndicatorPanel.java</code></td><td class="num">237</td><td>좌측 북마크/에러 위치 표시 바, "북마크만/에러만 보기" 체크박스</td><td><span class="badge b-core">핵심</span></td></tr>
+<tr><td class="nw"><code>LogInfo.java</code></td><td class="num">67</td><td>로그 한 줄 데이터(VO), 레벨 비트 상수</td><td><span class="badge b-core">핵심</span></td></tr>
+<tr><td class="nw"><code>LogFilterTableModel.java</code></td><td class="num">64</td><td>테이블 모델, 컬럼 정의/폭</td><td><span class="badge b-core">핵심</span></td></tr>
+<tr><td class="nw"><code>RecentFileMenu.java</code></td><td class="num">155</td><td>최근 파일 메뉴(<code>RecentFile.ini</code>). 외부 GPL v2 코드</td><td><span class="badge b-use">사용</span></td></tr>
+<tr><td class="nw"><code>LogColor.java</code></td><td class="num">22</td><td>레벨별/하이라이트 색상 전역 static 값</td><td><span class="badge b-use">사용</span></td></tr>
+<tr><td class="nw"><code>ILogParser.java</code></td><td class="num">19</td><td>파서 인터페이스</td><td><span class="badge b-use">사용</span></td></tr>
+<tr><td class="nw"><code>INotiEvent.java</code></td><td class="num">31</td><td>컴포넌트 → 메인 프레임 이벤트 콜백 인터페이스</td><td><span class="badge b-use">사용</span></td></tr>
+<tr><td class="nw"><code>T.java</code></td><td class="num">156</td><td>디버그 로그 출력 유틸(<code>System.out</code>)</td><td><span class="badge b-use">사용</span></td></tr>
+<tr><td class="nw"><code>TagTable.java</code></td><td class="num">187</td><td>태그 목록 테이블. 생성 코드가 주석 처리됨</td><td><span class="badge b-dead">미사용</span></td></tr>
+<tr><td class="nw"><code>TagFilterTableModel.java</code></td><td class="num">45</td><td>태그 테이블 모델</td><td><span class="badge b-dead">미사용</span></td></tr>
+<tr><td class="nw"><code>TagInfo.java</code></td><td class="num">25</td><td>태그 데이터. <code>m_arTagInfo</code>는 clear만 함</td><td><span class="badge b-dead">미사용</span></td></tr>
+<tr><td class="nw"><code>ClassTaster.java</code></td><td class="num">261</td><td>리플렉션 기반 메서드 테스트 유틸. LogFilter 기능과 무관</td><td><span class="badge b-dead">미사용</span></td></tr>
+<tr><td class="nw"><code>DevicesPanel.java</code></td><td class="num">7</td><td>빈 JPanel</td><td><span class="badge b-dead">미사용</span></td></tr>
+<tr><td class="nw"><code>MouseEventHandler.java</code></td><td class="num">13</td><td>빈 WindowListener(이름과 내용 불일치)</td><td><span class="badge b-dead">미사용</span></td></tr>
+<tr><td class="nw"><code>WindowEventHandler.java</code></td><td class="num">19</td><td>종료용 WindowListener. 익명 WindowAdapter로 대체됨</td><td><span class="badge b-dead">미사용</span></td></tr>
+</tbody></table></div>
+
+<!-- 3 -->
+<h2 id="s3"><span class="no">3</span>아키텍처</h2>
+<h3>3.1 구성 요소와 의존 관계</h3>
+<div class="card arch">
+  <div class="main-box">
+    <div class="h">LogFilterMain <small>JFrame · implements INotiEvent · 2,236줄</small></div>
+    <div class="row">
+      <div class="cell"><b>UI 구성</b><span>getOptionPanel, getFilterPanel, getCheckPanel, getTabPanel …</span></div>
+      <div class="cell"><b>입력</b><span>parseFile, startProcess, startFileParse, setDeviceList</span></div>
+      <div class="cell"><b>필터 엔진</b><span>startFilterParse(스레드), runFilter, addLogInfo, check*Filter</span></div>
+      <div class="cell"><b>설정</b><span>load/saveFilter, load/saveColor, loadCmd</span></div>
+      <div class="cell"><b>데이터</b><span>m_arLogInfoAll / Filtered, m_hmBookmark* / m_hmError*</span></div>
+    </div>
+  </div>
+  <div class="conn">▼ 생성·소유 &nbsp;&nbsp; ▲ 직접 필드 접근 · notiEvent() 콜백</div>
+  <div class="row">
+    <div class="cell"><b>LogTable</b><span>JTable · 필터 문자열 7종 보관 · LogCellRenderer · 복사/단축키</span></div>
+    <div class="cell"><b>LogFilterTableModel</b><span>All/Filtered 리스트를 <i>참조</i>로 교체(setData)</span></div>
+    <div class="cell"><b>IndicatorPanel</b><span>북마크/에러 바 · 북마크만/에러만 체크</span></div>
+    <div class="cell"><b>ILogParser → LogCatParser</b><span>한 줄 → LogInfo (+레벨 색상)</span></div>
+    <div class="cell"><b>LogInfo</b><span>문자열 필드 9개 + Color + m_bMarked</span></div>
+  </div>
+  <div class="shared">공용: <b>LogColor</b>(static 색상) · <b>T</b>(디버그 로그) · <b>RecentFileMenu</b>(File 메뉴) · 설정 파일 <code>*.ini</code></div>
+</div>
+
+<h3>3.2 구조적 특징</h3>
+<ul>
+  <li><b>God class:</b> <code>LogFilterMain</code>이 UI, I/O, 필터링, 설정을 모두 맡고 있습니다(전체 코드의 약 50%).</li>
+  <li><b>양방향 결합:</b> <code>LogTable</code>과 <code>IndicatorPanel</code>이 <code>LogFilterMain</code>의 필드(<code>m_scrollVBar</code>, <code>m_tbLogTable</code>, <code>m_nChangedFilter</code>)에 직접 접근합니다.</li>
+  <li><b>필터 상태가 뷰에 있음:</b> 필터 문자열은 <code>LogTable</code> 필드로 보관되고, 실제 판정은 <code>LogFilterMain.check*Filter()</code>가 getter를 통해 읽습니다.</li>
+  <li><b>전역 static 상태:</b> <code>LogColor</code>의 색상과 <code>LogFilterTableModel.ColWidth</code>가 모두 public static입니다.</li>
+</ul>
+
+<h3>3.3 핵심 데이터 구조</h3>
+<div class="tbl"><table>
+<thead><tr><th>필드</th><th>타입</th><th>의미</th></tr></thead>
+<tbody>
+<tr><td class="nw"><code>m_arLogInfoAll</code></td><td class="nw"><code>ArrayList&lt;LogInfo&gt;</code></td><td>읽은 모든 로그</td></tr>
+<tr><td class="nw"><code>m_arLogInfoFiltered</code></td><td class="nw"><code>ArrayList&lt;LogInfo&gt;</code></td><td>필터를 통과한 로그. <code>m_bUserFilter == true</code>일 때 화면에 표시</td></tr>
+<tr><td class="nw"><code>m_hmBookmarkAll / Filtered</code></td><td class="nw"><code>HashMap&lt;Integer,Integer&gt;</code></td><td>key = 원본 라인 index, value = 표시 리스트 내 index(인디케이터 위치 계산용)</td></tr>
+<tr><td class="nw"><code>m_hmErrorAll / Filtered</code></td><td class="nw"><code>HashMap&lt;Integer,Integer&gt;</code></td><td>E/ERROR 레벨 라인. 구조는 위와 같음</td></tr>
+<tr><td class="nw"><code>m_bUserFilter</code></td><td class="nw"><code>boolean</code></td><td>필터가 하나라도 활성화됐는지 여부(<code>checkUseFilter()</code>로 결정)</td></tr>
+<tr><td class="nw"><code>m_nChangedFilter</code></td><td class="nw"><code>volatile int</code></td><td>필터 스레드 상태: <code>STATUS_READY(4)</code> / <code>STATUS_CHANGE(1)</code> / <code>STATUS_PARSING(2)</code></td></tr>
+<tr><td class="nw"><code>FILTER_LOCK</code></td><td class="nw"><code>Object</code></td><td>리스트/맵 접근 동기화 + 필터 스레드 wait/notify</td></tr>
+<tr><td class="nw"><code>FILE_LOCK</code></td><td class="nw"><code>Object</code></td><td>logcat 기록 파일 쓰기/읽기 동기화</td></tr>
+</tbody></table></div>
+<p><code>LogFilterTableModel</code>은 데이터를 복사하지 않습니다. <code>setData()</code>로 두 리스트 중 하나를 <b>참조로 바꿔 끼우는</b> 방식입니다.</p>
+
+<!-- 4 -->
+<h2 id="s4"><span class="no">4</span>동작 흐름 (시퀀스 다이어그램)</h2>
+<p>각 다이어그램의 번호는 호출 순서입니다. 다이어그램이 화면보다 넓으면 좌우로 스크롤해서 볼 수 있습니다.</p>
+<div class="legend" aria-label="범례">
+  <span><svg width="38" height="10"><line x1="1" y1="5" x2="30" y2="5" stroke="var(--ink-2)" stroke-width="1.3"/><path d="M28,1 L36,5 L28,9 z" fill="var(--ink-2)"/></svg>호출</span>
+  <span><svg width="38" height="10"><line x1="1" y1="5" x2="32" y2="5" stroke="var(--muted)" stroke-dasharray="5 4" stroke-width="1.3"/><path d="M28,1 L36,5 L28,9" fill="none" stroke="var(--muted)" stroke-width="1.3"/></svg>반환</span>
+  <span><svg width="38" height="10"><line x1="1" y1="5" x2="30" y2="5" stroke="var(--thread)" stroke-width="1.5"/><path d="M28,1 L36,5 L28,9 z" fill="var(--thread)"/></svg>스레드 생성 · 비동기 신호</span>
+  <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" fill="var(--accent-soft)" stroke="var(--accent)"/></svg>사용자</span>
+  <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" fill="var(--thread-soft)" stroke="var(--thread)"/></svg>백그라운드 스레드</span>
+  <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-dasharray="4 3"/></svg>외부 프로세스 · 파일</span>
+  <span style="color:var(--warn)">빨간 글씨 = 7장의 문제점과 관련</span>
+</div>
+
+<h3 id="seq-start">4.1 앱 시작</h3>
+<figure class="seq" data-seq="start"><div class="scroll"></div><figcaption>main() → LogFilterMain 생성자 → 설정 로드</figcaption></figure>
+<ul class="flow-points">
+  <li>필터 스레드는 생성자 중간에 시작되며, 그 뒤로 앱이 끝날 때까지 <code>FILTER_LOCK.wait()</code>로 신호를 기다립니다.</li>
+  <li>설정은 <code>setVisible(true)</code> 다음에 로드됩니다. 필터 텍스트를 넣는 순간 DocumentListener가 동작해 저장된 필터가 바로 적용됩니다.</li>
+  <li>메뉴바는 생성자가 끝난 뒤 <code>main()</code>에서 붙입니다.</li>
+</ul>
+
+<h3 id="seq-file">4.2 로그 파일 열기</h3>
+<figure class="seq" data-seq="file"><div class="scroll"></div><figcaption>Open · Recent · 드래그&amp;드롭 · 실행 인자 → parseFile()</figcaption></figure>
+<ul class="flow-points">
+  <li>네 가지 진입 경로가 모두 <code>parseFile(File)</code> 하나로 모입니다. 단, Recent 목록에 추가되는 경로는 Open 하나뿐입니다.</li>
+  <li>문자 인코딩은 Encode 콤보 값(UTF-8 / Local)에 따라 정해집니다.</li>
+</ul>
+
+<h3 id="seq-logcat">4.3 logcat 실시간 수집</h3>
+<figure class="seq" data-seq="logcat"><div class="scroll"></div><figcaption>Run → adb 출력이 파일에 기록되고, 감시 스레드가 그 파일을 다시 읽어 화면에 반영</figcaption></figure>
+<ul class="flow-points">
+  <li>프로세스 스레드와 파일 감시 스레드는 <b>파일을 사이에 두고</b> 동시에 동작합니다(<code>par</code> 구간).</li>
+  <li><b>Pause</b>는 화면 반영만 멈추고 파일 기록은 계속합니다. <b>Clear</b>는 읽어 둔 데이터만 지우고 파일 읽기 위치는 그대로입니다.</li>
+  <li>장치를 선택하면 명령에 <code>-s &lt;serial&gt;</code>이 붙습니다. adb는 PATH에서 찾습니다.</li>
+</ul>
+
+<h3 id="seq-filter">4.4 필터 재계산</h3>
+<figure class="seq" data-seq="filter"><div class="scroll"></div><figcaption>입력/체크 변경 → STATUS_CHANGE → notify → 필터 스레드가 전체 로그를 다시 판정</figcaption></figure>
+<ul class="flow-points">
+  <li>필터 문자열은 <code>|</code>로 나눈 <b>OR</b> 조건이며, 대소문자를 무시하는 부분 일치(<code>contains</code>)로 판정합니다.</li>
+  <li>대상 필드는 Find/Remove가 Message, Show/Remove Tag가 Tag, Pid가 Pid, Tid가 Thread입니다. 레벨은 <code>m_nFilterLogLV</code> 비트 마스크로 판정합니다.</li>
+  <li>재계산 중에 새 변경이 들어오면 <code>STATUS_CHANGE</code>를 보고 루프를 중단한 뒤 처음부터 다시 계산합니다.</li>
+</ul>
+
+<h3 id="seq-render">4.5 셀 렌더링</h3>
+<figure class="seq" data-seq="render"><div class="scroll"></div><figcaption>화면에 보이는 셀마다 LogCellRenderer가 실행됨</figcaption></figure>
+<ul class="flow-points">
+  <li>스크롤하거나 갱신할 때마다 <b>보이는 모든 셀</b>에 문자열 치환과 HTML 생성이 반복됩니다. 대용량 로그에서 가장 큰 성능 비용입니다(P1).</li>
+  <li>원래는 HTML 이스케이프가 없어서 메시지 안의 <code>&lt;init&gt;</code> 같은 텍스트가 사라졌습니다(B3). 2026-10-04에 일치 구간을 먼저 계산하고 HTML을 한 번에 만드는 방식으로 고쳤습니다.</li>
+</ul>
+
+<h3 id="seq-bookmark">4.6 북마크 · 인디케이터</h3>
+<figure class="seq" data-seq="bookmark"><div class="scroll"></div><figcaption>북마크 토글 · F2/F3 이동 · 인디케이터 클릭 · 북마크만/에러만 보기</figcaption></figure>
+
+<h3 id="seq-copy">4.7 복사 · 태그 단축키</h3>
+<figure class="seq" data-seq="copy"><div class="scroll"></div><figcaption>Ctrl+C · 우클릭 복사 · Alt+클릭으로 태그 필터 추가/제거</figcaption></figure>
+<div class="tbl"><table>
+<thead><tr><th>입력</th><th>처리 위치</th><th>동작</th></tr></thead>
+<tbody>
+<tr><td class="nw"><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td class="nw"><code>LogTable.actionPerformed</code></td><td>선택 행의 보이는 컬럼(Line 제외)을 복사. Tag는 최대 길이, Pid/Tid는 8자 패딩</td></tr>
+<tr><td class="nw">우클릭</td><td class="nw"><code>LogTable</code> mouseClicked</td><td>클릭한 셀 값 하나만 복사</td></tr>
+<tr><td class="nw"><kbd>Alt</kbd>+좌클릭 (Tag)</td><td class="nw">〃</td><td>Show tag 필터에 추가/제거</td></tr>
+<tr><td class="nw"><kbd>Alt</kbd>+우클릭 (Tag)</td><td class="nw">〃</td><td>Remove tag 필터에 추가</td></tr>
+<tr><td class="nw"><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td class="nw"><code>processKeyBinding</code></td><td>Find 입력창으로 포커스 이동</td></tr>
+<tr><td class="nw"><kbd>Home</kbd> / <kbd>End</kbd></td><td class="nw">〃</td><td>첫 행 / 마지막 행</td></tr>
+<tr><td class="nw">헤더 더블클릭</td><td class="nw"><code>ColumnHeaderListener</code></td><td>보이는 행 기준으로 컬럼 폭 자동 맞춤</td></tr>
+<tr><td class="nw">Goto 입력</td><td class="nw">CaretListener</td><td>해당 줄로 이동(화면 중앙)</td></tr>
+<tr><td class="nw"><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td class="nw"><code>installUndoRedo</code></td><td>필터/하이라이트 입력창 실행 취소/다시 실행 <span class="badge b-yel">로컬 추가</span></td></tr>
+</tbody></table></div>
+
+<h3 id="seq-exit">4.8 종료</h3>
+<figure class="seq" data-seq="exit"><div class="scroll"></div><figcaption>창 닫기 → 정리 → 설정 저장 → System.exit</figcaption></figure>
+<div class="callout caution"><p>강제 종료(작업 관리자, 콘솔 종료 등)되면 <code>windowClosing</code>이 호출되지 않아 필터·창 크기 설정이 저장되지 않습니다.</p></div>
+
+<h3 id="threads">4.9 스레드 모델</h3>
+<div class="tbl"><table>
+<thead><tr><th>스레드</th><th>생성 위치</th><th>수명</th><th>하는 일</th></tr></thead>
+<tbody>
+<tr><td class="nw">EDT</td><td class="nw">Swing</td><td class="nw">앱 전체</td><td>UI 이벤트, 렌더링, <code>runFilter()</code> 호출(대기 포함)</td></tr>
+<tr><td class="nw">필터 스레드 <code>m_thFilterParse</code></td><td class="nw">생성자</td><td class="nw">앱 전체</td><td>wait/notify로 필터 재계산</td></tr>
+<tr><td class="nw">파일 파싱 스레드</td><td class="nw"><code>parseFile()</code></td><td class="nw">파일 1개</td><td>파일 전체 읽기</td></tr>
+<tr><td class="nw">프로세스 스레드 <code>m_thProcess</code></td><td class="nw">Run</td><td class="nw">Stop까지</td><td>adb stdout → 파일 기록</td></tr>
+<tr><td class="nw">파일 감시 스레드 <code>m_thWatchFile</code></td><td class="nw">Run</td><td class="nw">Stop까지</td><td>기록 파일 tail → 파싱 → 화면 반영</td></tr>
+</tbody></table></div>
+<div class="callout warn"><p>백그라운드 스레드들이 Swing 컴포넌트(<code>setData</code>, <code>fireTableRowsUpdated</code>, <code>setStatus</code> 등)를 EDT를 거치지 않고 직접 조작합니다(B4).</p></div>
+
+<!-- 5 -->
+<h2 id="s5"><span class="no">5</span>클래스별 상세</h2>
+
+<h3 id="s5-overview">5.1 전체 클래스 관계도</h3>
+<p>실제로 쓰이는 클래스 13개의 관계를 UML 표기로 그렸습니다. 상속하는 Swing 클래스는 각 상자 위쪽에 <code>extends …</code>로 적었고, 상자 아래쪽 글씨는 <code>LogFilterMain</code>이 그 객체를 담는 필드 이름입니다. 모든 클래스가 쓰는 <code>T</code>와, <code>LogFilterMain</code>이 설정을 로드/저장할 때 쓰는 <code>LogColor</code>로 향하는 선은 생략했습니다.</p>
+<figure class="seq cls"><div class="scroll" id="clsOverview"></div><figcaption>LogFilterMain을 중심으로 한 소유·참조 관계. 화면 폭이 좁으면 비율에 맞게 축소됩니다.</figcaption></figure>
+<div class="legend" aria-label="관계 범례">
+  <span><svg width="44" height="14"><line x1="1" y1="7" x2="31" y2="7" stroke="var(--ink-2)" stroke-width="1.3"/><path d="M31,1 L43,7 L31,13 z" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="1.3"/></svg>상속 (extends)</span>
+  <span><svg width="44" height="14"><line x1="1" y1="7" x2="31" y2="7" stroke="var(--ink-2)" stroke-width="1.3" stroke-dasharray="6 4"/><path d="M31,1 L43,7 L31,13 z" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="1.3"/></svg>구현 (implements)</span>
+  <span><svg width="50" height="14"><path d="M1,7 L9,2 L17,7 L9,12 z" fill="var(--ink-2)"/><line x1="17" y1="7" x2="48" y2="7" stroke="var(--ink-2)" stroke-width="1.3"/><path d="M40,2 L48,7 L40,12" fill="none" stroke="var(--ink-2)" stroke-width="1.3"/></svg>생성·소유 (필드)</span>
+  <span><svg width="44" height="14"><line x1="1" y1="7" x2="42" y2="7" stroke="var(--ink-2)" stroke-width="1.3"/><path d="M34,2 L42,7 L34,12" fill="none" stroke="var(--ink-2)" stroke-width="1.3"/></svg>참조</span>
+  <span><svg width="44" height="14"><line x1="1" y1="7" x2="42" y2="7" stroke="var(--ink-2)" stroke-width="1.3" stroke-dasharray="6 4"/><path d="M34,2 L42,7 L34,12" fill="none" stroke="var(--ink-2)" stroke-width="1.3"/></svg>사용·생성 (의존)</span>
+  <span><svg width="44" height="14"><circle cx="7" cy="7" r="6" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="1.3"/><path d="M3,7 H11 M7,3 V11" stroke="var(--ink-2)" stroke-width="1.3"/><line x1="13" y1="7" x2="42" y2="7" stroke="var(--ink-2)" stroke-width="1.3"/></svg>내부 클래스</span>
+  <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" fill="var(--accent-soft)" stroke="var(--accent)"/></svg>핵심 클래스</span>
+  <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" fill="var(--ok-soft)" stroke="var(--ok)"/></svg>인터페이스</span>
+  <span><svg width="22" height="14"><rect x="1" y="1" width="20" height="12" rx="3" fill="var(--thread-soft)" stroke="var(--thread)" stroke-dasharray="5 3"/></svg>내부 클래스</span>
+</div>
+
+<h3 id="s5-uml">5.2 클래스별 구조</h3>
+<p>클래스마다 필드와 메서드를 UML 클래스 박스로 정리했습니다. <code>LogFilterMain</code>은 멤버가 많아서 역할별로 묶었습니다(UI 컴포넌트 필드는 종류별로 합쳐 표기).</p>
+<div class="vis-legend">
+  <span><code>+</code> public</span><span><code>#</code> protected</span><span><code>~</code> package(기본)</span><span><code>-</code> private</span>
+  <span><u>밑줄</u> static</span><span><i>기울임</i> abstract</span>
+  <span><span class="badge b-dead">미사용</span> 호출·참조되지 않음</span><span><span class="badge b-org">로컬</span> GitHub 원본에 없는 로컬 추가분</span>
+</div>
+<div class="uml-grid" id="umlGrid"></div>
+<h4>미사용 클래스</h4>
+<p>아래 7개(<code>ClassTaster.java</code> 안의 보조 클래스 포함)는 빌드에는 포함되지만 실행 중에 생성되거나 호출되지 않습니다(8.3 참고).</p>
+<div class="uml-grid" id="umlGridDead"></div>
+
+<h3 id="s5-desc">5.3 클래스별 설명</h3>
+<h4>LogFilterMain</h4>
+<div class="tbl"><table>
+<thead><tr><th>구분</th><th>메서드</th></tr></thead>
+<tbody>
+<tr><td class="nw">UI 빌더</td><td><code>getOptionPanel</code>, <code>getCmdPanel</code>, <code>getFilterPanel</code>, <code>getCheckPanel</code>, <code>getHighlightPanel</code>, <code>getOptionMenu</code>, <code>getBookmarkPanel</code>, <code>getStatusPanel</code>, <code>getTabPanel</code></td></tr>
+<tr><td class="nw">입력</td><td><code>parseFile</code>, <code>startProcess</code>, <code>startFileParse</code>, <code>stopProcess</code>, <code>pauseProcess</code>, <code>setDeviceList</code>, <code>getProcessCmd</code></td></tr>
+<tr><td class="nw">필터</td><td><code>startFilterParse</code>, <code>runFilter</code>, <code>checkUseFilter</code>, <code>addLogInfo</code>, <code>checkLogLVFilter</code>, <code>checkPidFilter</code>, <code>checkTidFilter</code>, <code>checkFindFilter</code>, <code>checkRemoveFilter</code>, <code>checkShowTagFilter</code>, <code>checkRemoveTagFilter</code>, <code>useFilter</code>, <code>setLogLV</code></td></tr>
+<tr><td class="nw">설정</td><td><code>loadFilter</code>/<code>saveFilter</code>, <code>loadColor</code>/<code>saveColor</code>, <code>loadCmd</code></td></tr>
+<tr><td class="nw">이벤트</td><td><code>notiEvent</code>(INotiEvent 구현), <code>m_alButtonListener</code>, <code>m_dlFilterListener</code>, <code>m_itemListener</code></td></tr>
+<tr><td class="nw">편집 보조 <span class="badge b-yel">로컬 추가</span></td><td><code>installUndoRedo</code>(적용됨), <code>installInputHistory</code>(<b>정의만 되어 있고 호출되지 않음</b>). 둘 다 GitHub 원본에는 없음</td></tr>
+</tbody></table></div>
+
+<h4>LogTable</h4>
+<ul>
+  <li><code>JTable</code>을 상속하고 <code>FocusListener</code>와 <code>ActionListener</code>(Ctrl+C 복사)를 구현합니다.</li>
+  <li>필터 문자열 7종(Find, Remove, ShowTag, RemoveTag, Pid, Tid, Highlight)을 보관합니다.</li>
+  <li><code>LogCellRenderer</code>(내부 클래스)가 HTML로 하이라이트를 처리합니다.</li>
+  <li>그 밖에 컬럼 표시/숨김(<code>showColumn</code>, <code>hideColumn</code>, <code>m_arbShow</code>), 북마크 이동, <code>showRow</code>(스크롤), <code>packColumn</code>(폭 자동 맞춤)을 담당합니다.</li>
+</ul>
+
+<h4>LogCatParser <small style="font-weight:400;color:var(--muted)">implements ILogParser</small></h4>
+<p>줄의 고정된 위치에 있는 문자로 형식을 판별합니다.</p>
+<div class="tbl"><table>
+<thead><tr><th>형식</th><th>판별 조건</th><th>예</th></tr></thead>
+<tbody>
+<tr><td class="nw">time</td><td>19~20번째 문자가 <code>D/</code>, <code>V/</code> 등</td><td><code>04-17 09:01:18.910 D/LightsService(  139): msg</code></td></tr>
+<tr><td class="nw">threadtime</td><td>31~32번째 문자가 <code>D </code>, <code>V </code> 등</td><td><code>04-20 12:06:02.125   146   179 D BatteryService: msg</code></td></tr>
+<tr><td class="nw">kernel</td><td>1번째 문자가 <code>0</code>~<code>7</code></td><td><code>&lt;4&gt;[19553.494855] msg</code></td></tr>
+<tr><td class="nw">기타</td><td>위에 해당 없음</td><td>줄 전체를 Message로 사용</td></tr>
+</tbody></table></div>
+<ul>
+  <li><code>getColor()</code>: 레벨에 따라 글자색을 정합니다. <code>F/E/W/I/D</code>와 커널 레벨 <code>0</code>~<code>7</code>을 처리합니다.</li>
+  <li><code>getLogLV()</code>: 비트 레벨을 반환하지만 <b>아무 데서도 호출되지 않습니다</b>.</li>
+</ul>
+
+<h4>IndicatorPanel</h4>
+<ul>
+  <li><code>paintComponent</code>에서 북마크/에러 맵 전체를 순회하며 막대를 그리고, 화면 범위 표시(page indicator)도 그립니다.</li>
+  <li>마우스 클릭/드래그로 이동하고, 휠 이벤트는 테이블 스크롤로 넘깁니다.</li>
+</ul>
+
+<h4>LogInfo · LogFilterTableModel</h4>
+<ul>
+  <li><b>LogInfo:</b> 문자열 필드 9개와 <code>Color</code>, <code>m_bMarked</code>를 가집니다. <code>getData(col)</code>로 컬럼 값을 돌려줍니다.</li>
+  <li><b>LogFilterTableModel:</b> 컬럼 9개(Line, Date, Time, LogLV, Pid, Thread, Tag, Bookmark, Message)를 정의합니다. 폭은 static 배열이며, <code>setColumnWidth()</code>는 <b>기본값 이상인 폭만</b> 받아들입니다.</li>
+</ul>
+
+<h4>RecentFileMenu · LogColor · T · ILogParser · INotiEvent</h4>
+<ul>
+  <li><b>RecentFileMenu:</b> Hugues Johnson이 작성한 GPL v2 코드입니다. 최근 파일 10개를 <code>user.dir/RecentFile.ini</code>에 저장합니다.</li>
+  <li><b>LogColor:</b> 색상을 담는 static 필드만 있습니다.</li>
+  <li><b>T:</b> 호출 위치(파일:메서드:줄)를 붙여 <code>System.out</code>에 출력합니다. <code>misEnabled = true</code>로 항상 켜져 있습니다.</li>
+  <li><b>INotiEvent:</b> 이벤트 0~3을 사용하고, 4~5(<code>FIND_WORD</code>, <code>REMOVE_WORD</code>)는 정의만 되어 있습니다.</li>
+</ul>
+
+<!-- 6 -->
+<h2 id="s6"><span class="no">6</span>설정 파일</h2>
+<p>모두 실행할 때의 작업 디렉터리(<code>KLogFilter/</code>)를 기준으로 읽고 씁니다.</p>
+<div class="tbl"><table>
+<thead><tr><th>파일</th><th>읽기/쓰기</th><th>주요 키</th></tr></thead>
+<tbody>
+<tr><td class="nw"><code>LogFilter.ini</code></td><td class="nw">시작 시 읽기 · 종료 시 쓰기</td><td><code>WORD_FIND</code>, <code>WORD_REMOVE</code>, <code>TAG_SHOW</code>, <code>TAG_REMOVE</code>, <code>PID_SHOW</code>, <code>TID_SHOW</code>, <code>HIGHLIGHT</code>, <code>FONT_TYPE</code>, <code>INI_WIDTH/HEIGHT</code>, <code>INI_WINDOW_STATE</code>, <code>INI_COMUMN_0~8</code></td></tr>
+<tr><td class="nw"><code>LogFilterColor.ini</code></td><td class="nw">시작 시 읽기 · 종료 시 쓰기</td><td><code>INI_COLOR_0~8</code>(3=E, 4=W, 6=I, 7=D, 8=F), <code>INI_HIGILIGHT_COUNT</code>, <code>INI_HIGILIGHT_n</code></td></tr>
+<tr><td class="nw"><code>LogFilterCmd.ini</code></td><td class="nw">읽기 전용</td><td><code>CMD_COUNT</code>, <code>CMD_n</code>(adb 뒤에 붙는 명령)</td></tr>
+<tr><td class="nw"><code>RecentFile.ini</code></td><td class="nw">읽기/쓰기</td><td>한 줄에 경로 하나</td></tr>
+</tbody></table></div>
+<div class="callout warn">
+  <p><b>키 이름 주의:</b> 하이라이트 색상 키는 실제로 <code>INI_HIGILIGHT_n</code>입니다.</p>
+  <p>GitHub 원본의 앱 안내 문구(GitHub :525)와 기능 설명에는 <code>INI_COLOR_HIGILIGHT_n</code>으로 되어 있습니다. 안내대로 쓰면 키를 찾지 못해 NPE가 발생하고(catch됨), 하이라이트 색상 목록이 적용되지 않습니다. 로컬 소스의 안내 문구는 <code>INI_HIGILIGHT_n</code>으로 고쳤습니다(2026-10-04).</p>
+</div>
+
+<!-- 7 -->
+<h2 id="s7"><span class="no">7</span>발견된 문제점</h2>
+<p><span class="badge b-red">동작 오류</span> <span class="badge b-org">잠재 오류·불안정</span> <span class="badge b-yel">경미</span></p>
+<div class="tbl"><table>
+<thead><tr><th>#</th><th>중요도</th><th>위치</th><th>내용</th></tr></thead>
+<tbody>
+<tr><td class="nw">B1</td><td><span class="badge b-red">동작 오류</span> <span class="badge b-use">✔ 수정됨</span></td><td class="nw"><code>LogFilterMain.java:758</code><br><small style="color:var(--muted)">GitHub :750</small></td><td><code>m_strLogLV == "E"</code>로 <b>참조를 비교</b>합니다. 파싱된 문자열과는 항상 false라서, 필터를 켠 채 실시간 수집하면 에러 인디케이터가 갱신되지 않습니다(다음 재필터 때만 반영).</td></tr>
+<tr><td class="nw">B2</td><td><span class="badge b-red">동작 오류</span> <span class="badge b-use">✔ 수정됨</span></td><td class="nw"><code>LogCatParser.java:134-137</code></td><td>메시지를 <code>'</code>를 구분자로 토큰화한 뒤 다시 이어 붙여서 <b>메시지 안의 작은따옴표가 모두 사라집니다</b>.</td></tr>
+<tr><td class="nw">B3</td><td><span class="badge b-red">동작 오류</span> <span class="badge b-use">✔ 수정됨</span></td><td class="nw"><code>LogTable.java:514-531</code></td><td>HTML 이스케이프가 없습니다. 하이라이트/Find가 일치하면 메시지의 <code>&lt;init&gt;</code>, <code>&lt;tag&gt;</code> 같은 부분이 HTML로 해석돼 사라집니다. 토큰이 <code>b</code>, <code>span</code>, <code>color</code>처럼 태그 이름과 같으면 이미 넣은 태그 내부까지 치환돼 마크업이 깨집니다.</td></tr>
+<tr><td class="nw">B4</td><td><span class="badge b-org">잠재 오류</span></td><td class="nw">전반</td><td><b>EDT 밖에서 Swing을 조작합니다.</b> 백그라운드 스레드에서 <code>setStatus</code>, <code>model.setData</code>, <code>fireTableRowsUpdated</code>, <code>clearSelection</code>, <code>changeSelection</code>을 직접 호출해서 간헐적 예외나 화면 깨짐이 생길 수 있습니다.</td></tr>
+<tr><td class="nw">B5</td><td><span class="badge b-org">잠재 오류</span></td><td class="nw"><code>clearData()</code> 등</td><td>락 없이 <code>m_arLogInfoAll.clear()</code>를 호출합니다. 필터 스레드나 렌더러가 순회하는 중이면 <code>IndexOutOfBounds</code>/<code>ConcurrentModification</code>이 날 수 있습니다(Clear 버튼, 파일 재오픈).</td></tr>
+<tr><td class="nw">B6</td><td><span class="badge b-org">잠재 오류</span></td><td class="nw"><code>LogFilterMain.java:1402-1443</code><br><small style="color:var(--muted)">GitHub :1248-1289</small></td><td><code>setDeviceList()</code>가 EDT에서 <code>adb devices</code>를 동기 실행해 adb가 느리면 UI가 멈춥니다. <code>exitValue()</code>를 종료 대기 없이 호출해서 예외가 목록에 표시될 수 있고, stdout과 stderr를 순차로 읽어 교착 가능성도 있습니다.</td></tr>
+<tr><td class="nw">B7</td><td><span class="badge b-org">잠재 오류</span></td><td class="nw"><code>loadFilter()</code>, <code>loadColor()</code></td><td>키 하나만 빠져도 예외가 나서 <b>그 뒤의 설정 전체</b>가 적용되지 않습니다(키마다 기본값이 없음).</td></tr>
+<tr><td class="nw">B8</td><td><span class="badge b-yel">경미</span></td><td class="nw"><code>LogFilterMain.java:757, 1811-1815</code><br><small style="color:var(--muted)">GitHub :749, 1657-1661</small></td><td>Filtered 맵에 index를 <code>add()</code> 후의 <code>size()</code>로 넣어서 1이 큽니다. 북마크/에러 전용 분기는 add 전에 넣으므로 서로 일관성이 없습니다(인디케이터가 1행 어긋남).</td></tr>
+<tr><td class="nw">B9</td><td><span class="badge b-yel">경미</span> <span class="badge b-use">✔ 수정됨</span></td><td class="nw"><code>LogTable.java:549-560</code></td><td>일치 검사는 대소문자를 무시하는데 <code>replace</code>는 대소문자를 구분합니다. <code>error</code>로 하이라이트하면 <code>Error</code>는 색이 안 바뀌고 HTML로만 감싸집니다.</td></tr>
+<tr><td class="nw">B10</td><td><span class="badge b-yel">경미</span> <span class="badge b-use">✔ 수정됨</span></td><td class="nw"><code>T.java:151</code></td><td>날짜 포맷 <code>yyyy-mm-dd hh</code>의 <code>mm</code>(분)이 월 자리에 들어가고 <code>hh</code>는 12시간제라서, 콘솔에 <code>2026-28-02</code> 같은 날짜가 찍힙니다. → <code>yyyy-MM-dd HH</code></td></tr>
+<tr><td class="nw">B11</td><td><span class="badge b-yel">경미</span></td><td class="nw">load/save, RecentFileMenu</td><td><code>FileInputStream</code>, <code>FileOutputStream</code>, <code>FileReader</code>를 close하지 않습니다(리소스 누수).</td></tr>
+<tr><td class="nw">B12</td><td><span class="badge b-yel">경미</span></td><td class="nw"><code>LogFilterTableModel.setColumnWidth</code></td><td>기본값보다 좁힌 컬럼 폭은 저장해도 다음 실행 때 무시됩니다.</td></tr>
+<tr><td class="nw">B13</td><td><span class="badge b-yel">경미</span></td><td class="nw">LogCatParser</td><td>고정 위치로 형식을 판별해서 <code>-v year</code>, <code>-v uid</code>, 최신 logcat 포맷, 공백이나 <code>/</code>가 들어간 태그를 제대로 파싱하지 못합니다. threadtime 형식에서는 Tag에 <code>:</code>가 붙고 Message 앞에 공백이 남습니다.</td></tr>
+</tbody></table></div>
+
+<!-- 8 -->
+<h2 id="s8"><span class="no">8</span>최적화 가능 요소</h2>
+<h3>8.1 성능 (대용량 로그 기준)</h3>
+<div class="tbl"><table>
+<thead><tr><th>#</th><th>효과</th><th>대상</th><th>현재</th><th>개선안</th></tr></thead>
+<tbody>
+<tr><td>P1</td><td class="stars">★★★</td><td class="nw">셀 렌더러</td><td>셀을 그릴 때마다 <code>replace</code>, <code>toLowerCase</code>, <code>StringTokenizer</code>, HTML 생성과 HTML 렌더링, <code>new Color()</code>, <code>deriveFont()</code></td><td>일치할 때만 HTML 사용, 필터 토큰을 미리 소문자화·분리해 캐시, Font/Color는 필드로 재사용</td></tr>
+<tr><td>P2</td><td class="stars">★★★</td><td class="nw">필터 판정</td><td>행마다, 필터마다 <code>StringTokenizer</code>를 새로 만들고 필터와 필드 모두 <code>toLowerCase()</code></td><td>필터가 바뀔 때 토큰을 소문자 <code>String[]</code>로 한 번만 준비, 필드의 소문자 값은 LogInfo에 지연 캐시</td></tr>
+<tr><td>P3</td><td class="stars">★★</td><td class="nw">레벨 비교</td><td><code>equals("E") || equals("ERROR")</code>를 곳곳에서 반복</td><td>파싱할 때 <code>int m_nLogLV</code> 저장(<code>getLogLV()</code>가 이미 있음), 비트 연산으로 판정</td></tr>
+<tr><td>P4</td><td class="stars">★★</td><td class="nw">줄 번호</td><td><code>Integer.parseInt(m_strLine)</code> 반복 호출</td><td><code>int m_nLine</code> 필드를 추가하고 표시할 때만 문자열로 변환</td></tr>
+<tr><td>P5</td><td class="stars">★★</td><td class="nw">입력 즉시 재필터</td><td>키를 누를 때마다 전체 로그 재필터</td><td><code>javax.swing.Timer</code>로 200~300ms 디바운스</td></tr>
+<tr><td>P6</td><td class="stars">★★</td><td class="nw">실시간 수집</td><td>adb → 파일 기록(줄마다 flush) → 50ms 폴링으로 다시 읽기(디스크 I/O 2배)</td><td>stdout을 바로 파싱하고 파일 기록은 버퍼링(주기적 flush)</td></tr>
+<tr><td>P7</td><td class="stars">★★</td><td class="nw">테이블 갱신</td><td>행이 추가될 때마다 <code>fireTableRowsUpdated(0, 전체)</code>, <code>validate</code>, <code>repaint</code></td><td><code>fireTableRowsInserted(old, new-1)</code>로 증분 통지</td></tr>
+<tr><td>P8</td><td class="stars">★</td><td class="nw">Color 객체</td><td>줄마다 <code>getColor()</code>가 <code>new Color()</code> 생성</td><td>레벨별 Color 인스턴스 캐시</td></tr>
+<tr><td>P9</td><td class="stars">★</td><td class="nw">인디케이터</td><td>스크롤할 때마다 북마크/에러 맵 전체를 순회해 다시 그림</td><td>픽셀 단위 결과나 BufferedImage를 캐시하고 데이터가 바뀔 때만 다시 그림</td></tr>
+<tr><td>P10</td><td class="stars">★</td><td class="nw"><code>runFilter()</code></td><td>EDT에서 <code>Thread.sleep(100)</code> 바쁜 대기</td><td>대기 제거(상태 플래그와 notify만으로 충분)</td></tr>
+<tr><td>P11</td><td class="stars">★</td><td class="nw"><code>T</code> 로그</td><td>호출마다 <code>new Exception()</code>(스택 수집)과 <code>SimpleDateFormat</code> 생성, 항상 켜져 있음</td><td>릴리스에서는 기본값을 비활성화</td></tr>
+</tbody></table></div>
+
+<h3>8.2 구조 / 코드 품질</h3>
+<div class="tbl"><table>
+<thead><tr><th>#</th><th>대상</th><th>개선안</th></tr></thead>
+<tbody>
+<tr><td>S1</td><td class="nw"><code>LogFilterMain</code>(2,236줄)</td><td>역할별 분리: <code>MainFrame</code>(UI), <code>LogSource</code>(파일/adb 입력), <code>FilterEngine</code>(필터 스레드와 판정), <code>AppConfig</code>(ini 로드/저장)</td></tr>
+<tr><td>S2</td><td class="nw">중복된 필터 판정</td><td><code>addLogInfo()</code>와 필터 스레드에 같은 로직이 복사돼 있음 → <code>boolean accept(LogInfo)</code> 하나로 통합</td></tr>
+<tr><td>S3</td><td class="nw"><code>check*Filter()</code> 6개</td><td>공통 헬퍼 <code>matchAny(String field, String[] tokens)</code>로 통합</td></tr>
+<tr><td>S4</td><td class="nw">DocumentListener</td><td>세 메서드의 본문이 똑같음 → <code>onFilterTextChanged(DocumentEvent)</code> 하나로</td></tr>
+<tr><td>S5</td><td class="nw">필터 상태 위치</td><td>필터 문자열을 <code>LogTable</code>(뷰)에서 <code>FilterEngine</code>(모델)으로 이동</td></tr>
+<tr><td>S6</td><td class="nw"><code>gotoNext/PreBookmark</code></td><td>선형 탐색 → 정렬된 북마크 index 목록에서 이진 탐색</td></tr>
+<tr><td>S7</td><td class="nw"><code>T.java</code></td><td>거의 같은 메서드 8개 → <code>log(level, msg)</code> 하나로</td></tr>
+<tr><td>S8</td><td class="nw">Swing 스레드</td><td>백그라운드 결과는 <code>SwingUtilities.invokeLater</code>나 <code>SwingWorker</code>로 EDT에 반영(B4 해결)</td></tr>
+<tr><td>S9</td><td class="nw">설정 로드</td><td><code>getProperty(key, default)</code>로 키마다 기본값 지정(B7 해결), try-with-resources(JDK 7 이상)</td></tr>
+</tbody></table></div>
+
+<h3>8.3 정리 가능한 죽은 코드</h3>
+<div class="tbl"><table>
+<thead><tr><th>항목</th><th>위치</th></tr></thead>
+<tbody>
+<tr><td class="nw">미사용 클래스</td><td><code>ClassTaster</code>, <code>DevicesPanel</code>, <code>MouseEventHandler</code>, <code>WindowEventHandler</code>, <code>TagTable</code>, <code>TagFilterTableModel</code>, <code>TagInfo</code></td></tr>
+<tr><td class="nw">빈 메서드 · 주석 코드</td><td><code>createComponent()</code>, <code>addTagList()</code>(전체 주석), <code>setProcessCmd()</code>(실제로는 로그 파일명 재생성만 함), <code>TagTable.packColumn</code> 주석부</td></tr>
+<tr><td class="nw">미사용 필드 · 상수</td><td><code>m_tpTab</code>(탭 생성 후 미표시), <code>m_arTagInfo</code>, <code>COMBO_IOS</code>, <code>COMBO_CUSTOM_COMMAND</code>, <code>IOS_*</code>, <code>DEVICES_IOS/CUSTOM</code>, <code>INI_LAST_DIR</code>, <code>ILogParser.TYPE_*</code>, <code>INotiEvent</code> 이벤트 4·5, <code>IndicatorPanel.testMsg</code>, <code>m_bDrawFull</code></td></tr>
+<tr><td class="nw">미사용 메서드</td><td><code>LogCatParser.getLogLV()</code>(P3에서 활용 가능), <code>installInputHistory()</code>(연결하면 ↑/↓ 입력 히스토리 기능이 동작함)</td></tr>
+<tr><td class="nw">미사용 import</td><td><code>LogFilterTableModel</code>의 <code>java.io.ObjectInputStream.GetField</code></td></tr>
+</tbody></table></div>
+<div class="callout caution"><p><code>setProcessCmd()</code>는 이름과 달리 <code>m_strLogFileName = makeFilename()</code>이라는 <b>부수 효과</b>만 남아 있습니다. 삭제하면 Run을 누를 때마다 새 로그 파일이 만들어지지 않으므로 이 한 줄은 <code>startProcess()</code>로 옮겨야 합니다.</p></div>
+
+<h3>8.4 라이선스 참고</h3>
+<ul>
+  <li><code>RecentFileMenu.java</code>는 <b>GPL v2</b>입니다. 배포 형태에 따라 라이선스 의무가 생길 수 있습니다.</li>
+  <li><code>T.java</code> 헤더에는 타사(WiseStone Co. Ltd.) 저작권/기밀 고지가 있습니다. 배포 전에 확인이 필요합니다.</li>
+</ul>
+
+<!-- 9 -->
+<h2 id="s9"><span class="no">9</span>권장 진행 순서</h2>
+<ol>
+  <li><span class="badge b-use">✔ 완료 2026-10-04</span> <b>바로 고칠 버그:</b> B1(<code>==</code> 비교), B2(따옴표 소실), B3(HTML 이스케이프), B10(날짜 포맷), 안내 문구의 <code>INI_HIGILIGHT</code> 키 이름. B3를 고치면서 B9(하이라이트 대소문자)도 함께 해결했습니다. 자세한 내용은 <a href="#s1-diff">1.1</a> 참고.</li>
+  <li><b>성능 개선(효과 큼):</b> P1(렌더러), P2(필터 토큰 캐시), P3/P4(int 필드), P5(디바운스)</li>
+  <li><b>안정성:</b> B4/B5/B8을 S8(EDT 반영)과 동기화 정리로 함께 해결, B6(adb devices 비동기화), B7/S9(설정 기본값)</li>
+  <li><b>구조 개선:</b> 죽은 코드 제거 → S2/S3/S4 중복 제거 → S1 클래스 분리</li>
+  <li><b>저장소 정리:</b> 소스 인코딩을 UTF-8로 통일하고 Eclipse 설정(<code>encoding/&lt;project&gt;</code>)도 맞춘 뒤, 로컬 변경분(1.1)을 GitHub에 커밋</li>
+  <li><b>기능 보완(선택):</b> <code>installInputHistory</code> 연결, 드래그&amp;드롭과 실행 인자로 연 파일도 Recent에 추가, 파서 포맷 확장(B13)</li>
+</ol>
+</main>
+</div>
+
+<button class="theme-btn" type="button" id="themeBtn" aria-label="밝은/어두운 테마 전환">테마 전환</button>
+
+<script>
+/* ---------------------------------------------------------------
+ * 시퀀스 다이어그램 정의
+ *  p : 참여자 [{id, label, sub, kind: 'actor'|'thread'|'ext'}]
+ *  s : 단계
+ *    {m:[from,to,text], t:'async'|'ret', w:1}   메시지 (w = 경고색)
+ *    {s:[id,text], w:1}                         자기 호출
+ *    {n:['id' 또는 'a,b', text]}                노트
+ *    {f:'loop'|'alt'|'opt'|'par', l:label, o:[a,b]} 프레임 시작
+ *    {e:label}                                  프레임 구분선(else)
+ *    {end:1}                                    프레임 끝
+ * ------------------------------------------------------------- */
+const SEQ = {
+start: {
+  p: [
+    {id:'main', label:'main()', sub:'LogFilterMain'},
+    {id:'frame', label:'LogFilterMain', sub:'생성자 · EDT'},
+    {id:'table', label:'LogTable', sub:'+ TableModel / Parser'},
+    {id:'filter', label:'필터 스레드', sub:'m_thFilterParse', kind:'thread'},
+    {id:'ini', label:'*.ini 파일', sub:'작업 디렉터리', kind:'ext'}
+  ],
+  s: [
+    {m:['main','frame','new LogFilterMain()']},
+    {s:['frame','initValue(): 리스트·맵·락 생성, 로그 파일명 생성']},
+    {s:['frame','getOptionPanel() / getBookmarkPanel() / getStatusPanel()']},
+    {m:['frame','table','getTabPanel(): Model · LogTable · LogCatParser 생성']},
+    {s:['frame','setDnDListener(), addChangeListener()']},
+    {m:['frame','filter','startFilterParse(): 스레드 시작'], t:'async'},
+    {s:['filter','FILTER_LOCK.wait() — 신호 대기']},
+    {s:['frame','setVisible(true), addDesc() 버전 안내 행 추가']},
+    {m:['frame','ini','loadFilter()  LogFilter.ini']},
+    {m:['ini','frame','필터 문자열 · 폰트 · 창 크기 · 컬럼 폭'], t:'ret'},
+    {n:['frame','setText() → DocumentListener → 저장된 필터 즉시 적용']},
+    {m:['frame','ini','loadColor(), loadCmd()']},
+    {m:['ini','frame','레벨/하이라이트 색상 · Cmd 콤보 항목'], t:'ret'},
+    {m:['frame','table','setColumnWidth()']},
+    {m:['frame','main','생성 완료'], t:'ret'},
+    {s:['main','JMenuBar 설정 (File > Open, Recent)']},
+    {f:'opt', l:'실행 인자 args[0] 있음', o:['main','frame']},
+    {m:['main','frame','invokeLater → parseFile(args[0])  (4.2)']},
+    {end:1}
+  ]
+},
+file: {
+  p: [
+    {id:'user', label:'사용자', kind:'actor'},
+    {id:'frame', label:'LogFilterMain', sub:'EDT'},
+    {id:'pth', label:'파싱 스레드', sub:'parseFile 내부', kind:'thread'},
+    {id:'parser', label:'LogCatParser'},
+    {id:'filter', label:'필터 스레드', kind:'thread'},
+    {id:'view', label:'Model / LogTable', sub:'+ IndicatorPanel'}
+  ],
+  s: [
+    {m:['user','frame','Open · Recent · 드래그&드롭 · 실행 인자']},
+    {n:['frame','드래그&드롭은 stopProcess() 먼저 호출']},
+    {m:['frame','pth','parseFile(file) → new Thread'], t:'async'},
+    {s:['pth','setStatus("Parsing"), clearData()  ⚠ 락 없음 (B5)'], w:1},
+    {f:'loop', l:'각 줄 readLine()  (UTF-8 / Local)', o:['pth','parser']},
+    {m:['pth','parser','parseLog(line)']},
+    {s:['parser','isNormal / isThreadTime / isKernel 판별']},
+    {m:['parser','pth','LogInfo (+ 레벨 색상)'], t:'ret'},
+    {s:['pth','addLogInfo() [FILTER_LOCK]: All 추가, 필터 통과 시 Filtered 추가']},
+    {end:1},
+    {m:['pth','filter','runFilter() → FILTER_LOCK.notify()'], t:'async'},
+    {s:['filter','전체 재필터 (4.4)']},
+    {m:['filter','view','setData(All 또는 Filtered), updateTable(마지막 행)  ⚠ EDT 밖 (B4)'], w:1},
+    {s:['pth','setStatus("Parse complete")']}
+  ]
+},
+logcat: {
+  p: [
+    {id:'user', label:'사용자', kind:'actor'},
+    {id:'frame', label:'LogFilterMain', sub:'EDT'},
+    {id:'proc', label:'프로세스 스레드', sub:'m_thProcess', kind:'thread'},
+    {id:'adb', label:'adb', sub:'외부 프로세스', kind:'ext'},
+    {id:'file', label:'LogFilter_*.txt', sub:'기록 파일', kind:'ext'},
+    {id:'watch', label:'파일 감시 스레드', sub:'m_thWatchFile', kind:'thread'},
+    {id:'view', label:'Model / LogTable'}
+  ],
+  s: [
+    {f:'opt', l:'장치 선택', o:['user','adb']},
+    {m:['user','frame','Device OK 버튼']},
+    {m:['frame','adb','exec("adb devices")  ⚠ EDT에서 동기 실행 (B6)'], w:1},
+    {m:['adb','frame','장치 목록 → JList'], t:'ret'},
+    {m:['user','frame','장치 선택 → m_strSelectedDevice']},
+    {end:1},
+    {m:['user','frame','Run']},
+    {s:['frame','startProcess(): clearData(), 버튼 상태 변경']},
+    {m:['frame','proc','new Thread'], t:'async'},
+    {m:['proc','adb','exec("adb [-s serial] " + Cmd 콤보)']},
+    {m:['proc','watch','startFileParse() → new Thread'], t:'async'},
+    {f:'par', l:'수집 (adb 출력이 끝날 때까지)', o:['proc','view']},
+    {m:['adb','proc','stdout 한 줄'], t:'ret'},
+    {m:['proc','file','write(줄 + CRLF) + flush  [FILE_LOCK]']},
+    {e:'화면 반영 (50ms 폴링)'},
+    {s:['watch','sleep(50) — 재필터 중이거나 Pause면 건너뜀']},
+    {m:['watch','file','새 줄 readLine()  [FILE_LOCK]']},
+    {s:['watch','parseLog() → addLogInfo()']},
+    {m:['watch','view','setData(), updateTable() — 끝 행 선택 중이면 자동 스크롤']},
+    {end:1},
+    {m:['user','frame','Stop']},
+    {m:['frame','adb','Process.destroy()']},
+    {m:['frame','watch','interrupt() → 루프 종료'], t:'async'},
+    {n:['frame','Pause: 화면 반영만 중지, 파일 기록은 계속']}
+  ]
+},
+filter: {
+  p: [
+    {id:'user', label:'사용자', kind:'actor'},
+    {id:'edt', label:'Listener', sub:'Document / Item · EDT'},
+    {id:'table', label:'LogTable', sub:'필터 문자열 보관'},
+    {id:'frame', label:'LogFilterMain', sub:'runFilter'},
+    {id:'filter', label:'필터 스레드', sub:'m_thFilterParse', kind:'thread'},
+    {id:'view', label:'Model / Indicator'}
+  ],
+  s: [
+    {m:['user','edt','필터 입력 · 체크박스 · 레벨 · 북마크/에러만 보기']},
+    {m:['edt','table','setFilterFind() 등 문자열 저장 (체크 해제 시 "")']},
+    {s:['edt','m_nChangedFilter = STATUS_CHANGE']},
+    {n:['filter','진행 중인 루프는 STATUS_CHANGE를 보고 break']},
+    {m:['edt','frame','runFilter()']},
+    {s:['frame','checkUseFilter() → m_bUserFilter 결정']},
+    {s:['frame','STATUS_PARSING이면 100ms sleep 반복  ⚠ EDT 대기 (P10)'], w:1},
+    {m:['frame','filter','FILTER_LOCK.notify()'], t:'async'},
+    {s:['filter','PARSING 상태로, Filtered 리스트·맵 clear']},
+    {f:'alt', l:'필터 없음 (!m_bUserFilter)', o:['filter','view']},
+    {m:['filter','view','setData(All) → 마지막 행 이동']},
+    {e:'필터 있음'},
+    {m:['filter','view','setData(Filtered), setStatus("Parsing")']},
+    {f:'loop', l:'전체 로그 (STATUS_CHANGE면 중단)', o:['filter','view']},
+    {s:['filter','북마크/에러만 보기 → 해당 라인만']},
+    {s:['filter','그 외: LogLV·Pid·Tid·ShowTag·!RemoveTag·Find·!Remove']},
+    {s:['filter','통과 시 Filtered에 추가, 북마크/에러 맵 갱신']},
+    {end:1},
+    {m:['filter','view','updateTable(마지막 행), setStatus("Complete")']},
+    {end:1},
+    {s:['filter','STATUS_READY → FILTER_LOCK.wait()']}
+  ]
+},
+render: {
+  p: [
+    {id:'swing', label:'Swing', sub:'RepaintManager', kind:'ext'},
+    {id:'table', label:'LogTable', sub:'JTable'},
+    {id:'model', label:'LogFilterTableModel'},
+    {id:'rend', label:'LogCellRenderer', sub:'LogTable 내부 클래스'},
+    {id:'color', label:'LogColor', sub:'static'}
+  ],
+  s: [
+    {m:['swing','table','paint — 스크롤 · repaint · 행 추가 시']},
+    {f:'loop', l:'화면에 보이는 셀마다', o:['table','color']},
+    {m:['table','model','getValueAt(row, col)']},
+    {m:['model','table','LogInfo.getData(col)'], t:'ret'},
+    {m:['table','rend','getTableCellRendererComponent()']},
+    {f:'alt', l:'Message 또는 Tag 컬럼', o:['rend','color']},
+    {m:['rend','color','COLOR_HIGHLIGHT 조회']},
+    {s:['rend','markMatch(Highlight / Find·ShowTag): 일치 구간을 글자 단위로 표시']},
+    {s:['rend','일치 없음 → 원문 그대로 반환 (HTML 생성 안 함)']},
+    {s:['rend','일치 있음 → <span background> / <font red> + & < > 이스케이프']},
+    {end:1},
+    {m:['rend','model','getRow(row)']},
+    {s:['rend','글꼴 크기 · 글자색(m_TextColor) · 배경(북마크/선택/흰색)']},
+    {m:['rend','table','Component'], t:'ret'},
+    {end:1},
+    {n:['table,rend','셀마다 문자열·HTML 처리 반복 → 최적화 대상 (P1)']}
+  ]
+},
+bookmark: {
+  p: [
+    {id:'user', label:'사용자', kind:'actor'},
+    {id:'table', label:'LogTable'},
+    {id:'frame', label:'LogFilterMain'},
+    {id:'ind', label:'IndicatorPanel'},
+    {id:'filter', label:'필터 스레드', kind:'thread'}
+  ],
+  s: [
+    {f:'alt', l:'북마크 토글 (더블클릭 / Ctrl+F2)', o:['user','filter']},
+    {m:['user','table','더블클릭 또는 Ctrl+F2']},
+    {s:['table','m_bMarked 토글']},
+    {m:['table','frame','bookmarkItem(row, line, marked)']},
+    {s:['frame','[FILTER_LOCK] m_hmBookmarkAll / Filtered 갱신']},
+    {m:['frame','ind','repaint()']},
+    {s:['ind','paintComponent(): 북마크(파랑)·에러(빨강)·화면 범위']},
+    {e:'북마크 이동 (F2 / F3)'},
+    {m:['user','table','F2 (이전) / F3 (다음)']},
+    {s:['table','gotoPre/NextBookmark(): 선형 탐색, 끝이면 처음부터']},
+    {s:['table','changeSelection(), showRow()']},
+    {e:'인디케이터 클릭 / 드래그'},
+    {m:['user','ind','클릭 · 드래그']},
+    {m:['ind','table','showRow(전체 행 수 × y 비율)']},
+    {e:'북마크만 / 에러만 보기 체크'},
+    {m:['user','ind','상단 체크박스']},
+    {m:['ind','frame','notiEvent(EVENT_CLICK_BOOKMARK / ERROR)']},
+    {m:['frame','filter','runFilter() → notify  (4.4)'], t:'async'},
+    {end:1}
+  ]
+},
+copy: {
+  p: [
+    {id:'user', label:'사용자', kind:'actor'},
+    {id:'table', label:'LogTable'},
+    {id:'frame', label:'LogFilterMain'},
+    {id:'clip', label:'시스템 클립보드', kind:'ext'}
+  ],
+  s: [
+    {f:'alt', l:'Ctrl+C', o:['user','clip']},
+    {m:['user','table','Ctrl+C']},
+    {s:['table','선택 행 × 보이는 컬럼(Line 제외), Tag/Pid/Tid 패딩']},
+    {m:['table','clip','setContents(텍스트)']},
+    {e:'우클릭'},
+    {m:['user','table','셀 우클릭']},
+    {m:['table','clip','클릭한 셀 값만 복사']},
+    {e:'Alt+좌클릭 / Alt+우클릭 (Tag 컬럼)'},
+    {m:['user','table','Alt + 클릭']},
+    {s:['table','m_strTagShow 추가·제거 / m_strTagRemove 추가']},
+    {m:['table','frame','notiEvent(EVENT_CHANGE_FILTER_SHOW/REMOVE_TAG)']},
+    {s:['frame','입력창 setText() → DocumentListener → 재필터 (4.4)']},
+    {end:1}
+  ]
+},
+exit: {
+  p: [
+    {id:'user', label:'사용자', kind:'actor'},
+    {id:'frame', label:'LogFilterMain'},
+    {id:'th', label:'작업 스레드들', sub:'프로세스 · 감시 · 필터', kind:'thread'},
+    {id:'ini', label:'*.ini 파일', kind:'ext'}
+  ],
+  s: [
+    {m:['user','frame','창 닫기']},
+    {s:['frame','windowClosing → exit()']},
+    {m:['frame','th','Process.destroy(), interrupt() × 3'], t:'async'},
+    {m:['frame','ini','saveFilter() → LogFilter.ini']},
+    {n:['frame,ini','필터 문자열 · 폰트 · 창 크기/상태 · 컬럼 폭']},
+    {m:['frame','ini','saveColor() → LogFilterColor.ini']},
+    {s:['frame','System.exit(0)']}
+  ]
+}
+};
+
+/* ---------------------------------------------------------------
+ * 렌더러 (외부 라이브러리 없음)
+ * ------------------------------------------------------------- */
+(function(){
+  const NS = 'http://www.w3.org/2000/svg';
+  const fontFamily = getComputedStyle(document.body).fontFamily;
+  const cv = document.createElement('canvas').getContext('2d');
+  function tw(t, size, weight){ cv.font = (weight||400) + ' ' + (size||12) + 'px ' + fontFamily; return cv.measureText(t).width; }
+  function el(tag, attrs, parent, text){
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  const HEAD = 46, TOP = 12, PAD = 20;
+  let uid = 0;
+
+  function draw(host, spec){
+    const id = 'sq' + (uid++);
+    const P = spec.p, idx = {};
+    P.forEach((p, i) => idx[p.id] = i);
+    const last = P.length - 1;
+
+    // 1) 참여자 폭과 간격
+    const pw = P.map(p => Math.max(104, tw(p.label, 13, 650) + 26, p.sub ? tw(p.sub, 11) + 22 : 0));
+    const gaps = P.slice(0, -1).map((_, i) => (pw[i] + pw[i+1]) / 2 + 26);
+    let rightExtra = 0;
+    const cons = [];
+    let n = 0;
+    spec.s.forEach(st => {
+      if (st.m){
+        n++;
+        const a = idx[st.m[0]], b = idx[st.m[1]];
+        const L = tw(n + '  ' + st.m[2], 12) + 34;
+        cons.push([Math.min(a,b), Math.max(a,b), L]);
+      } else if (st.s){
+        n++;   // 자기 호출 라벨은 옆 생명선 위로 겹쳐도 됨(배경 테두리로 가독성 확보)
+      } else if (st.n){
+        const ids = st.n[0].split(',');
+        const a = idx[ids[0]], b = idx[ids[ids.length-1]];
+        if (a !== b) cons.push([Math.min(a,b), Math.max(a,b), tw(st.n[1], 11.5) - 4]);
+      }
+    });
+    cons.sort((x, y) => (x[1]-x[0]) - (y[1]-y[0]));
+    for (let pass = 0; pass < 3; pass++){
+      cons.forEach(([lo, hi, R]) => {
+        let cur = 0; for (let i = lo; i < hi; i++) cur += gaps[i];
+        if (cur < R){ const add = (R - cur) / (hi - lo); for (let i = lo; i < hi; i++) gaps[i] += add; }
+      });
+    }
+    const xs = [PAD + pw[0] / 2];
+    for (let i = 0; i < gaps.length; i++) xs.push(xs[i] + gaps[i]);
+    // 오른쪽으로 뻗는 자기 호출/노트 라벨이 잘리지 않도록 전체 폭 확장
+    n = 0;
+    spec.s.forEach(st => {
+      if (st.m) n++;
+      else if (st.s){ n++; rightExtra = Math.max(rightExtra, xs[idx[st.s[0]]] + 38 + tw(n + '  ' + st.s[1], 12) - xs[last] + 6); }
+      else if (st.n && st.n[0].indexOf(',') < 0){ rightExtra = Math.max(rightExtra, xs[idx[st.n[0]]] + 10 + tw(st.n[1], 11.5) + 20 - xs[last] + 6); }
+    });
+    const W = Math.ceil(xs[last] + Math.max(pw[last] / 2, rightExtra) + PAD);
+
+    // 2) SVG 골격
+    const svg = el('svg', {class:'seq-svg', width:W, role:'img'});
+    const defs = el('defs', {}, svg);
+    const mk = (name, path, cls) => {
+      const m = el('marker', {id:id+name, viewBox:'0 0 10 10', refX:'9', refY:'5', markerWidth:'8', markerHeight:'8', orient:'auto-start-reverse', markerUnits:'userSpaceOnUse'}, defs);
+      el('path', {d:path, class:cls}, m);
+    };
+    mk('s', 'M0,1 L10,5 L0,9 z', 'ah');
+    mk('r', 'M1,1 L10,5 L1,9', 'ah-ret');
+    mk('a', 'M0,1 L10,5 L0,9 z', 'ah-async');
+    const gLife = el('g', {}, svg), gFrame = el('g', {}, svg), gMsg = el('g', {}, svg), gHead = el('g', {}, svg);
+
+    // 3) 단계 배치
+    let y = TOP + HEAD + 16;
+    const stack = [], frames = [];
+    n = 0;
+    const label = (x, yy, num, text, warn, anchor) => {
+      const t = el('text', {x:x, y:yy, 'text-anchor':anchor||'start', class:'halo'}, gMsg);
+      if (num != null) el('tspan', {class:'num'}, t, num + '  ');
+      el('tspan', warn ? {class:'warn'} : {}, t, text);
+      return t;
+    };
+    // 열려 있는 프레임들이 안쪽 라벨 끝까지 감싸도록 오른쪽 끝을 기록
+    const extend = x => stack.forEach(fr => { fr.maxX = Math.max(fr.maxX || 0, x); });
+    spec.s.forEach(st => {
+      if (st.f){
+        y += 6;
+        const fr = {kind:st.f, label:st.l, a:idx[st.o[0]], b:idx[st.o[1]], y0:y, elses:[], depth:stack.length};
+        stack.push(fr); frames.push(fr);
+        y += 26;
+      } else if (st.e != null){
+        const fr = stack[stack.length-1];
+        y += 4; fr.elses.push({y:y, label:st.e}); y += 24;
+      } else if (st.end){
+        const fr = stack.pop();
+        y += 6; fr.y1 = y; y += 8;
+      } else if (st.m){
+        n++;
+        const a = idx[st.m[0]], b = idx[st.m[1]];
+        const x1 = xs[a], x2 = xs[b];
+        const cls = st.t === 'ret' ? 'msg ret' : st.t === 'async' ? 'msg async' : 'msg';
+        const mkid = st.t === 'ret' ? 'r' : st.t === 'async' ? 'a' : 's';
+        label((x1 + x2) / 2, y + 12, n, st.m[2], st.w, 'middle');
+        const dir = x2 > x1 ? -1 : 1;
+        el('line', {x1:x1, y1:y+20, x2:x2 + dir, y2:y+20, class:cls, 'marker-end':'url(#'+id+mkid+')'}, gMsg);
+        y += 30;
+      } else if (st.s){
+        n++;
+        const x = xs[idx[st.s[0]]];
+        el('path', {d:'M'+x+','+(y+6)+' H'+(x+30)+' V'+(y+24)+' H'+(x+2), class:'msg', 'marker-end':'url(#'+id+'s)'}, gMsg);
+        label(x + 38, y + 19, n, st.s[1], st.w);
+        extend(x + 38 + tw(n + '  ' + st.s[1], 12));
+        y += 34;
+      } else if (st.n){
+        const ids = st.n[0].split(',');
+        const a = idx[ids[0]], b = idx[ids[ids.length-1]];
+        const w = tw(st.n[1], 11.5) + 20;
+        let x0;
+        if (a === b) x0 = xs[a] + 10;
+        else { const lo = Math.min(xs[a], xs[b]), hi = Math.max(xs[a], xs[b]); x0 = Math.max(lo - 20, (lo + hi) / 2 - w / 2); }
+        el('rect', {x:x0, y:y+3, width:w, height:24, rx:3, class:'note'}, gMsg);
+        el('text', {x:x0 + 10, y:y + 19, class:'ntext'}, gMsg, st.n[1]);
+        extend(x0 + w);
+        y += 32;
+      }
+    });
+    y += 12;
+    const H = y + HEAD + TOP;
+    svg.setAttribute('height', H);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+
+    // 4) 생명선 + 참여자 박스(위/아래)
+    P.forEach((p, i) => {
+      const x = xs[i];
+      el('line', {x1:x, y1:TOP + HEAD, x2:x, y2:y, class:'life'}, gLife);
+      [TOP, y].forEach(by => {
+        el('rect', {x:x - pw[i]/2, y:by, width:pw[i], height:HEAD, rx:7, class:'pbox' + (p.kind ? ' ' + p.kind : '')}, gHead);
+        if (p.sub){
+          el('text', {x:x, y:by + 20, 'text-anchor':'middle', class:'plabel'}, gHead, p.label);
+          el('text', {x:x, y:by + 36, 'text-anchor':'middle', class:'psub'}, gHead, p.sub);
+        } else {
+          el('text', {x:x, y:by + 28, 'text-anchor':'middle', class:'plabel'}, gHead, p.label);
+        }
+      });
+    });
+
+    // 5) 프레임 (loop / alt / opt / par)
+    frames.forEach(fr => {
+      const lo = Math.min(fr.a, fr.b), hi = Math.max(fr.a, fr.b);
+      const inset = fr.depth * 8;
+      const left = xs[lo] - Math.max(pw[lo] / 2, 52) - 6 + inset;
+      let right = xs[hi] + Math.max(pw[hi] / 2, 52) + 6 - inset;
+      if (hi === last) right = Math.max(right, W - PAD / 2 - inset);
+      if (fr.maxX) right = Math.min(W - 2, Math.max(right, fr.maxX + 10 - inset));
+      el('rect', {x:left, y:fr.y0, width:right - left, height:fr.y1 - fr.y0, rx:4, class:'frame'}, gFrame);
+      const kw = tw(fr.kind, 11.5, 700) + 16;
+      el('path', {d:'M'+left+','+fr.y0+' h'+kw+' v12 l-7,7 H'+left+' z', class:'ftab'}, gFrame);
+      el('text', {x:left + 7, y:fr.y0 + 14, class:'fkind'}, gFrame, fr.kind);
+      el('text', {x:left + kw + 8, y:fr.y0 + 14, class:'flabel'}, gFrame, '[' + fr.label + ']');
+      fr.elses.forEach(e => {
+        el('line', {x1:left, y1:e.y, x2:right, y2:e.y, class:'felse'}, gFrame);
+        el('text', {x:left + 8, y:e.y + 15, class:'flabel'}, gFrame, '[' + e.label + ']');
+      });
+    });
+
+    const title = host.closest('figure').querySelector('figcaption');
+    if (title) svg.setAttribute('aria-label', '시퀀스 다이어그램: ' + title.textContent);
+    host.appendChild(svg);
+  }
+
+  function renderAll(){
+    document.querySelectorAll('figure.seq[data-seq]').forEach(f => {
+      const host = f.querySelector('.scroll');
+      host.innerHTML = '';
+      const spec = SEQ[f.dataset.seq];
+      if (spec) draw(host, spec);
+    });
+  }
+  renderAll();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(renderAll);
+
+  // 테마 전환 (기본은 OS 설정을 따름)
+  const btn = document.getElementById('themeBtn');
+  btn.addEventListener('click', () => {
+    const root = document.documentElement;
+    const cur = root.getAttribute('data-theme') ||
+      (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('klogfilter-doc-theme', next); } catch (e) {}
+  });
+  try { const saved = localStorage.getItem('klogfilter-doc-theme'); if (saved) document.documentElement.setAttribute('data-theme', saved); } catch (e) {}
+})();
+</script>
+
+<script>
+/* ---------------------------------------------------------------
+ * 5.1 전체 클래스 관계도
+ *  노드 c/r = 격자 열/행, kind = core | iface | swing | inner | (일반)
+ *  간선 type = ext | impl | comp | assoc | dep | inner, via = [[c, r], ...] 경유점
+ * ------------------------------------------------------------- */
+const CLS_NODES = {
+  Noti:       {name:'INotiEvent', c:0, r:0, kind:'iface', stereo:'«interface»', sub:'구현: LogFilterMain'},
+  Main:       {name:'LogFilterMain', c:2, r:0, kind:'core', stereo:'extends JFrame', sub:'m_arLogInfoAll / Filtered 보유'},
+  Recent:     {name:'RecentFileMenu', c:3, r:0, abs:true, stereo:'«abstract» extends JMenu', sub:'static m_recentMenu'},
+  T:          {name:'T', c:4, r:0, kind:'util', stereo:'«utility»', sub:'모든 클래스가 사용'},
+  EventParam: {name:'EventParam', c:0, r:1, kind:'inner', stereo:'«nested» INotiEvent', sub:'이벤트 ID 전달'},
+  IParser:    {name:'ILogParser', c:1, r:1, kind:'iface', stereo:'«interface»', sub:'m_iLogParser'},
+  Table:      {name:'LogTable', c:2, r:1, kind:'core', stereo:'extends JTable', sub:'m_tbLogTable'},
+  Ind:        {name:'IndicatorPanel', c:3, r:1, kind:'core', stereo:'extends JPanel', sub:'m_ipIndicator'},
+  Model:      {name:'LogFilterTableModel', c:4, r:1, kind:'core', stereo:'extends AbstractTableModel', sub:'m_tmLogTableModel'},
+  Parser:     {name:'LogCatParser', c:1, r:2, sub:'time · threadtime · kernel'},
+  Renderer:   {name:'LogCellRenderer', c:2, r:2, kind:'inner', stereo:'«inner» LogTable', sub:'extends DefaultTableCellRenderer'},
+  Info:       {name:'LogInfo', c:4, r:2, sub:'로그 한 줄 (VO)'},
+  Color:      {name:'LogColor', c:2, r:3, kind:'util', stereo:'«static»', sub:'레벨 · 하이라이트 색상'}
+};
+const CLS_EDGES = [
+  {f:'Main', t:'Noti', type:'impl'},
+  {f:'Main', t:'Recent', type:'comp'},
+  {f:'Main', t:'IParser', type:'comp', label:'new LogCatParser()'},
+  {f:'Main', t:'Table', type:'comp', label:'↔ 상호 참조'},
+  {f:'Main', t:'Ind', type:'comp', label:'↔ 상호 참조', lp:0.62},
+  {f:'Main', t:'Model', type:'comp', label:'setData(All/Filtered)', lp:0.8},
+  {f:'Noti', t:'EventParam', type:'inner'},
+  {f:'Parser', t:'IParser', type:'impl'},
+  {f:'Table', t:'Renderer', type:'inner'},
+  {f:'Table', t:'Model', type:'assoc', label:'getModel()', via:[[2.25,1.42],[3.82,1.42]]},
+  {f:'Model', t:'Info', type:'assoc', label:'m_arData'},
+  {f:'Ind', t:'Info', type:'dep', label:'setData()', lp:0.72},
+  {f:'Renderer', t:'Color', type:'dep', label:'COLOR_HIGHLIGHT', lp:0.22},
+  {f:'Parser', t:'Color', type:'dep', label:'레벨 색상', lp:0.3},
+  {f:'Parser', t:'Info', type:'dep', label:'«create» parseLog()', via:[[1,2.55],[4,2.55]], lp:0.72}
+];
+
+/* ---------------------------------------------------------------
+ * 5.2 클래스별 구조
+ *  멤버: [가시성, 시그니처, 플래그, 메모]  플래그: s=static a=abstract x=미사용 l=로컬 추가
+ *        ['§', '그룹 이름'] = 그룹 머리글
+ * ------------------------------------------------------------- */
+const UML = [
+{ name:'LogFilterMain', wide:true, rel:'extends JFrame · implements INotiEvent', file:'LogFilterMain.java · 2,236줄 (GitHub 2,084줄)',
+  fields:[
+    ['§','상수'],
+    ['~','LOGFILTER, VERSION : String = "Version 1.8"','s'],
+    ['~','STATUS_CHANGE = 1, STATUS_PARSING = 2, STATUS_READY = 4 : int','s'],
+    ['~','DEFAULT_ / MIN_WIDTH · HEIGHT : int','s'],
+    ['~','INI_FILE, INI_FILE_CMD, INI_FILE_COLOR, INI_* : String','', 'ini 키 약 30개'],
+    ['§','데이터 · 필터 상태'],
+    ['~','m_arLogInfoAll, m_arLogInfoFiltered : ArrayList<LogInfo>'],
+    ['~','m_hmBookmarkAll / Filtered : HashMap<Integer,Integer>'],
+    ['~','m_hmErrorAll / Filtered : HashMap<Integer,Integer>'],
+    ['~','m_arTagInfo : ArrayList<TagInfo>','x'],
+    ['~','m_bUserFilter : boolean'],
+    ['~','m_nFilterLogLV : int'],
+    ['~','volatile m_nChangedFilter : int'],
+    ['~','FILE_LOCK, FILTER_LOCK : Object'],
+    ['§','협력 객체'],
+    ['~','m_tbLogTable : LogTable'],
+    ['~','m_tmLogTableModel : LogFilterTableModel'],
+    ['~','m_ipIndicator : IndicatorPanel'],
+    ['~','m_iLogParser : ILogParser'],
+    ['~','m_scrollVBar : JScrollPane'],
+    ['~','m_recentMenu : RecentFileMenu','s'],
+    ['~','m_tpTab : JTabbedPane','x','생성 후 미표시'],
+    ['§','UI 컴포넌트'],
+    ['~','m_tfFindWord · RemoveWord · ShowTag · RemoveTag · ShowPid · ShowTid · Highlight : JTextField'],
+    ['~','m_chkEnable* ×7 · m_chk레벨 ×6 · m_chkClm* ×9 : JCheckBox'],
+    ['~','m_comboDeviceCmd · m_comboCmd · m_comboEncode · m_jcFontType : JComboBox'],
+    ['~','m_btnRun · Stop · Clear · Device · SetFont : JButton, m_tbtnPause : JToggleButton'],
+    ['~','m_lDeviceList : JList, m_tfStatus · m_tfFontSize : JTextField'],
+    ['§','프로세스 · 창 상태'],
+    ['~','m_Process : Process'],
+    ['~','m_thProcess, m_thWatchFile, m_thFilterParse : Thread'],
+    ['~','m_bPauseADB : boolean'],
+    ['~','m_strLogFileName, m_strSelectedDevice : String'],
+    ['~','m_nWinWidth · Height, m_nLastWidth · Height, m_nWindState : int'],
+    ['§','리스너 (익명 클래스 필드)'],
+    ['~','m_alButtonListener : ActionListener'],
+    ['~','m_dlFilterListener : DocumentListener'],
+    ['~','m_itemListener : ItemListener']
+  ],
+  methods:[
+    ['§','진입 · 생명주기'],
+    ['+','main(String[] args) : void','s'],
+    ['+','LogFilterMain()'],
+    ['~','initValue() · exit() : void'],
+    ['~','createComponent() : void','x','빈 메서드'],
+    ['§','UI 구성'],
+    ['~','getOptionPanel() · getOptionFilter() · getOptionMenu() : Component'],
+    ['~','getCmdPanel() · getFilterPanel() · getCheckPanel() · getHighlightPanel() : Component'],
+    ['~','getBookmarkPanel() · getStatusPanel() · getTabPanel() : Component'],
+    ['~','addChangeListener() · setDnDListener() : void'],
+    ['~','installUndoRedo(JTextComponent) : void','l'],
+    ['~','installInputHistory(JTextComponent) : void','lx','호출 안 됨'],
+    ['§','입력 (파일 · adb)'],
+    ['~','parseFile(File) : void'],
+    ['+','openFileBrowser() : void'],
+    ['~','startProcess() · stopProcess() · pauseProcess() : void'],
+    ['~','startFileParse() : void'],
+    ['~','setDeviceList() : void'],
+    ['~','getProcessCmd() : String'],
+    ['~','setProcessCmd(int, String) : void','','파일명 재생성만 함'],
+    ['~','makeFilename() : String'],
+    ['§','필터 엔진'],
+    ['~','startFilterParse() · runFilter() : void'],
+    ['~','addLogInfo(LogInfo) : void'],
+    ['~','checkUseFilter() : boolean'],
+    ['~','checkLogLVFilter · checkPidFilter · checkTidFilter(LogInfo) : boolean'],
+    ['~','checkFindFilter · checkRemoveFilter(LogInfo) : boolean'],
+    ['~','checkShowTagFilter · checkRemoveTagFilter(LogInfo) : boolean'],
+    ['~','useFilter(JCheckBox) · setLogLV(int, boolean) : void'],
+    ['§','북마크 · 화면 갱신'],
+    ['~','bookmarkItem(int nIndex, int nLine, boolean) : void'],
+    ['~','setBookmark(int, String) : void'],
+    ['~','updateTable(int nRow, boolean bMove) · clearData() : void'],
+    ['~','setStatus(String) : void'],
+    ['+','setTitle(String) · setFindFocus() : void'],
+    ['~','addDesc() · addDesc(String) : void'],
+    ['~','addTagList(String) : void','x','본문 전체 주석'],
+    ['§','설정 (*.ini)'],
+    ['~','loadFilter() · saveFilter() : void'],
+    ['~','loadColor() · saveColor() · loadCmd() : void'],
+    ['§','INotiEvent 구현'],
+    ['+','notiEvent(EventParam) : void']
+  ]
+},
+{ name:'LogTable', rel:'extends JTable · implements FocusListener, ActionListener', file:'LogTable.java · 712줄',
+  fields:[
+    ['~','m_LogFilterMain : LogFilterMain'],
+    ['~','m_iLogParser : ILogParser'],
+    ['~','m_strFilterFind, m_strFilterRemove : String'],
+    ['~','m_strTagShow, m_strTagRemove : String'],
+    ['~','m_strPidShow, m_strTidShow : String'],
+    ['~','m_strHighlight : String'],
+    ['~','m_fFontSize : float'],
+    ['~','m_bAltPressed : boolean'],
+    ['~','m_nTagLength : int'],
+    ['~','m_arbShow : boolean[]','','컬럼 표시 여부']
+  ],
+  methods:[
+    ['+','LogTable(LogFilterTableModel, LogFilterMain)'],
+    ['-','init() : void','','키·마우스 리스너 등록'],
+    ['+','changeSelection(int, int, boolean, boolean[, boolean bMove]) : void'],
+    ['+','showRow(int[, boolean bCenter]) : void'],
+    ['~','gotoNextBookmark() · gotoPreBookmark() : void'],
+    ['#','processKeyBinding(KeyStroke, KeyEvent, int, boolean) : boolean'],
+    ['+','actionPerformed(ActionEvent) : void','','Ctrl+C 복사'],
+    ['+','showColumn(int, boolean) · hideColumn(int) : void'],
+    ['+','setColumnWidth() · getColumnWidth(int) · packColumn(int, int)'],
+    ['+','setFontSize(int) · getFontSize() : float'],
+    ['~','GetFilterFind() … GetHighlight() : String','','getter 7개'],
+    ['~','setFilterFind(String) … SetHighlight(String) : void','','setter 7개'],
+    ['+','setValueAt(Object, int, int) · isCellEditable(int, int)'],
+    ['+','setLogParser(ILogParser) · setTagLength(int) : void'],
+    ['+','focusGained / focusLost(FocusEvent) : void'],
+    ['~','isInnerRect(Rectangle, Rectangle) · getVisibleRowCount()']
+  ],
+  inner:[
+    { name:'LogCellRenderer', rel:'extends DefaultTableCellRenderer',
+      fields:[['~','m_bChanged : boolean']],
+      methods:[
+        ['+','getTableCellRendererComponent(JTable, Object, boolean, boolean, int, int) : Component'],
+        ['~','remakeData(int, String) : String','','일치 구간 계산 후 HTML 1회 생성'],
+        ['~','markMatch(String, String, String[], String[], boolean[]) : void','l'],
+        ['~','openStyle · closeStyle(StringBuilder, String, boolean) : void','l'],
+        ['~','appendEscaped(StringBuilder, char) : void','l','& < > " 이스케이프'],
+        ['~','equalsColor(String, String) : boolean','l']
+      ]},
+    { name:'ColumnHeaderListener', rel:'extends MouseAdapter',
+      fields:[], methods:[['+','mouseClicked(MouseEvent) : void','','헤더 더블클릭 → packColumn']]}
+  ]
+},
+{ name:'LogFilterTableModel', rel:'extends AbstractTableModel', file:'LogFilterTableModel.java · 64줄',
+  fields:[
+    ['~','COMUMN_LINE … COMUMN_MESSAGE = 0 … 8 : int','s'],
+    ['+','COMUMN_MAX = 9 : int','s'],
+    ['+','ColName[] : String','s'],
+    ['+','ColWidth[], DEFULT_WIDTH[] : int','s'],
+    ['~','m_arData : ArrayList<LogInfo>','','All/Filtered 참조']
+  ],
+  methods:[
+    ['+','setColumnWidth(int, int) : void','s','기본값 이상만 반영'],
+    ['+','setData(ArrayList<LogInfo>) : void'],
+    ['+','getRow(int) : LogInfo'],
+    ['+','getValueAt(int, int) : Object'],
+    ['+','getRowCount() · getColumnCount() : int'],
+    ['+','getColumnName(int) : String']
+  ]
+},
+{ name:'LogInfo', rel:'', file:'LogInfo.java · 67줄',
+  fields:[
+    ['+','LOG_LV_VERBOSE · DEBUG · INFO · WARN · ERROR · FATAL : int','s','비트 1, 2, 4 … 32'],
+    ['+','LOG_LV_ALL : int','s'],
+    ['~','m_bMarked : boolean'],
+    ['~','m_strLine, m_strDate, m_strTime : String'],
+    ['~','m_strLogLV, m_strPid, m_strThread : String'],
+    ['~','m_strTag, m_strMessage, m_strBookmark : String'],
+    ['~','m_TextColor : Color']
+  ],
+  methods:[
+    ['+','getData(int nColumn) : Object'],
+    ['+','display() : void','','T.d()로 덤프']
+  ]
+},
+{ name:'ILogParser', kind:'iface', stereo:'«interface»', rel:'', file:'ILogParser.java · 19줄',
+  fields:[['+','TYPE_ANDROID_DDMS = 0, TYPE_ANDROID_LOGCAT = 1 : int','sx']],
+  methods:[
+    ['+','parseLog(String) : LogInfo','a'],
+    ['+','getColor(LogInfo) : Color','a'],
+    ['+','getLogLV(LogInfo) : int','a']
+  ]
+},
+{ name:'LogCatParser', rel:'implements ILogParser', file:'LogCatParser.java · 212줄',
+  fields:[
+    ['~','TOKEN_KERNEL = "<>[]" : String'],
+    ['~','TOKEN_PID = "/() ", TOKEN_SPACE = " " : String'],
+    ['~','TOKEN_REST = "" : String','l','B2 수정: 남은 문자열 전체를 메시지로'],
+    ['~','TOKEN, TOKEN_SLASH : String','x']
+  ],
+  methods:[
+    ['+','parseLog(String) : LogInfo'],
+    ['+','isNormal · isThreadTime · isKernel(String) : boolean'],
+    ['+','getNormal · getThreadTime · getKernel(String) : LogInfo'],
+    ['+','getColor(LogInfo) : Color'],
+    ['+','getLogLV(LogInfo) : int','x']
+  ]
+},
+{ name:'IndicatorPanel', rel:'extends JPanel', file:'IndicatorPanel.java · 237줄',
+  fields:[
+    ['~','INDICATRO_BOOK_X_POS · ERROR_X_POS · WIDTH · Y_POS · Y_GAP : int'],
+    ['~','m_chBookmark, m_chError : JCheckBox','','북마크만/에러만 보기'],
+    ['~','m_rcBookmark, m_rcError : Rectangle'],
+    ['~','m_arLogInfo : ArrayList<LogInfo>'],
+    ['~','m_hmBookmark, m_hmError : HashMap<Integer,Integer>'],
+    ['~','m_LogFilterMain : LogFilterMain'],
+    ['~','m_g : Graphics'],
+    ['+','m_bDrawFull : boolean','x','항상 true'],
+    ['~','m_itemListener : ItemListener']
+  ],
+  methods:[
+    ['+','IndicatorPanel(LogFilterMain)'],
+    ['+','setData(ArrayList<LogInfo>, HashMap, HashMap) : void'],
+    ['+','paintComponent(Graphics) : void'],
+    ['~','drawIndicator · drawBookmark · drawError · drawPageIndicator(Graphics)'],
+    ['+','testMsg(String) : void','x']
+  ]
+},
+{ name:'INotiEvent', kind:'iface', stereo:'«interface»', rel:'구현: LogFilterMain', file:'INotiEvent.java · 31줄',
+  fields:[
+    ['+','EVENT_CLICK_BOOKMARK = 0, EVENT_CLICK_ERROR = 1 : int','s'],
+    ['+','EVENT_CHANGE_FILTER_SHOW_TAG = 2, …_REMOVE_TAG = 3 : int','s'],
+    ['+','EVENT_CHANGE_FILTER_FIND_WORD = 4, …_REMOVE_WORD = 5 : int','sx']
+  ],
+  methods:[['+','notiEvent(EventParam) : void','a']],
+  inner:[
+    { name:'EventParam', rel:'nested class',
+      fields:[['~','nEventId : int'],['~','param1, param2, param3 : Object','x']],
+      methods:[['+','EventParam(int nEventId)']]}
+  ]
+},
+{ name:'RecentFileMenu', abs:true, stereo:'«abstract»', rel:'extends JMenu · GPL v2', file:'RecentFileMenu.java · 155줄',
+  fields:[
+    ['-','pathToSavedFile : String','','user.dir/RecentFile.ini'],
+    ['-','itemCount : int'],
+    ['-','recentEntries : String[]'],
+    ['-','defaultText : String','s']
+  ],
+  methods:[
+    ['+','RecentFileMenu(String name, int count)'],
+    ['+','addEntry(String) : void'],
+    ['-','addEntry(String, boolean updateFile) : void'],
+    ['+','onSelectFile(String) : void','a','main()의 익명 클래스가 parseFile() 호출']
+  ]
+},
+{ name:'LogColor', kind:'util', stereo:'«static holder»', rel:'', file:'LogColor.java · 22줄',
+  fields:[
+    ['+','COLOR_DEBUG · INFO · WARN · ERROR · FATAL : int','s'],
+    ['+','COLOR_0 … COLOR_8 : int','s','ini의 INI_COLOR_n'],
+    ['+','COLOR_BOOKMARK, COLOR_BOOKMARK2 : int','s'],
+    ['+','COLOR_HIGHLIGHT : String[]','s'],
+    ['+','COLOR_GUIDE : int','sx']
+  ],
+  methods:[]
+},
+{ name:'T', kind:'util', stereo:'«utility»', rel:'', file:'T.java · 156줄',
+  fields:[
+    ['-','POSTFIX = "[iookill]" : String','s'],
+    ['-','misEnabled = true : Boolean','s']
+  ],
+  methods:[
+    ['+','enable(Boolean) : void','s'],
+    ['+','d() · d(Object) · i() · i(Object) : void','s'],
+    ['+','w() · w(Object) · e() · e(Object) : void','s'],
+    ['+','getCurrentTime() : String','s','yyyy-MM-dd HH:mm:ss.SSS (B10 수정)']
+  ]
+}
+];
+
+const UML_DEAD = [
+{ name:'TagTable', rel:'extends JTable', file:'TagTable.java · 187줄',
+  fields:[['~','m_LogFilterMain : LogFilterMain']],
+  methods:[
+    ['+','TagTable(TagFilterTableModel, LogFilterMain)'],
+    ['+','showColumn(int, boolean) · hideColumn(int) · packColumn(int, int)'],
+    ['+','isCellEditable(int, int) : boolean'],
+    ['-','init() · setColumnWidth() : void']
+  ],
+  inner:[
+    { name:'TagCellRenderer', rel:'extends DefaultTableCellRenderer', fields:[], methods:[['+','getTableCellRendererComponent(…) : Component']]},
+    { name:'ColumnHeaderListener', rel:'extends MouseAdapter', fields:[], methods:[['+','mouseClicked(MouseEvent) : void']]}
+  ]
+},
+{ name:'TagFilterTableModel', rel:'extends AbstractTableModel', file:'TagFilterTableModel.java · 45줄',
+  fields:[
+    ['+','ColName[] = {Tag, Show, Remove} : String','s'],
+    ['+','ColWidth[] : int','s'],
+    ['~','m_arData : ArrayList<TagInfo>']
+  ],
+  methods:[['+','setData(ArrayList<TagInfo>) · getRow(int) : TagInfo'],['+','getValueAt · getRowCount · getColumnCount · getColumnName']]
+},
+{ name:'TagInfo', rel:'', file:'TagInfo.java · 25줄',
+  fields:[['~','COMUMN_TAG · SHOW · REMOVE = 0 · 1 · 2 : int','s'],['~','m_strTag : String'],['~','m_bShow, m_bRemove : boolean']],
+  methods:[['+','getData(int) : Object']]
+},
+{ name:'ClassTaster', rel:'리플렉션 테스트 유틸', file:'ClassTaster.java · 261줄',
+  fields:[],
+  methods:[
+    ['+','functionTest(Class<?>, String, Object...) : void','s'],
+    ['+','getMethod(Class<?>, String) : Method','s'],
+    ['+','createParam(Class<?>) · getDefaultValue(Class<?>) : Object','s'],
+    ['+','exeDefaultType(Class<?>, Method, Object, int, Object[]) : void','s'],
+    ['+','disply(Method, Object[], String) : void','s']
+  ],
+  inner:[
+    { name:'ICheckValue', rel:'«interface» · 같은 파일', fields:[], methods:[['+','getMaxValue · getMiddleValue · getMinValue · getNull · getRandom() : Object','a']]},
+    { name:'CheckString · Byte · Short · Integer · Long · Float · Double · Boolean · Character', rel:'implements ICheckValue (9개)', fields:[], methods:[['+','타입별 최대/중간/최소/null/랜덤 값 반환']]}
+  ]
+},
+{ name:'DevicesPanel', rel:'extends JPanel', file:'DevicesPanel.java · 7줄', fields:[['-','serialVersionUID : long','s']], methods:[], note:'멤버 없는 빈 패널' },
+{ name:'MouseEventHandler', rel:'implements WindowListener', file:'MouseEventHandler.java · 13줄', fields:[],
+  methods:[['+','windowActivated · Closed · Closing · Deactivated · Deiconified · Iconified · Opened(WindowEvent)','','모두 빈 구현']],
+  note:'이름은 Mouse지만 WindowListener를 구현' },
+{ name:'WindowEventHandler', rel:'implements WindowListener', file:'WindowEventHandler.java · 19줄', fields:[],
+  methods:[['+','windowClosing(WindowEvent) : void','','dispose() + System.exit(0)'],['+','나머지 window* 6개 : void','','빈 구현']],
+  note:'LogFilterMain 생성자의 익명 WindowAdapter로 대체됨' }
+];
+
+(function(){
+  const NS = 'http://www.w3.org/2000/svg';
+  const fontFamily = getComputedStyle(document.body).fontFamily;
+  function el(tag, attrs, parent, text){
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  /* ----- 클래스 관계도 ----- */
+  function drawOverview(host){
+    const CW = 222, RH = 132, BW = 192, BH = 54, M = 20;
+    const P = (c, r) => ({x: M + BW/2 + c*CW, y: M + BH/2 + r*RH});
+    let maxR = 0;
+    Object.keys(CLS_NODES).forEach(k => { maxR = Math.max(maxR, CLS_NODES[k].r); });
+    const W = M*2 + BW + 4*CW, H = Math.ceil(P(0, maxR).y + BH/2 + M);
+    const svg = el('svg', {class:'cd-svg', width:W, height:H, viewBox:'0 0 '+W+' '+H, role:'img', 'aria-label':'클래스 관계도'});
+    const defs = el('defs', {}, svg);
+    const mk = (id, w, h, refX, path, cls, extra) => {
+      const m = el('marker', {id:id, viewBox:'0 0 '+w+' '+h, refX:refX, refY:h/2, markerWidth:w, markerHeight:h, orient:'auto-start-reverse', markerUnits:'userSpaceOnUse'}, defs);
+      el('path', {d:path, class:cls}, m);
+      if (extra) el('path', {d:extra, class:'mk-open'}, m);
+    };
+    mk('cdTri', 13, 12, 12.5, 'M0.5,0.5 L12.5,6 L0.5,11.5 z', 'mk-hollow');
+    mk('cdArr', 11, 10, 10, 'M0.5,0.5 L10,5 L0.5,9.5', 'mk-open');
+    mk('cdDia', 17, 12, 16.5, 'M0.5,6 L8.5,0.5 L16.5,6 L8.5,11.5 z', 'mk-fill');
+    mk('cdInn', 14, 14, 13.5, 'M7,1 a6,6 0 1,0 0.01,0 z', 'mk-hollow', 'M3,7 H11 M7,3 V11');
+
+    const gE = el('g', {}, svg), gN = el('g', {}, svg), gL = el('g', {}, svg);
+    const hw = BW/2, hh = BH/2;
+    const clip = (c, p) => {
+      const dx = p.x - c.x, dy = p.y - c.y;
+      if (Math.abs(dx) < hw - 2 && Math.abs(dy) > hh) return {x:p.x, y:c.y + Math.sign(dy)*hh};
+      if (Math.abs(dy) < hh - 2 && Math.abs(dx) > hw) return {x:c.x + Math.sign(dx)*hw, y:p.y};
+      const t = Math.min(hw / Math.abs(dx || 1e-9), hh / Math.abs(dy || 1e-9));
+      return {x:c.x + dx*t, y:c.y + dy*t};
+    };
+
+    CLS_EDGES.forEach(e => {
+      const a = CLS_NODES[e.f], b = CLS_NODES[e.t];
+      const ca = P(a.c, a.r), cb = P(b.c, b.r);
+      const via = (e.via || []).map(v => P(v[0], v[1]));
+      const pts = [clip(ca, via.length ? via[0] : cb)].concat(via, [clip(cb, via.length ? via[via.length-1] : ca)]);
+      const dash = (e.type === 'impl' || e.type === 'dep') ? ' dash' : '';
+      const attrs = {points:pts.map(p => p.x.toFixed(1)+','+p.y.toFixed(1)).join(' '), class:'cd-edge'+dash};
+      if (e.type === 'ext' || e.type === 'impl') attrs['marker-end'] = 'url(#cdTri)';
+      else if (e.type === 'inner') attrs['marker-start'] = 'url(#cdInn)';
+      else attrs['marker-end'] = 'url(#cdArr)';
+      if (e.type === 'comp') attrs['marker-start'] = 'url(#cdDia)';
+      el('polyline', attrs, gE);
+      if (e.label){
+        let best = 0, bi = 0;
+        for (let i = 0; i < pts.length - 1; i++){ const d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y); if (d > best){ best = d; bi = i; } }
+        const lp = e.lp != null ? e.lp : 0.5;
+        const p1 = pts[bi], p2 = pts[bi+1], mx = p1.x + (p2.x - p1.x)*lp, my = p1.y + (p2.y - p1.y)*lp;
+        if (Math.abs(p1.x - p2.x) < 1) el('text', {x:mx + 6, y:my + 4, class:'cd-label'}, gL, e.label);
+        else if (Math.abs(p1.y - p2.y) < 1) el('text', {x:mx, y:my - 5, 'text-anchor':'middle', class:'cd-label'}, gL, e.label);
+        else el('text', {x:mx, y:my, 'text-anchor':'middle', class:'cd-label'}, gL, e.label);
+      }
+    });
+
+    Object.keys(CLS_NODES).forEach(k => {
+      const n = CLS_NODES[k], c = P(n.c, n.r);
+      el('rect', {x:c.x - hw, y:c.y - hh, width:BW, height:BH, rx:6, class:'cd-node' + (n.kind ? ' ' + n.kind : '')}, gN);
+      const lines = [];
+      if (n.stereo) lines.push(['cd-stereo', n.stereo]);
+      lines.push(['cd-name' + (n.abs ? ' abs' : ''), n.name]);
+      if (n.sub) lines.push(['cd-sub', n.sub]);
+      const step = 14.5, y0 = c.y - (lines.length - 1) * step / 2 + 4;
+      lines.forEach((ln, i) => el('text', {x:c.x, y:y0 + i*step, 'text-anchor':'middle', class:ln[0]}, gN, ln[1]));
+    });
+    host.appendChild(svg);
+  }
+
+  /* ----- UML 클래스 카드 ----- */
+  function h(tag, cls, parent, text){
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function section(parent, cap, list, extraCls){
+    const sec = h('div', 'uml-sec' + (extraCls ? ' ' + extraCls : ''), parent);
+    h('div', 'cap', sec, cap);
+    if (!list || !list.length){ h('div', 'empty', sec, '—'); return sec; }
+    list.forEach(m => {
+      if (m[0] === '§'){ h('div', 'grp', sec, m[1]); return; }
+      const fl = m[2] || '';
+      const row = h('div', 'm' + (fl.includes('s') ? ' s' : '') + (fl.includes('a') ? ' a' : '') + (fl.includes('x') ? ' x' : ''), sec);
+      h('span', 'v', row, m[0]);
+      const sig = h('span', '', row);
+      h('span', 'sig', sig, m[1]);
+      if (fl.includes('l')) h('span', 'tg l', sig, '로컬');
+      if (fl.includes('x')) h('span', 'tg x', sig, '미사용');
+      if (m[3]) h('span', 'note', sig, '  // ' + m[3]).style.cssText = 'color:var(--muted);font-family:var(--font);font-size:11.5px';
+    });
+    return sec;
+  }
+  function card(c, parent, dead, nested){
+    const d = h('div', 'uml' + (c.wide ? ' wide' : '') + (c.kind ? ' ' + c.kind : '') + (dead ? ' dead' : ''), parent);
+    const head = h('div', 'uml-h', d);
+    if (c.stereo) h('div', 'st', head, c.stereo);
+    h('div', 'nm' + (c.abs ? ' abs' : ''), head, c.name);
+    if (c.rel) h('div', 'rel', head, c.rel);
+    if (c.file && !nested) h('div', 'file', head, c.file);
+    const body = h('div', 'uml-body', d);
+    section(body, '필드', c.fields, 'f');
+    section(body, '메서드', c.methods, 'mt');
+    if (c.note) h('div', 'uml-note', d, c.note);
+    if (c.inner && c.inner.length){
+      const inn = h('div', 'uml-inner', d);
+      h('div', 'cap', inn, '내부 · 같은 파일의 클래스');
+      c.inner.forEach(ic => card(ic, inn, dead, true));
+    }
+  }
+
+  const ov = document.getElementById('clsOverview');
+  if (ov) drawOverview(ov);
+  const g1 = document.getElementById('umlGrid'), g2 = document.getElementById('umlGridDead');
+  if (g1) UML.forEach(c => card(c, g1, false));
+  if (g2) UML_DEAD.forEach(c => card(c, g2, true));
+})();
+</script>
+</body>
+</html>

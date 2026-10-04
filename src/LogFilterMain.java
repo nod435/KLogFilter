@@ -20,6 +20,7 @@ import java.awt.dnd.DropTargetEvent;
 import java.awt.dnd.DropTargetListener;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.InputEvent;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
 import java.awt.event.KeyEvent;
@@ -43,6 +44,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.StringTokenizer;
 
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
@@ -68,8 +70,14 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.UndoableEditEvent;
+import javax.swing.event.UndoableEditListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
+import javax.swing.text.JTextComponent;
+import javax.swing.undo.CannotRedoException;
+import javax.swing.undo.CannotUndoException;
+import javax.swing.undo.UndoManager;
 
 public class LogFilterMain extends JFrame implements INotiEvent
 {
@@ -348,7 +356,7 @@ public class LogFilterMain extends JFrame implements INotiEvent
         {
             Properties p = new Properties();
             
-            // ini ���� �б�
+            // ini 파일 읽기
             p.load(new FileInputStream(INI_FILE_CMD));
             
             T.d("p.getProperty(INI_CMD_COUNT) = " + p.getProperty(INI_CMD_COUNT));
@@ -440,10 +448,10 @@ public class LogFilterMain extends JFrame implements INotiEvent
         {
             Properties p = new Properties();
             
-            // ini ���� �б�
+            // ini 파일 읽기
             p.load(new FileInputStream(INI_FILE));
             
-            // Key �� �б�
+            // Key 값 읽기
             String strFontType = p.getProperty(INI_FONT_TYPE);
             if(strFontType != null && strFontType.length() > 0)
                 m_jcFontType.setSelectedItem(p.getProperty(INI_FONT_TYPE));
@@ -516,26 +524,26 @@ public class LogFilterMain extends JFrame implements INotiEvent
     {
         addDesc(VERSION);
         addDesc("");
-        addDesc("Version 1.8 : java -jar LogFilter_xx.jar [filename] �߰�");
-        addDesc("Version 1.7 : copy�� ���̴� column�� clipboard�� ����(Line ����)");
-        addDesc("Version 1.6 : cmd�޺��ڽ� ���� ����");
-        addDesc("Version 1.5 : Highlight color list�߰�()");
-        addDesc("   - LogFilterColor.ini �� ī��Ʈ�� �� �־� �ֽø� �˴ϴ�.");
+        addDesc("Version 1.8 : java -jar LogFilter_xx.jar [filename] 추가");
+        addDesc("Version 1.7 : copy시 보이는 column만 clipboard에 복사(Line 제외)");
+        addDesc("Version 1.6 : cmd콤보박스 길이 고정");
+        addDesc("Version 1.5 : Highlight color list추가()");
+        addDesc("   - LogFilterColor.ini 에 카운트와 값 넣어 주시면 됩니다.");
         addDesc("   - ex)INI_HIGILIGHT_COUNT=2");
-        addDesc("   -    INI_COLOR_HIGILIGHT_0=0xFFFF");
-        addDesc("   -    INI_COLOR_HIGILIGHT_1=0x00FF");
-        addDesc("Version 1.4 : âũ�� ����");
-        addDesc("Version 1.3 : recent file �� open�޴��߰�");
-        addDesc("Version 1.2 : Tid ���� �߰�");
-        addDesc("Version 1.1 : Level F �߰�");
-        addDesc("Version 1.0 : Pid filter �߰�");
-        addDesc("Version 0.9 : Font type �߰�");
-        addDesc("Version 0.8 : ����üũ �ڽ� �߰�");
-        addDesc("Version 0.7 : Ŀ�ηα� �Ľ�/LogFilter.ini�� �÷�����(0~7)");
-        addDesc("Version 0.6 : ���� ��ҹ� ����");
-        addDesc("Version 0.5 : ���ɾ� ini���Ϸ� ����");
-        addDesc("Version 0.4 : add thread option, filter ����");
-        addDesc("Version 0.3 : �ܸ� ���� �ȵǴ� ���� ����");
+        addDesc("   -    INI_HIGILIGHT_0=0xFFFF");
+        addDesc("   -    INI_HIGILIGHT_1=0x00FF");
+        addDesc("Version 1.4 : 창크기 저장");
+        addDesc("Version 1.3 : recent file 및 open메뉴추가");
+        addDesc("Version 1.2 : Tid 필터 추가");
+        addDesc("Version 1.1 : Level F 추가");
+        addDesc("Version 1.0 : Pid filter 추가");
+        addDesc("Version 0.9 : Font type 추가");
+        addDesc("Version 0.8 : 필터체크 박스 추가");
+        addDesc("Version 0.7 : 커널로그 파싱/LogFilter.ini에 컬러정의(0~7)");
+        addDesc("Version 0.6 : 필터 대소문 무시");
+        addDesc("Version 0.5 : 명령어 ini파일로 저장");
+        addDesc("Version 0.4 : add thread option, filter 저장");
+        addDesc("Version 0.3 : 단말 선택 안되는 문제 수정");
         addDesc("");
         addDesc("[Tag]");
         addDesc("Alt+L/R Click : Show/Remove tag");
@@ -554,7 +562,7 @@ public class LogFilterMain extends JFrame implements INotiEvent
     }
 
     /**
-     * @param nIndex    ���� ����Ʈ�� �ε���
+     * @param nIndex    실제 리스트의 인덱스
      * @param nLine     m_strLine
      * @param bBookmark
      */
@@ -747,9 +755,8 @@ public class LogFilterMain extends JFrame implements INotiEvent
                     m_arLogInfoFiltered.add(logInfo);
                     if(logInfo.m_bMarked)
                         m_hmBookmarkFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
-                    if(logInfo.m_strLogLV == "E" || logInfo.m_strLogLV == "ERROR")
-                        if(logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("ERROR"))
-                            m_hmErrorFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
+                    if(logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("ERROR"))
+                        m_hmErrorFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
                 }
             }
         }
@@ -805,6 +812,139 @@ public class LogFilterMain extends JFrame implements INotiEvent
         });
     }
 
+    // 편집창(텍스트 필드)에 Ctrl+Z(실행취소) / Ctrl+Y(다시실행) 백업 기능을 추가한다.
+    void installUndoRedo(final JTextComponent comp)
+    {
+        final UndoManager undoManager = new UndoManager();
+        // 편집 내용을 계속 백업(undo 스택에 저장)한다.
+        comp.getDocument().addUndoableEditListener(new UndoableEditListener()
+        {
+            public void undoableEditHappened(UndoableEditEvent e)
+            {
+                undoManager.addEdit(e.getEdit());
+            }
+        });
+
+        // Ctrl+Z : 이전 편집 내용으로 되돌리기
+        comp.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK), "Undo");
+        comp.getActionMap().put("Undo", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e)
+            {
+                try
+                {
+                    if(undoManager.canUndo())
+                        undoManager.undo();
+                }
+                catch(CannotUndoException ex)
+                {
+                }
+            }
+        });
+
+        // Ctrl+Y : 되돌린 내용 다시 실행
+        comp.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK), "Redo");
+        comp.getActionMap().put("Redo", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e)
+            {
+                try
+                {
+                    if(undoManager.canRedo())
+                        undoManager.redo();
+                }
+                catch(CannotRedoException ex)
+                {
+                }
+            }
+        });
+    }
+
+    // 편집창별 최근 입력값 cache 최대 개수
+    static final int MAX_INPUT_HISTORY = 10;
+
+    // 편집창(텍스트 필드)에 최근 입력값 cache(최대 10개)와 ↑/↓ 방향키 불러오기 기능을 추가한다.
+    void installInputHistory(final JTextComponent comp)
+    {
+        // 최근 입력값 목록(맨 앞이 가장 최근). Enter 또는 포커스 이동 시 저장된다.
+        final List<String> history = new ArrayList<String>();
+        // 현재 히스토리 탐색 위치. -1이면 탐색 중이 아님(사용자가 직접 편집 중).
+        final int[] cursor = { -1 };
+
+        // 현재 값을 cache에 저장(중복 제거 후 맨 앞으로, 최대 10개 유지)
+        final Runnable commit = new Runnable()
+        {
+            public void run()
+            {
+                String text = comp.getText();
+                if(text == null || text.trim().length() == 0)
+                    return;
+                history.remove(text);
+                history.add(0, text);
+                while(history.size() > MAX_INPUT_HISTORY)
+                    history.remove(history.size() - 1);
+                cursor[0] = -1;
+            }
+        };
+
+        // Enter : 현재 값을 cache에 저장
+        comp.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "HistoryCommit");
+        comp.getActionMap().put("HistoryCommit", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e)
+            {
+                commit.run();
+            }
+        });
+
+        // ↑ : 더 예전 입력값으로 이동
+        comp.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "HistoryPrev");
+        comp.getActionMap().put("HistoryPrev", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e)
+            {
+                if(history.isEmpty())
+                    return;
+                if(cursor[0] < history.size() - 1)
+                    cursor[0]++;
+                comp.setText(history.get(cursor[0]));
+                comp.setCaretPosition(comp.getDocument().getLength());
+            }
+        });
+
+        // ↓ : 더 최근 입력값으로 이동(맨 앞을 지나면 빈 값으로)
+        comp.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "HistoryNext");
+        comp.getActionMap().put("HistoryNext", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e)
+            {
+                if(cursor[0] <= 0)
+                {
+                    cursor[0] = -1;
+                    comp.setText("");
+                    return;
+                }
+                cursor[0]--;
+                comp.setText(history.get(cursor[0]));
+                comp.setCaretPosition(comp.getDocument().getLength());
+            }
+        });
+
+        // 포커스가 벗어날 때도 현재 값을 cache에 저장(Enter를 누르지 않아도 기록)
+        comp.addFocusListener(new java.awt.event.FocusAdapter()
+        {
+            public void focusLost(java.awt.event.FocusEvent e)
+            {
+                commit.run();
+            }
+        });
+    }
+
     Component getFilterPanel()
     {
         m_chkEnableFind         = new JCheckBox();
@@ -826,6 +966,14 @@ public class LogFilterMain extends JFrame implements INotiEvent
         m_tfRemoveTag   = new JTextField();
         m_tfShowPid     = new JTextField();
         m_tfShowTid     = new JTextField();
+
+        // 필터 편집창에 Ctrl+Z 백업(실행취소) 기능 추가
+        installUndoRedo(m_tfFindWord);
+        installUndoRedo(m_tfRemoveWord);
+        installUndoRedo(m_tfShowTag);
+        installUndoRedo(m_tfRemoveTag);
+        installUndoRedo(m_tfShowPid);
+        installUndoRedo(m_tfShowTid);
 
         JPanel jpMain = new JPanel(new BorderLayout());
 
@@ -898,14 +1046,19 @@ public class LogFilterMain extends JFrame implements INotiEvent
         m_chkEnableHighlight.setSelected(true);
 
         m_tfHighlight   = new JTextField();
+        m_tfHighlight.setPreferredSize(new Dimension(300, 25));
+        installUndoRedo(m_tfHighlight);
 
         JPanel jpMain = new JPanel(new BorderLayout());
         jpMain.setBorder(BorderFactory.createTitledBorder("Highlight"));
 
+        JPanel jpLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         JLabel jlHighlight = new JLabel();
         jlHighlight.setText("Highlight : ");
-        jpMain.add(jlHighlight, BorderLayout.WEST);
-        jpMain.add(m_tfHighlight);
+        jpLeft.add(jlHighlight);
+        jpLeft.add(m_tfHighlight);
+
+        jpMain.add(jpLeft, BorderLayout.WEST);
         jpMain.add(m_chkEnableHighlight, BorderLayout.EAST);
 
         return jpMain;
@@ -1259,11 +1412,11 @@ public class LogFilterMain extends JFrame implements INotiEvent
                 strCommand = (String)m_comboDeviceCmd.getSelectedItem();
             Process oProcess = Runtime.getRuntime().exec(strCommand);
 
-            // �ܺ� ���α׷� ��� �б�
+            // 외부 프로그램 출력 읽기
             BufferedReader stdOut   = new BufferedReader(new InputStreamReader(oProcess.getInputStream()));
             BufferedReader stdError = new BufferedReader(new InputStreamReader(oProcess.getErrorStream()));
 
-            // "ǥ�� ���"�� "ǥ�� ���� ���"�� ���
+            // "표준 출력"과 "표준 에러 출력"을 출력
             while ((s =   stdOut.readLine()) != null)
             {
                 if(!s.equals("List of devices attached "))
@@ -1278,7 +1431,7 @@ public class LogFilterMain extends JFrame implements INotiEvent
                 listModel.addElement(s);
             }
 
-            // �ܺ� ���α׷� ��ȯ�� ��� (�� �κ��� �ʼ��� �ƴ�)
+            // 외부 프로그램 반환값 출력 (이 부분은 필수가 아님)
             System.out.println("Exit Code: " + oProcess.exitValue());
         }
         catch(Exception e)
