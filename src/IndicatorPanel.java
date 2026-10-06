@@ -10,7 +10,6 @@ import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
-import java.util.ArrayList;
 import java.util.Map;
 
 import javax.swing.JCheckBox;
@@ -32,7 +31,7 @@ public class IndicatorPanel extends JPanel
     Rectangle                 m_rcError;
     JCheckBox                 m_chBookmark;
     JCheckBox                 m_chError;
-    ArrayList<LogInfo>        m_arLogInfo;
+    LogList                   m_arLogInfo;
     Map<Integer, Integer>     m_hmBookmark;
     Map<Integer, Integer>     m_hmError;
     LogFilterMain             m_LogFilterMain;
@@ -213,7 +212,7 @@ public class IndicatorPanel extends JPanel
     };
     
     // EDT에서만 호출. 맵은 ConcurrentHashMap이라 다른 스레드가 추가하는 중에도 순회할 수 있다.
-    public void setData(ArrayList<LogInfo> arLogInfo, Map<Integer, Integer> hmBookmark, Map<Integer, Integer> hmError)
+    public void setData(LogList arLogInfo, Map<Integer, Integer> hmBookmark, Map<Integer, Integer> hmError)
     {
         m_arLogInfo     = arLogInfo;
         m_hmBookmark    = hmBookmark;

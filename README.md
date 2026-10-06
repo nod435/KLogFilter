@@ -76,7 +76,7 @@ dist\KLogFilter.bat [로그파일]   → 실행 (또는 java -jar dist\KLogFilte
 | `LogTable` / `LogFilterTableModel` / `IndicatorPanel` | 로그 테이블, 모델, 북마크/에러 바 |
 | `LogCatParser` / `LogInfo` | 로그 한 줄 파싱 / 데이터 |
 
-동작 흐름(시퀀스 다이어그램), 클래스 구조, 수정 이력은 [docs/SOURCE_STRUCTURE_20261006150733.html](docs/SOURCE_STRUCTURE_20261006150733.html)에 정리되어 있습니다(브라우저로 열기). Markdown 요약본은 [docs/SOURCE_STRUCTURE_20261006150733.md](docs/SOURCE_STRUCTURE_20261006150733.md)입니다. 문서 파일 이름 끝의 숫자는 생성 시각(`yyyyMMddHHmmss`)이며, 문서를 다시 만들 때마다 새 시각으로 바뀝니다.
+동작 흐름(시퀀스 다이어그램), 클래스 구조, 수정 이력은 [docs/SOURCE_STRUCTURE_20261006221121.html](docs/SOURCE_STRUCTURE_20261006221121.html)에 정리되어 있습니다(브라우저로 열기). Markdown 요약본은 [docs/SOURCE_STRUCTURE_20261006221121.md](docs/SOURCE_STRUCTURE_20261006221121.md)입니다. 문서 파일 이름 끝의 숫자는 생성 시각(`yyyyMMddHHmmss`)이며, 문서를 다시 만들 때마다 새 시각으로 바뀝니다.
 
 ## 라이선스 참고
 

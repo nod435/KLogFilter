@@ -287,11 +287,17 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             m_config.arColumnWidth[nIndex] = m_tbLogTable.getColumnWidth(nIndex);
         m_config.save();
     }
+    // 시작 안내 문구를 담는 메모리 목록
+    MemoryLogStore m_descStore;
+
     void addDesc(String strMessage)
     {
-        LogInfo logInfo = new LogInfo();
-        logInfo.m_strMessage = strMessage;
-        m_engine.addNext(logInfo);
+        if(m_descStore == null)
+        {
+            m_descStore = new MemoryLogStore(m_iLogParser);
+            m_engine.setStore(m_descStore);
+        }
+        m_descStore.addMessage(strMessage);
     }
 
     void addDesc()
@@ -420,6 +426,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             public void run()
             {
                 setProcessBtn(false);
+                // 실행 중 안내만 지운다 (adb 오류 메시지는 남겨 둠)
+                if(m_tfStatus.getText().startsWith("adb 실행 중"))
+                    setStatus("Stopped");
             }
         });
     }

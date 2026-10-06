@@ -40,14 +40,12 @@ public class LogTable extends JTable implements FocusListener, ActionListener
     volatile String[]                     m_arHighlightToken = FilterToken.EMPTY;
     float                                 m_fFontSize;
     boolean                               m_bAltPressed;
-    int                                   m_nTagLength;
     boolean[]                             m_arbShow;
 
     public LogTable(LogFilterTableModel tablemodel, LogFilterMain filterMain)
     {
         super(tablemodel);
         m_LogFilterMain = filterMain;
-        m_nTagLength    = 0;
         m_arbShow       = new boolean[LogFilterTableModel.COMUMN_MAX];
         init();
         setColumnWidth();
@@ -623,6 +621,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         StringBuffer sbf = new StringBuffer();
         int numrows = getSelectedRowCount();
         int[] rowsselected = getSelectedRows();
+        int nTagLength = tagLength();
 
         for ( int i = 0; i < numrows; i++ )
         {
@@ -634,7 +633,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                     if(j == LogFilterTableModel.COMUMN_TAG)
                     {
                         String strTag = strTemp.toString();
-                        for(int k = 0; k < m_nTagLength - strTag.length(); k++)
+                        for(int k = 0; k < nTagLength - strTag.length(); k++)
                             strTemp.append(" ");
                     }
                     else if(j == LogFilterTableModel.COMUMN_THREAD || j == LogFilterTableModel.COMUMN_PID)
@@ -654,12 +653,9 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         system.setContents(stsel,stsel);
     }
     
-    public void setTagLength(int nLength)
+    // 복사할 때 Tag 컬럼을 맞출 폭: 지금까지 해석한 줄 중 가장 긴 태그 길이
+    int tagLength()
     {
-        if(m_nTagLength < nLength)
-        {
-            m_nTagLength = nLength;
-            T.d("m_nTagLength = " + m_nTagLength);
-        }
+        return m_engine != null ? m_engine.getStore().m_nMaxTagLength : 0;
     }
 }

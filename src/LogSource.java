@@ -1,7 +1,6 @@
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -10,13 +9,13 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.nio.charset.Charset;
 
 /**
  * 로그 입력.
- * - 파일 열기: parseFile()
+ * - 파일 열기: parseFile() → 줄 위치를 색인하면서 읽은 만큼 바로 표시(부분 로딩)
  * - adb logcat 실시간 수집: startProcess() → adb 출력을 파일에 기록하고(프로세스 스레드),
- *   그 파일을 50ms마다 이어 읽어 FilterEngine에 추가한다(파일 감시 스레드).
+ *   그 파일을 전체 목록(FileLogStore)으로 써서 50ms마다 늘어난 부분을 색인한다(파일 감시 스레드).
  * - 장치 목록: listDevices()
  * 화면 처리는 하지 않고 Listener로 알린다. (Listener 메서드는 어느 스레드에서든 호출될 수 있음)
  */
@@ -61,9 +60,6 @@ public class LogSource
     final Listener       m_listener;
     final Object         FILE_LOCK = new Object();      // 기록 파일 쓰기/읽기 동기화
 
-    // 파일 파싱 세대 번호. 새 파일을 열면 증가하고, 이전 파싱 스레드는 번호가 바뀐 것을 보고 멈춘다.
-    final AtomicInteger  m_nParseGeneration = new AtomicInteger();
-
     volatile Process     m_process;
     volatile Thread      m_thProcess;
     volatile Thread      m_thWatchFile;
@@ -83,52 +79,62 @@ public class LogSource
         return "LogFilter_" + format.format(new Date()) + ".txt";
     }
 
-    static BufferedReader openReader(String strFile, boolean bUtf8) throws Exception
-    {
-        return new BufferedReader(bUtf8 ? new InputStreamReader(new FileInputStream(strFile), "UTF-8")
-                                        : new InputStreamReader(new FileInputStream(strFile)));
-    }
-
     // ---- 파일 열기 ----
 
+    static Charset charsetOf(boolean bUtf8)
+    {
+        return bUtf8 ? Charset.forName("UTF-8") : Charset.defaultCharset();
+    }
+
+    static final long LOAD_PUBLISH_MS = 200;   // 로딩 중 화면에 알리는 간격
+
+    /**
+     * 파일을 연다. 줄 위치만 빠르게 색인하면서 읽은 만큼 바로 화면에 보여주고(부분 로딩),
+     * 에러 위치 계산·필터 판정은 FilterEngine이 색인된 줄을 이어서 처리한다.
+     */
     void parseFile(final File file, final boolean bUtf8)
     {
         m_listener.onTitle(file.getPath());
-        final int nGeneration = m_nParseGeneration.incrementAndGet();
+        final FileLogStore store = new FileLogStore(file, charsetOf(bUtf8), m_parser, 0);
+        m_engine.setStore(store);
         new Thread(new Runnable()
         {
             public void run()
             {
-                try(BufferedReader br = openReader(file.getPath(), bUtf8))
+                long nStart       = System.currentTimeMillis();
+                long nLastPublish = 0;
+                long nFileLen     = Math.max(1, file.length());
+                m_listener.onStatus("Loading");
+                try
                 {
-                    String strLine;
-
-                    m_listener.onStatus("Parsing");
-                    m_engine.clearData();
-                    while ((strLine = br.readLine()) != null)
+                    // 다른 파일을 열면(목록이 교체되면) 멈춘다.
+                    while(m_engine.getStore() == store)
                     {
-                        if("".equals(strLine.trim())) continue;
-                        LogInfo logInfo = m_parser.parseLog(strLine);
-                        // 세대 확인과 추가를 같은 락 안에서 해야, 새 파일의 clearData() 뒤에 이전 줄이 섞이지 않는다.
-                        synchronized(m_engine.LOCK)
+                        if(store.indexNext(true) < 0)
+                            break;
+                        long nNow = System.currentTimeMillis();
+                        if(nNow - nLastPublish >= LOAD_PUBLISH_MS)
                         {
-                            if(nGeneration != m_nParseGeneration.get())
-                                return;     // 그 사이 다른 파일을 열었음
-                            m_engine.addNext(logInfo);
+                            nLastPublish = nNow;
+                            m_engine.notifyIndexed();
+                            m_listener.onStatus(String.format("Loading %d%% (%,d lines)", store.indexedEnd() * 100 / nFileLen, store.size()));
                         }
                     }
-                    m_engine.requestFilter();
-                    m_listener.onStatus("Parse complete");
+                    if(m_engine.getStore() != store)
+                        return;
+                    store.m_bComplete = true;
+                    boolean bAnalyzing = store.size() >= FilterEngine.PROGRESS_MIN_LINES && m_engine.m_nAnalyzed < store.size();   // 작은 파일은 Ready를 따로 알리지 않음
+                    m_listener.onStatus(String.format("Loaded %,d lines (%.1fs)%s", store.size(), (System.currentTimeMillis() - nStart) / 1000.0, bAnalyzing ? " · analyzing" : ""));
+                    m_engine.notifyIndexed();     // 분석이 끝나면 FilterEngine이 Ready를 알린다
                 }
                 catch(Exception e)
                 {
                     T.e(e);
-                    m_listener.onStatus("Parse error : " + e.getMessage());
+                    m_listener.onStatus("Load error : " + e.getMessage());
                 }
             }
-        }, "ParseFile").start();
+        }, "LoadFile").start();
     }
-
     // ---- adb 실시간 수집 ----
 
     boolean isRunning()
@@ -143,7 +149,7 @@ public class LogSource
 
     void startProcess(final String strCmd, final boolean bUtf8)
     {
-        m_engine.clearData();
+        m_engine.setStore(new MemoryLogStore(m_parser));
         m_strLogFileName = makeFilename();
         final String strFile = m_strLogFileName;
 
@@ -252,34 +258,33 @@ public class LogSource
             m_listener.onStatus("adb 종료 (" + nLines + "줄)");
     }
 
-    // adb 출력이 기록되는 파일을 50ms마다 이어 읽어 FilterEngine에 추가한다.
+    // adb 출력이 기록되는 파일을 전체 목록으로 쓰고, 50ms마다 늘어난 부분을 색인한다.
+    // ('\n'으로 끝난 줄까지만 색인하므로 기록 중인 마지막 줄은 다음에 읽는다)
     void startFileParse(final String strFile, final boolean bUtf8)
     {
+        final File file = new File(strFile);
+        m_engine.setStore(new FileLogStore(file, charsetOf(bUtf8), m_parser, 0));
         m_thWatchFile = new Thread(new Runnable()
         {
             public void run()
             {
                 m_listener.onTitle(strFile);
-                try(BufferedReader br = openReader(strFile, bUtf8))
+                try
                 {
-                    String strLine;
                     while(true)
                     {
                         Thread.sleep(50);
-                        if(m_engine.isBusy() || m_bPause)
+                        if(m_bPause)
                             continue;
-
-                        int nAddCount = 0;
-                        synchronized(FILE_LOCK)
-                        {
-                            while (!m_bPause && (strLine = br.readLine()) != null)
-                            {
-                                if("".equals(strLine.trim())) continue;
-                                m_engine.addNext(m_parser.parseLog(strLine));
-                                nAddCount++;
-                            }
-                        }
-                        if(nAddCount > 0)
+                        // Clear하면 같은 파일의 이후 부분을 보는 새 목록으로 바뀐다. 다른 파일을 열었으면 건드리지 않는다.
+                        LogStore current = m_engine.getStore();
+                        if(!(current instanceof FileLogStore) || !((FileLogStore)current).m_file.equals(file))
+                            continue;
+                        FileLogStore store = (FileLogStore)current;
+                        int nAdded = 0, n;
+                        while(!m_bPause && (n = store.indexNext(false)) >= 0)
+                            nAdded += n;
+                        if(nAdded > 0)
                             m_engine.notifyAppended();
                     }
                 }
@@ -297,7 +302,6 @@ public class LogSource
         }, "WatchFile");
         m_thWatchFile.start();
     }
-
     void stopProcess()
     {
         Process process   = m_process;
