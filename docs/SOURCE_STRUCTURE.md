@@ -30,6 +30,7 @@ java -cp bin LogFilterMain [로그파일]
 
 | 구분 | 파일 | 내용 | 상태 |
 |---|---|---|---|
+| 성능 개선 | `FilterToken`(신규) · `LogInfo` · `LogCatParser` · `LogTable` · `LogFilterMain` | 2026-10-06: 필터 토큰 캐시(P2), 레벨·줄 번호 int 필드(P3/P4), 렌더러 조기 반환과 Font/Color 재사용(P1), 입력 디바운스 250ms(P5), Color 재사용(P8), DocumentListener 통합(S4) | 적용됨 |
 | 버그 수정 | `LogFilterMain` · `LogCatParser` · `LogTable` · `T` | 2026-10-04: B1(`==` → `equals`), B2(메시지의 `'` 보존), B3·B9(HTML 이스케이프, 대소문자 무시 하이라이트), B10(날짜 포맷), 안내 문구의 ini 키 이름(`INI_HIGILIGHT_n`) | 적용됨 |
 | 기능 추가 | `LogFilterMain.java` | `installUndoRedo()`: 필터 입력창 6개와 Highlight 입력창에 Ctrl+Z / Ctrl+Y | 적용됨 |
 | 기능 추가 | `LogFilterMain.java` | `installInputHistory()`: 입력창별 최근 입력 10개, ↑/↓로 불러오기 | **호출 안 됨** |
@@ -372,14 +373,14 @@ startProcess()
 
 | # | 효과 | 대상 | 현재 | 개선안 |
 |---|---|---|---|---|
-| P1 | ★★★ | 셀 렌더러 | 셀을 그릴 때마다 `replace`, `toLowerCase`, `StringTokenizer`, HTML 문자열 생성과 HTML 렌더링(무거움), `new Color()`, `deriveFont()`를 실행 | 하이라이트/Find가 일치할 때만 HTML 사용, 필터 토큰을 미리 소문자화·분리해 캐시, Font/Color는 필드로 재사용 |
-| P2 | ★★★ | 필터 판정 | 행마다, 필터마다 `StringTokenizer`를 새로 만들고 필터 문자열과 필드 모두 `toLowerCase()` | 필터가 바뀔 때 토큰을 `String[]`(소문자)로 한 번만 준비. 필드의 소문자 값은 LogInfo에 지연 캐시 |
-| P3 | ★★ | 레벨 비교 | `m_strLogLV.equals("E") \|\| equals("ERROR")`를 곳곳에서 반복 | 파싱할 때 `int m_nLogLV`를 저장(`getLogLV()`가 이미 있음)하고 비트 연산으로 판정 |
-| P4 | ★★ | 줄 번호 | `Integer.parseInt(m_strLine)`을 반복 호출 | `int m_nLine` 필드를 추가하고 표시할 때만 문자열로 변환 |
-| P5 | ★★ | 입력 즉시 재필터 | 키를 누를 때마다 전체 로그를 재필터 | `javax.swing.Timer`로 200~300ms 디바운스 |
+| P1 ✅ | ★★★ | 셀 렌더러 | 셀을 그릴 때마다 `replace`, `toLowerCase`, `StringTokenizer`, HTML 문자열 생성과 HTML 렌더링(무거움), `new Color()`, `deriveFont()`를 실행 | 하이라이트/Find가 일치할 때만 HTML 사용, 필터 토큰을 미리 소문자화·분리해 캐시, Font/Color는 필드로 재사용 |
+| P2 ✅ | ★★★ | 필터 판정 | 행마다, 필터마다 `StringTokenizer`를 새로 만들고 필터 문자열과 필드 모두 `toLowerCase()` | 필터가 바뀔 때 토큰을 `String[]`(소문자)로 한 번만 준비. 필드의 소문자 값은 LogInfo에 지연 캐시 |
+| P3 ✅ | ★★ | 레벨 비교 | `m_strLogLV.equals("E") \|\| equals("ERROR")`를 곳곳에서 반복 | 파싱할 때 `int m_nLogLV`를 저장(`getLogLV()`가 이미 있음)하고 비트 연산으로 판정 |
+| P4 ✅ | ★★ | 줄 번호 | `Integer.parseInt(m_strLine)`을 반복 호출 | `int m_nLine` 필드를 추가하고 표시할 때만 문자열로 변환 |
+| P5 ✅ | ★★ | 입력 즉시 재필터 | 키를 누를 때마다 전체 로그를 재필터 | `javax.swing.Timer`로 200~300ms 디바운스 |
 | P6 | ★★ | 실시간 수집 | adb → 파일 기록(줄마다 flush) → 50ms 폴링으로 다시 읽기(디스크 I/O 2배) | stdout을 바로 파싱하고 파일 기록은 버퍼링(주기적 flush) |
 | P7 | ★★ | 테이블 갱신 | 행이 추가될 때마다 `fireTableRowsUpdated(0, 전체)`와 `validate`, `repaint` | `fireTableRowsInserted(old, new-1)`로 증분 통지 |
-| P8 | ★ | Color 객체 | 줄마다 `getColor()`가 `new Color()`를 생성 | 레벨별 Color 인스턴스 캐시(메모리와 GC 절감) |
+| P8 ✅ | ★ | Color 객체 | 줄마다 `getColor()`가 `new Color()`를 생성 | 레벨별 Color 인스턴스 캐시(메모리와 GC 절감) |
 | P9 | ★ | 인디케이터 | 스크롤할 때마다 북마크/에러 맵 전체를 순회해 다시 그림 | 픽셀 단위로 모은 결과나 BufferedImage를 캐시하고 데이터가 바뀔 때만 다시 그림 |
 | P10 | ★ | `runFilter()` | EDT에서 `Thread.sleep(100)` 바쁜 대기 | 대기 제거(상태 플래그와 notify만으로 충분) |
 | P11 | ★ | `T` 로그 | 호출마다 `new Exception()`(스택 수집)과 `SimpleDateFormat` 생성, 항상 켜져 있음 | 릴리스에서는 비활성화하거나 `misEnabled`를 먼저 검사(이미 검사 중이므로 기본값을 false로) |
@@ -391,7 +392,7 @@ startProcess()
 | S1 | `LogFilterMain`(2,236줄) | 역할별로 분리: `MainFrame`(UI), `LogSource`(파일/adb 입력), `FilterEngine`(필터 스레드와 판정), `AppConfig`(ini 로드/저장) |
 | S2 | 중복된 필터 판정 | `addLogInfo()`와 필터 스레드에 같은 판정 로직이 복사돼 있다 → `boolean accept(LogInfo)` 하나로 통합 |
 | S3 | `check*Filter()` 6개 | 공통 헬퍼 `matchAny(String field, String[] tokens)`로 통합 |
-| S4 | DocumentListener | `changedUpdate`, `insertUpdate`, `removeUpdate`의 본문이 똑같다 → `onFilterTextChanged(DocumentEvent)` 하나로 |
+| S4 ✅ | DocumentListener | `changedUpdate`, `insertUpdate`, `removeUpdate`의 본문이 똑같다 → `onFilterTextChanged(DocumentEvent)` 하나로 |
 | S5 | 필터 상태 위치 | 필터 문자열을 `LogTable`(뷰)에서 `FilterEngine`(모델)으로 이동 |
 | S6 | `gotoNext/PreBookmark` | 표시 리스트를 선형 탐색 → 정렬된 북마크 index 목록에서 이진 탐색 |
 | S7 | `T.java` | 거의 같은 메서드 8개 → `log(level, msg)` 하나로 |
@@ -419,7 +420,14 @@ startProcess()
 ## 9. 권장 진행 순서
 
 1. ✅ **완료(2026-10-04) — 바로 고칠 버그:** B1(`==` 비교), B2(따옴표 소실), B3(HTML 이스케이프), B10(날짜 포맷), 안내 문구의 `INI_HIGILIGHT` 키 이름. B3를 고치면서 B9도 함께 해결했다.
-2. **성능 개선(효과 큼):** P1(렌더러), P2(필터 토큰 캐시), P3/P4(int 필드), P5(디바운스)
+2. ✅ **완료(2026-10-06) — 성능 개선:** P1(렌더러), P2(필터 토큰 캐시), P3/P4(int 필드), P5(디바운스), P8, S4. 30만 줄 측정(JDK 8, 5회 중 최소값):
+
+   | 항목 | 이전 | 이후 | 개선 |
+   |---|---:|---:|---:|
+   | 파싱 30만 줄 | 825 ms | 596 ms | −28% |
+   | 필터 판정 30만 줄 | 391 ms | 112 ms | 3.5배 |
+   | 셀 렌더링 5만 회, 필터 없음 | 214 ms | 6.5 ms | 33배 |
+   | 셀 렌더링 5만 회, 하이라이트+Find | 234 ms | 154 ms | −34% |
 3. **안정성:** B4/B5/B8을 S8(EDT 반영)과 동기화 정리로 함께 해결, B6(adb devices 비동기화), B7/S9(설정 기본값)
 4. **구조 개선:** 죽은 코드 제거 → S2/S3/S4 중복 제거 → S1 클래스 분리
 5. **저장소 정리:** 소스 인코딩을 UTF-8로 통일하고 Eclipse 설정(`encoding/<project>`)도 맞춘 뒤, 로컬 변경분(1.1)을 GitHub에 커밋

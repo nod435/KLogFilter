@@ -42,7 +42,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
-import java.util.StringTokenizer;
 
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -515,7 +514,7 @@ public class LogFilterMain extends JFrame implements INotiEvent
     void addDesc(String strMessage)
     {
         LogInfo logInfo = new LogInfo();
-        logInfo.m_strLine = "" + (m_arLogInfoAll.size() + 1);
+        logInfo.setLine(m_arLogInfoAll.size() + 1);
         logInfo.m_strMessage = strMessage;
         m_arLogInfoAll.add(logInfo);
     }
@@ -719,8 +718,8 @@ public class LogFilterMain extends JFrame implements INotiEvent
             m_tbLogTable.setTagLength( logInfo.m_strTag.length() );
             m_arLogInfoAll.add(logInfo);
 //            addTagList(logInfo.m_strTag);
-            if(logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("ERROR"))
-                m_hmErrorAll.put(Integer.parseInt(logInfo.m_strLine) - 1, Integer.parseInt(logInfo.m_strLine) - 1);
+            if(logInfo.isError())
+                m_hmErrorAll.put(logInfo.m_nLine - 1, logInfo.m_nLine - 1);
 
             if(m_bUserFilter)
             {
@@ -730,16 +729,16 @@ public class LogFilterMain extends JFrame implements INotiEvent
                     if(logInfo.m_bMarked && m_ipIndicator.m_chBookmark.isSelected())
                     {
                         bAddFilteredArray = true;
-                        m_hmBookmarkFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
-                        if(logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("ERROR"))
-                            m_hmErrorFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
+                        m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
+                        if(logInfo.isError())
+                            m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
                     }
-                    if((logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("ERROR")) && m_ipIndicator.m_chError.isSelected())
+                    if(logInfo.isError() && m_ipIndicator.m_chError.isSelected())
                     {
                         bAddFilteredArray = true;
-                        m_hmErrorFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
+                        m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
                         if(logInfo.m_bMarked)
-                            m_hmBookmarkFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
+                            m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
                     }
 
                     if(bAddFilteredArray) m_arLogInfoFiltered.add(logInfo);
@@ -754,9 +753,9 @@ public class LogFilterMain extends JFrame implements INotiEvent
                 {
                     m_arLogInfoFiltered.add(logInfo);
                     if(logInfo.m_bMarked)
-                        m_hmBookmarkFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
-                    if(logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("ERROR"))
-                        m_hmErrorFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
+                        m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
+                    if(logInfo.isError())
+                        m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
                 }
             }
         }
@@ -1354,7 +1353,7 @@ public class LogFilterMain extends JFrame implements INotiEvent
                         if(strLine != null && !"".equals(strLine.trim()))
                         {
                             LogInfo logInfo = m_iLogParser.parseLog(strLine);
-                            logInfo.m_strLine = "" + nIndex++;
+                            logInfo.setLine(nIndex++);
                             addLogInfo(logInfo);
                         }
                     }
@@ -1506,7 +1505,12 @@ public class LogFilterMain extends JFrame implements INotiEvent
         if(checkBox.equals(m_chkEnableRemoveTag))
             m_tbLogTable.SetFilterRemoveTag(checkBox.isSelected() ? m_tfRemoveTag.getText() : "");
         if(checkBox.equals(m_chkEnableHighlight))
+        {
+            // 하이라이트는 표시만 바뀌므로 재필터 없이 다시 그린다.
             m_tbLogTable.SetHighlight(checkBox.isSelected() ? m_tfHighlight.getText() : "");
+            m_tbLogTable.repaint();
+            return;
+        }
         m_nChangedFilter = STATUS_CHANGE;
         runFilter();
     }
@@ -1660,7 +1664,7 @@ public class LogFilterMain extends JFrame implements INotiEvent
                                 if(strLine != null && !"".equals(strLine.trim()))
                                 {
                                     LogInfo logInfo = m_iLogParser.parseLog(strLine);
-                                    logInfo.m_strLine = "" + nLine++;
+                                    logInfo.setLine(nLine++);
                                     addLogInfo(logInfo);
                                     nAddCount++;
                                 }
@@ -1785,16 +1789,16 @@ public class LogFilterMain extends JFrame implements INotiEvent
                                     if(logInfo.m_bMarked && m_ipIndicator.m_chBookmark.isSelected())
                                     {
                                         bAddFilteredArray = true;
-                                        m_hmBookmarkFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
-                                        if(logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("ERROR"))
-                                            m_hmErrorFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
+                                        m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
+                                        if(logInfo.isError())
+                                            m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
                                     }
-                                    if((logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("ERROR")) && m_ipIndicator.m_chError.isSelected())
+                                    if(logInfo.isError() && m_ipIndicator.m_chError.isSelected())
                                     {
                                         bAddFilteredArray = true;
-                                        m_hmErrorFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
+                                        m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
                                         if(logInfo.m_bMarked)
-                                            m_hmBookmarkFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
+                                            m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
                                     }
 
                                     if(bAddFilteredArray) m_arLogInfoFiltered.add(logInfo);
@@ -1809,9 +1813,9 @@ public class LogFilterMain extends JFrame implements INotiEvent
                                 {
                                     m_arLogInfoFiltered.add(logInfo);
                                     if(logInfo.m_bMarked)
-                                        m_hmBookmarkFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
-                                    if(logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("ERROR"))
-                                        m_hmErrorFiltered.put(Integer.parseInt(logInfo.m_strLine) - 1, m_arLogInfoFiltered.size());
+                                        m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
+                                    if(logInfo.isError())
+                                        m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
                                 }
                             }
                             if(m_nChangedFilter == STATUS_PARSING)
@@ -1884,114 +1888,55 @@ public class LogFilterMain extends JFrame implements INotiEvent
         setProcessBtn(true);
     }
 
+    // 레벨은 파싱할 때 m_nLogLV(비트)로 계산해 두었으므로 비트 연산으로 판정한다.
+    // 레벨이 없는 줄(LOG_LV_NONE)은 모든 레벨이 선택된 경우에만 보인다.
     boolean checkLogLVFilter(LogInfo logInfo)
     {
         if(m_nFilterLogLV == LogInfo.LOG_LV_ALL)
             return true;
-        if((m_nFilterLogLV & LogInfo.LOG_LV_VERBOSE) != 0 && (logInfo.m_strLogLV.equals("V") || logInfo.m_strLogLV.equals("VERBOSE")))
-            return true;
-        if((m_nFilterLogLV & LogInfo.LOG_LV_DEBUG) != 0 && (logInfo.m_strLogLV.equals("D") || logInfo.m_strLogLV.equals("DEBUG")))
-            return true;
-        if((m_nFilterLogLV & LogInfo.LOG_LV_INFO) != 0 && (logInfo.m_strLogLV.equals("I") || logInfo.m_strLogLV.equals("INFO")))
-            return true;
-        if((m_nFilterLogLV & LogInfo.LOG_LV_WARN) != 0 && (logInfo.m_strLogLV.equals("W") || logInfo.m_strLogLV.equals("WARN")))
-            return true;
-        if((m_nFilterLogLV & LogInfo.LOG_LV_ERROR) != 0 && (logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("ERROR")))
-            return true;
-        if((m_nFilterLogLV & LogInfo.LOG_LV_FATAL) != 0 && (logInfo.m_strLogLV.equals("F") || logInfo.m_strLogLV.equals("FATAL")))
-            return true;
+        return (m_nFilterLogLV & logInfo.m_nLogLV) != 0;
+    }
 
-        return false;
+    // Show 계열: 토큰이 없으면 통과, 있으면 하나라도 포함돼야 통과
+    static boolean matchShow(String strField, String[] arToken)
+    {
+        return arToken.length == 0 || FilterToken.matchAny(strField, arToken);
+    }
+
+    // Remove 계열: 토큰이 없으면 통과, 하나라도 포함되면 제외
+    static boolean matchRemove(String strField, String[] arToken)
+    {
+        return arToken.length == 0 || !FilterToken.matchAny(strField, arToken);
     }
 
     boolean checkPidFilter(LogInfo logInfo)
     {
-        if(m_tbLogTable.GetFilterShowPid().length() <= 0) return true;
-
-        StringTokenizer stk = new StringTokenizer(m_tbLogTable.GetFilterShowPid(), "|", false);
-
-        while(stk.hasMoreElements())
-        {
-            if(logInfo.m_strPid.toLowerCase().contains(stk.nextToken().toLowerCase()))
-                return true;
-        }
-
-        return false;
+        return matchShow(logInfo.m_strPid, m_tbLogTable.GetPidShowTokens());
     }
 
     boolean checkTidFilter(LogInfo logInfo)
     {
-        if(m_tbLogTable.GetFilterShowTid().length() <= 0) return true;
-
-        StringTokenizer stk = new StringTokenizer(m_tbLogTable.GetFilterShowTid(), "|", false);
-
-        while(stk.hasMoreElements())
-        {
-            if(logInfo.m_strThread.toLowerCase().contains(stk.nextToken().toLowerCase()))
-                return true;
-        }
-
-        return false;
+        return matchShow(logInfo.m_strThread, m_tbLogTable.GetTidShowTokens());
     }
 
     boolean checkFindFilter(LogInfo logInfo)
     {
-        if(m_tbLogTable.GetFilterFind().length() <= 0) return true;
-
-        StringTokenizer stk = new StringTokenizer(m_tbLogTable.GetFilterFind(), "|", false);
-
-        while(stk.hasMoreElements())
-        {
-            if(logInfo.m_strMessage.toLowerCase().contains(stk.nextToken().toLowerCase()))
-                return true;
-        }
-
-        return false;
+        return matchShow(logInfo.m_strMessage, m_tbLogTable.GetFindTokens());
     }
 
     boolean checkRemoveFilter(LogInfo logInfo)
     {
-        if(m_tbLogTable.GetFilterRemove().length() <= 0) return true;
-
-        StringTokenizer stk = new StringTokenizer(m_tbLogTable.GetFilterRemove(), "|", false);
-
-        while(stk.hasMoreElements())
-        {
-            if(logInfo.m_strMessage.toLowerCase().contains(stk.nextToken().toLowerCase()))
-                return false;
-        }
-
-        return true;
+        return matchRemove(logInfo.m_strMessage, m_tbLogTable.GetRemoveTokens());
     }
 
     boolean checkShowTagFilter(LogInfo logInfo)
     {
-        if(m_tbLogTable.GetFilterShowTag().length() <= 0) return true;
-
-        StringTokenizer stk = new StringTokenizer(m_tbLogTable.GetFilterShowTag(), "|", false);
-
-        while(stk.hasMoreElements())
-        {
-            if(logInfo.m_strTag.toLowerCase().contains(stk.nextToken().toLowerCase()))
-                return true;
-        }
-
-        return false;
+        return matchShow(logInfo.m_strTag, m_tbLogTable.GetTagShowTokens());
     }
 
     boolean checkRemoveTagFilter(LogInfo logInfo)
     {
-        if(m_tbLogTable.GetFilterRemoveTag().length() <= 0) return true;
-
-        StringTokenizer stk = new StringTokenizer(m_tbLogTable.GetFilterRemoveTag(), "|", false);
-
-        while(stk.hasMoreElements())
-        {
-            if(logInfo.m_strTag.toLowerCase().contains(stk.nextToken().toLowerCase()))
-                return false;
-        }
-
-        return true;
+        return matchRemove(logInfo.m_strTag, m_tbLogTable.GetTagRemoveTokens());
     }
 
     boolean checkUseFilter()
@@ -2081,88 +2026,71 @@ public class LogFilterMain extends JFrame implements INotiEvent
             m_tbLogTable.changeSelection(nRow, 0, false, false, bMove);
     }
 
+    // 필터 입력이 멈춘 뒤 이 시간(ms)이 지나면 재필터한다. (키를 누를 때마다 전체 재필터하지 않도록)
+    static final int FILTER_DEBOUNCE_MS = 250;
+
+    final javax.swing.Timer m_tmFilterDebounce = createFilterDebounceTimer();
+
+    javax.swing.Timer createFilterDebounceTimer()
+    {
+        javax.swing.Timer timer = new javax.swing.Timer(FILTER_DEBOUNCE_MS, new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e)
+            {
+                runFilter();
+            }
+        });
+        timer.setRepeats(false);
+        return timer;
+    }
+
+    // 필터/하이라이트 입력창 내용이 바뀌면 호출된다.
+    void onFilterTextChanged(DocumentEvent event)
+    {
+        try
+        {
+            javax.swing.text.Document doc = event.getDocument();
+            String strText = doc.getText(0, doc.getLength());
+
+            // 하이라이트는 표시만 바뀌므로 재필터 없이 다시 그린다.
+            if(doc.equals(m_tfHighlight.getDocument()))
+            {
+                if(m_chkEnableHighlight.isSelected())
+                {
+                    m_tbLogTable.SetHighlight(strText);
+                    m_tbLogTable.repaint();
+                }
+                return;
+            }
+
+            if(doc.equals(m_tfFindWord.getDocument()) && m_chkEnableFind.isSelected())
+                m_tbLogTable.setFilterFind(strText);
+            else if(doc.equals(m_tfRemoveWord.getDocument()) && m_chkEnableRemove.isSelected())
+                m_tbLogTable.SetFilterRemove(strText);
+            else if(doc.equals(m_tfShowPid.getDocument()) && m_chkEnableShowPid.isSelected())
+                m_tbLogTable.SetFilterShowPid(strText);
+            else if(doc.equals(m_tfShowTid.getDocument()) && m_chkEnableShowTid.isSelected())
+                m_tbLogTable.SetFilterShowTid(strText);
+            else if(doc.equals(m_tfShowTag.getDocument()) && m_chkEnableShowTag.isSelected())
+                m_tbLogTable.SetFilterShowTag(strText);
+            else if(doc.equals(m_tfRemoveTag.getDocument()) && m_chkEnableRemoveTag.isSelected())
+                m_tbLogTable.SetFilterRemoveTag(strText);
+
+            // 진행 중인 재필터는 바로 중단시키고, 새 재필터는 입력이 멈춘 뒤 시작한다.
+            m_nChangedFilter = STATUS_CHANGE;
+            m_tmFilterDebounce.restart();
+        }
+        catch(Exception e)
+        {
+            T.e(e);
+        }
+    }
+
     DocumentListener m_dlFilterListener = new DocumentListener()
     {
-        public void changedUpdate(DocumentEvent arg0)
-        {
-            try
-            {
-                if(arg0.getDocument().equals(m_tfFindWord.getDocument()) && m_chkEnableFind.isSelected())
-                    m_tbLogTable.setFilterFind(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfRemoveWord.getDocument()) && m_chkEnableRemove.isSelected())
-                    m_tbLogTable.SetFilterRemove(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfShowPid.getDocument()) && m_chkEnableShowPid.isSelected())
-                    m_tbLogTable.SetFilterShowPid(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfShowTid.getDocument()) && m_chkEnableShowTid.isSelected())
-                    m_tbLogTable.SetFilterShowTid(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfShowTag.getDocument()) && m_chkEnableShowTag.isSelected())
-                    m_tbLogTable.SetFilterShowTag(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfRemoveTag.getDocument()) && m_chkEnableRemoveTag.isSelected())
-                    m_tbLogTable.SetFilterRemoveTag(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfHighlight.getDocument()) && m_chkEnableHighlight.isSelected())
-                    m_tbLogTable.SetHighlight(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                m_nChangedFilter = STATUS_CHANGE;
-                runFilter();
-            }
-            catch(Exception e)
-            {
-                T.e(e);
-            }
-        }
-
-        public void insertUpdate(DocumentEvent arg0)
-        {
-            try
-            {
-                if(arg0.getDocument().equals(m_tfFindWord.getDocument()) && m_chkEnableFind.isSelected())
-                    m_tbLogTable.setFilterFind(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfRemoveWord.getDocument()) && m_chkEnableRemove.isSelected())
-                    m_tbLogTable.SetFilterRemove(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfShowPid.getDocument()) && m_chkEnableShowPid.isSelected())
-                    m_tbLogTable.SetFilterShowPid(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfShowTid.getDocument()) && m_chkEnableShowTid.isSelected())
-                    m_tbLogTable.SetFilterShowTid(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfShowTag.getDocument()) && m_chkEnableShowTag.isSelected())
-                    m_tbLogTable.SetFilterShowTag(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfRemoveTag.getDocument()) && m_chkEnableRemoveTag.isSelected())
-                    m_tbLogTable.SetFilterRemoveTag(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfHighlight.getDocument()) && m_chkEnableHighlight.isSelected())
-                    m_tbLogTable.SetHighlight(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                m_nChangedFilter = STATUS_CHANGE;
-                runFilter();
-            }
-            catch(Exception e)
-            {
-                T.e(e);
-            }
-        }
-
-        public void removeUpdate(DocumentEvent arg0)
-        {
-            try
-            {
-                if(arg0.getDocument().equals(m_tfFindWord.getDocument()) && m_chkEnableFind.isSelected())
-                    m_tbLogTable.setFilterFind(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfRemoveWord.getDocument()) && m_chkEnableRemove.isSelected())
-                    m_tbLogTable.SetFilterRemove(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfShowPid.getDocument()) && m_chkEnableShowPid.isSelected())
-                    m_tbLogTable.SetFilterShowPid(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfShowTid.getDocument()) && m_chkEnableShowTid.isSelected())
-                    m_tbLogTable.SetFilterShowTid(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfShowTag.getDocument()) && m_chkEnableShowTag.isSelected())
-                    m_tbLogTable.SetFilterShowTag(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfRemoveTag.getDocument()) && m_chkEnableRemoveTag.isSelected())
-                    m_tbLogTable.SetFilterRemoveTag(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                else if(arg0.getDocument().equals(m_tfHighlight.getDocument()) && m_chkEnableHighlight.isSelected())
-                    m_tbLogTable.SetHighlight(arg0.getDocument().getText(0, arg0.getDocument().getLength()));
-                m_nChangedFilter = STATUS_CHANGE;
-                runFilter();
-            }
-            catch(Exception e)
-            {
-                T.e(e);
-            }
-        }
+        public void changedUpdate(DocumentEvent arg0) { onFilterTextChanged(arg0); }
+        public void insertUpdate(DocumentEvent arg0)  { onFilterTextChanged(arg0); }
+        public void removeUpdate(DocumentEvent arg0)  { onFilterTextChanged(arg0); }
     };
 
     ItemListener m_itemListener = new ItemListener() {

@@ -1,6 +1,7 @@
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
@@ -14,7 +15,6 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.StringTokenizer;
 
 import javax.swing.JComponent;
 import javax.swing.JTable;
@@ -41,6 +41,14 @@ public class LogTable extends JTable implements FocusListener, ActionListener
     String                                m_strTagRemove;
     String                                m_strFilterRemove;
     String                                m_strFilterFind;
+    // 위 필터 문자열을 '|'로 나눠 소문자로 바꿔 둔 토큰 (필터가 바뀔 때만 갱신, 필터 스레드에서 읽음)
+    volatile String[]                     m_arHighlightToken = FilterToken.EMPTY;
+    volatile String[]                     m_arPidShowToken   = FilterToken.EMPTY;
+    volatile String[]                     m_arTidShowToken   = FilterToken.EMPTY;
+    volatile String[]                     m_arTagShowToken   = FilterToken.EMPTY;
+    volatile String[]                     m_arTagRemoveToken = FilterToken.EMPTY;
+    volatile String[]                     m_arRemoveToken    = FilterToken.EMPTY;
+    volatile String[]                     m_arFindToken      = FilterToken.EMPTY;
     float                                 m_fFontSize;
     boolean                               m_bAltPressed;
     int                                   m_nTagLength;
@@ -117,7 +125,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                     if (e.getClickCount() == 2){
                         LogInfo logInfo = ((LogFilterTableModel)getModel()).getRow(row);
                         logInfo.m_bMarked = !logInfo.m_bMarked;
-                        m_LogFilterMain.bookmarkItem(row, Integer.parseInt(logInfo.m_strLine) - 1, logInfo.m_bMarked);
+                        m_LogFilterMain.bookmarkItem(row, logInfo.m_nLine - 1, logInfo.m_bMarked);
                      }
                     else if(m_bAltPressed)
                     {
@@ -126,11 +134,11 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                         {
                             LogInfo logInfo = ((LogFilterTableModel)getModel()).getRow(row);
                             if(m_strTagShow.contains("|" + (String)logInfo.getData(colum)))
-                                m_strTagShow = m_strTagShow.replace("|" + (String)logInfo.getData(colum), "");
+                                SetFilterShowTag(m_strTagShow.replace("|" + (String)logInfo.getData(colum), ""));
                             else if(m_strTagShow.contains((String)logInfo.getData(colum)))
-                                m_strTagShow = m_strTagShow.replace((String)logInfo.getData(colum), "");
+                                SetFilterShowTag(m_strTagShow.replace((String)logInfo.getData(colum), ""));
                             else
-                                m_strTagShow += "|" + (String)logInfo.getData(colum);
+                                SetFilterShowTag(m_strTagShow + "|" + (String)logInfo.getData(colum));
                             m_LogFilterMain.notiEvent(new INotiEvent.EventParam(INotiEvent.EVENT_CHANGE_FILTER_SHOW_TAG));
                         }
                     }
@@ -145,7 +153,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                         {
                             T.d();
                             LogInfo logInfo = ((LogFilterTableModel)getModel()).getRow(row);
-                            m_strTagRemove += "|" + (String)logInfo.getData(colum);
+                            SetFilterRemoveTag(m_strTagRemove + "|" + (String)logInfo.getData(colum));
                             m_LogFilterMain.notiEvent(new INotiEvent.EventParam(INotiEvent.EVENT_CHANGE_FILTER_REMOVE_TAG));
                         }
                     }
@@ -319,7 +327,8 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                         {
                             LogInfo logInfo = ((LogFilterTableModel)getModel()).getRow(nIndex);
                             logInfo.m_bMarked = !logInfo.m_bMarked;
-                            m_LogFilterMain.bookmarkItem(nIndex, Integer.parseInt(logInfo.m_strLine) - 1, logInfo.m_bMarked);                        }
+                            m_LogFilterMain.bookmarkItem(nIndex, logInfo.m_nLine - 1, logInfo.m_bMarked);
+                        }
                         repaint();
                     }
                     else if(!e.isControlDown() && e.getID() == KeyEvent.KEY_PRESSED)
@@ -419,40 +428,57 @@ public class LogTable extends JTable implements FocusListener, ActionListener
 //        showColumn(LogFilterTableModel.COMUMN_THREAD, false);
     }
 
+    // 필터 문자열을 바꿀 때 토큰 배열도 함께 갱신한다. (토큰을 먼저 만들고 문자열을 나중에 넣어,
+    // 다른 스레드가 문자열 길이로 필터 사용 여부를 볼 때 토큰이 비어 있는 순간이 없도록 함)
     void setFilterFind(String strFind)
     {
+        m_arFindToken = FilterToken.split(strFind);
         m_strFilterFind = strFind;
     }
 
     void SetFilterRemove(String strRemove)
     {
+        m_arRemoveToken = FilterToken.split(strRemove);
         m_strFilterRemove = strRemove;
     }
 
     void SetFilterShowTag(String strShowTag)
     {
+        m_arTagShowToken = FilterToken.split(strShowTag);
         m_strTagShow = strShowTag;
     }
 
     void SetFilterShowPid(String strShowPid)
     {
+        m_arPidShowToken = FilterToken.split(strShowPid);
         m_strPidShow = strShowPid;
     }
 
     void SetFilterShowTid(String strShowTid)
     {
+        m_arTidShowToken = FilterToken.split(strShowTid);
         m_strTidShow = strShowTid;
     }
 
     void SetHighlight(String strHighlight)
     {
+        m_arHighlightToken = FilterToken.split(strHighlight);
         m_strHighlight = strHighlight;
     }
 
     void SetFilterRemoveTag(String strRemoveTag)
     {
+        m_arTagRemoveToken = FilterToken.split(strRemoveTag);
         m_strTagRemove = strRemoveTag;
     }
+
+    String[] GetFindTokens()      { return m_arFindToken; }
+    String[] GetRemoveTokens()    { return m_arRemoveToken; }
+    String[] GetTagShowTokens()   { return m_arTagShowToken; }
+    String[] GetTagRemoveTokens() { return m_arTagRemoveToken; }
+    String[] GetPidShowTokens()   { return m_arPidShowToken; }
+    String[] GetTidShowTokens()   { return m_arTidShowToken; }
+    String[] GetHighlightTokens() { return m_arHighlightToken; }
 
     public void setFontSize(int nFontSize)
     {
@@ -471,7 +497,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         if(column == LogFilterTableModel.COMUMN_BOOKMARK)
         {
             logInfo.m_strBookmark = (String)aValue;
-            m_LogFilterMain.setBookmark(Integer.parseInt(logInfo.m_strLine) - 1, (String)aValue);
+            m_LogFilterMain.setBookmark(logInfo.m_nLine - 1, (String)aValue);
         }
     }
 
@@ -496,47 +522,96 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                                                               row,
                                                               column);
             LogInfo logInfo = ((LogFilterTableModel)getModel()).getRow(row);
-            c.setFont(getFont().deriveFont(m_fFontSize));
+            c.setFont(cellFont());
             c.setForeground(logInfo.m_TextColor);
             if(isSelected)
             {
                 if(logInfo.m_bMarked)
-                    c.setBackground(new Color(LogColor.COLOR_BOOKMARK2));
+                    c.setBackground(bookmarkColor(LogColor.COLOR_BOOKMARK2));
             }
             else if(logInfo.m_bMarked)
-                c.setBackground(new Color(LogColor.COLOR_BOOKMARK));
+                c.setBackground(bookmarkColor(LogColor.COLOR_BOOKMARK));
             else
                 c.setBackground(Color.WHITE);
 
             return c;
         }
 
+        // 셀마다 deriveFont()/new Color()를 하지 않도록, 값이 바뀔 때만 다시 만든다.
+        Font     m_fontCell;
+        Font     m_fontBase;
+        float    m_fFontCellSize;
+        Color    m_colorBookmark;
+        String[] m_arHighlightColor;
+        String[] m_arHighlightSrc;
+
+        Font cellFont()
+        {
+            Font fontBase = getFont();
+            if(m_fontCell == null || m_fontBase != fontBase || m_fFontCellSize != m_fFontSize)
+            {
+                m_fontBase      = fontBase;
+                m_fFontCellSize = m_fFontSize;
+                m_fontCell      = fontBase.deriveFont(m_fFontSize);
+            }
+            return m_fontCell;
+        }
+
+        Color bookmarkColor(int nRGB)
+        {
+            if(m_colorBookmark == null || (m_colorBookmark.getRGB() & 0xFFFFFF) != (nRGB & 0xFFFFFF))
+                m_colorBookmark = new Color(nRGB);
+            return m_colorBookmark;
+        }
+
+        // LogColor.COLOR_HIGHLIGHT("FFFF" 형식) → "#FFFF" 배열. 원본 배열이 바뀔 때만 다시 만든다.
+        String[] highlightColors()
+        {
+            String[] arSrc = LogColor.COLOR_HIGHLIGHT;
+            if(m_arHighlightColor == null || m_arHighlightSrc != arSrc)
+            {
+                m_arHighlightSrc = arSrc;
+                if(arSrc != null && arSrc.length > 0)
+                {
+                    m_arHighlightColor = new String[arSrc.length];
+                    for(int i = 0; i < arSrc.length; i++)
+                        m_arHighlightColor[i] = "#" + arSrc[i];
+                }
+                else
+                    m_arHighlightColor = new String[] { "#00FF00" };
+            }
+            return m_arHighlightColor;
+        }
+
+        // 일반 텍스트(HTML 아님)로 표시할 때: 탭만 공백 4칸으로 바꾼다. 탭이 없으면 새 문자열을 만들지 않음.
+        String plainText(String strText)
+        {
+            return strText.indexOf('\t') < 0 ? strText : strText.replace("\t", "    ");
+        }
+
         String remakeData(int nIndex, String strText)
         {
             if(nIndex != LogFilterTableModel.COMUMN_MESSAGE && nIndex != LogFilterTableModel.COMUMN_TAG) return strText;
 
-            String strFind = nIndex == LogFilterTableModel.COMUMN_MESSAGE ? GetFilterFind() : GetFilterShowTag();
-            String[] arHighlightColor;
-            if(LogColor.COLOR_HIGHLIGHT != null && LogColor.COLOR_HIGHLIGHT.length > 0)
-            {
-                arHighlightColor = new String[LogColor.COLOR_HIGHLIGHT.length];
-                for(int i = 0; i < arHighlightColor.length; i++)
-                    arHighlightColor[i] = "#" + LogColor.COLOR_HIGHLIGHT[i];
-            }
-            else
-                arHighlightColor = new String[] { "#00FF00" };
+            String[] arFindToken      = nIndex == LogFilterTableModel.COMUMN_MESSAGE ? GetFindTokens() : GetTagShowTokens();
+            String[] arHighlightToken = GetHighlightTokens();
 
-            // 1) \uC6D0\uBB38\uC5D0\uC11C \uC77C\uCE58 \uAD6C\uAC04\uC744 \uAE00\uC790 \uB2E8\uC704\uB85C \uD45C\uC2DC (\uB300\uC18C\uBB38\uC790 \uBB34\uC2DC)
+            // 하이라이트/Find 토큰이 하나도 일치하지 않으면 배열·HTML을 만들지 않고 바로 반환
+            if(!FilterToken.matchAny(strText, arHighlightToken) && !FilterToken.matchAny(strText, arFindToken))
+                return plainText(strText);
+
+            // 1) 원문에서 일치 구간을 글자 단위로 표시 (대소문자 무시)
             String[] arBackground = new String[strText.length()];
             boolean[] arFind      = new boolean[strText.length()];
+            String strLower = strText.toLowerCase();
             m_bChanged = false;
-            markMatch(strText, GetHighlight(), arHighlightColor, arBackground, null);
-            markMatch(strText, strFind, null, null, arFind);
+            markMatch(strLower, arHighlightToken, highlightColors(), arBackground, null);
+            markMatch(strLower, arFindToken, null, null, arFind);
 
             if(!m_bChanged)
-                return strText.replace(" ", "\u00A0").replace("\t", "    ");
+                return plainText(strText);
 
-            // 2) \uAD6C\uAC04 \uC815\uBCF4\uB85C HTML\uC744 \uD55C \uBC88\uC5D0 \uC0DD\uC131 (\uC6D0\uBB38\uC758 &, <, >\uB294 \uC774\uC2A4\uCF00\uC774\uD504)
+            // 2) 구간 정보로 HTML을 한 번에 생성 (원문의 &, <, >는 이스케이프)
             StringBuilder sb = new StringBuilder(strText.length() * 2 + 64);
             sb.append("<html><nobr>");
             String strCurBg = null;
@@ -558,27 +633,24 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         }
 
         /**
-         * strFilter('|' \uAD6C\uBD84)\uC758 \uAC01 \uD1A0\uD070\uC774 strText\uC5D0 \uB098\uC624\uB294 \uC704\uCE58\uB97C \uD45C\uC2DC\uD55C\uB2E4.
-         * arBackground\uAC00 \uC788\uC73C\uBA74 \uD1A0\uD070\uBCC4 \uC0C9\uC0C1(arColor \uC21C\uD658)\uC744, arFind\uAC00 \uC788\uC73C\uBA74 true\uB97C \uAE30\uB85D\uD55C\uB2E4.
+         * 소문자 토큰(arToken)이 strLower(소문자로 바꾼 원문)에 나오는 위치를 표시한다.
+         * arBackground가 있으면 토큰별 색상(arColor 순환)을, arFind가 있으면 true를 기록한다.
          */
-        void markMatch(String strText, String strFilter, String[] arColor, String[] arBackground, boolean[] arFind)
+        void markMatch(String strLower, String[] arToken, String[] arColor, String[] arBackground, boolean[] arFind)
         {
-            if(strFilter == null || strFilter.length() <= 0) return;
-
-            String strLower = strText.toLowerCase();
-            StringTokenizer stk = new StringTokenizer(strFilter, "|");
+            int nLen = arBackground != null ? arBackground.length : arFind.length;
             int nColor = 0;
 
-            while (stk.hasMoreElements())
+            for(String strToken : arToken)
             {
-                String strToken = stk.nextToken().toLowerCase();
                 int nPos = strLower.indexOf(strToken);
                 if(nPos < 0) continue;
 
                 String strColor = arColor != null ? arColor[nColor % arColor.length] : null;
                 while(nPos >= 0)
                 {
-                    for(int i = nPos; i < nPos + strToken.length(); i++)
+                    // 소문자 변환으로 길이가 달라지는 드문 문자에 대비해 배열 범위를 넘지 않게 제한
+                    for(int i = nPos; i < Math.min(nPos + strToken.length(), nLen); i++)
                     {
                         if(arBackground != null) arBackground[i] = strColor;
                         if(arFind != null)       arFind[i] = true;

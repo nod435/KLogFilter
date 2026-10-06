@@ -1,5 +1,6 @@
 import java.awt.Color;
 import java.util.StringTokenizer;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 
@@ -17,28 +18,42 @@ public class LogCatParser implements ILogParser
     final String TOKEN_PID   = "/() ";
     final String TOKEN_REST    = "";    // 구분자 없음 → nextToken()이 남은 문자열 전체를 반환
     
+    // 줄마다 Color를 새로 만들지 않도록 RGB 값별로 재사용 (파싱 스레드가 여럿일 수 있어 ConcurrentHashMap)
+    final ConcurrentHashMap<Integer, Color> m_hmColor = new ConcurrentHashMap<Integer, Color>();
+
+    Color colorOf(int nRGB)
+    {
+        Color color = m_hmColor.get(nRGB);
+        if(color == null)
+        {
+            color = new Color(nRGB);
+            m_hmColor.put(nRGB, color);
+        }
+        return color;
+    }
+
     public Color getColor(LogInfo logInfo)
     {
         if(logInfo.m_strLogLV == null) return Color.BLACK;
-        
+
         if(logInfo.m_strLogLV.equals("FATAL") || logInfo.m_strLogLV.equals("F"))
-            return new Color(LogColor.COLOR_FATAL);
+            return colorOf(LogColor.COLOR_FATAL);
         if(logInfo.m_strLogLV.equals("ERROR") || logInfo.m_strLogLV.equals("E") || logInfo.m_strLogLV.equals("3"))
-            return new Color(LogColor.COLOR_ERROR);
+            return colorOf(LogColor.COLOR_ERROR);
         else if(logInfo.m_strLogLV.equals("WARN") || logInfo.m_strLogLV.equals("W") || logInfo.m_strLogLV.equals("4"))
-            return new Color(LogColor.COLOR_WARN);
+            return colorOf(LogColor.COLOR_WARN);
         else if(logInfo.m_strLogLV.equals("INFO") || logInfo.m_strLogLV.equals("I") || logInfo.m_strLogLV.equals("6"))
-            return new Color(LogColor.COLOR_INFO);
+            return colorOf(LogColor.COLOR_INFO);
         else if(logInfo.m_strLogLV.equals("DEBUG") || logInfo.m_strLogLV.equals("D") || logInfo.m_strLogLV.equals("7"))
-            return new Color(LogColor.COLOR_DEBUG);
+            return colorOf(LogColor.COLOR_DEBUG);
         else if(logInfo.m_strLogLV.equals("0"))
-            return new Color(LogColor.COLOR_0);
+            return colorOf(LogColor.COLOR_0);
         else if(logInfo.m_strLogLV.equals("1"))
-            return new Color(LogColor.COLOR_1);
+            return colorOf(LogColor.COLOR_1);
         else if(logInfo.m_strLogLV.equals("2"))
-            return new Color(LogColor.COLOR_2);
+            return colorOf(LogColor.COLOR_2);
         else if(logInfo.m_strLogLV.equals("5"))
-            return new Color(LogColor.COLOR_5);
+            return colorOf(LogColor.COLOR_5);
         else
             return Color.BLACK;
     }
@@ -190,17 +205,20 @@ public class LogCatParser implements ILogParser
 
     public LogInfo parseLog(String strText)
     {
+        LogInfo logInfo;
         if(isNormal(strText))
-            return getNormal(strText);
+            logInfo = getNormal(strText);
         else if(isThreadTime(strText))
-            return getThreadTime(strText);
+            logInfo = getThreadTime(strText);
         else if(isKernel(strText))
-            return getKernel(strText);
+            logInfo = getKernel(strText);
         else
         {
-            LogInfo logInfo = new LogInfo();
+            logInfo = new LogInfo();
             logInfo.m_strMessage = strText;
-            return logInfo;
         }
+        // 필터 판정 때 문자열 비교 대신 비트 연산을 쓰도록 레벨을 미리 계산
+        logInfo.m_nLogLV = LogInfo.levelOf(logInfo.m_strLogLV);
+        return logInfo;
     }
 }
