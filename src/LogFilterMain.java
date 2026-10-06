@@ -328,9 +328,6 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         addDesc("[Copy]");
         addDesc("Ctrl+c : row copy");
         addDesc("right click : cloumn copy");
-        addDesc("");
-        addDesc("[New version]");
-        addDesc("http://blog.naver.com/iookill/140135139931");
     }
 
     // ---- 화면 반영 (항상 EDT에서 실행) ----
