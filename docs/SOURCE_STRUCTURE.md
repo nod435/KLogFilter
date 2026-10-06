@@ -30,6 +30,7 @@ java -cp bin LogFilterMain [로그파일]
 
 | 구분 | 파일 | 내용 | 상태 |
 |---|---|---|---|
+| 기능 보완 | `LogCatParser` · `LogFilterMain` · `LogInfo` | 2026-10-06: 파서 포맷 확장과 threadtime 빠른 경로(B13), 입력 히스토리 ↑/↓, 모든 열기 경로에서 Recent 추가 | 적용됨 |
 | 구조 개선 | `AppConfig`·`FilterEngine`·`LogSource`(신규) 외 전체 | 2026-10-06: `LogFilterMain` 화면 전용 분리(S1), 필터 상태 이동(S5), 북마크 이동 TreeSet(S6), `T` 정리(S7), EDT 대기 제거(P10), 미사용 클래스 7개·주석 코드 삭제 | 적용됨 |
 | Java 버전 | `.classpath`·JDT 설정 | 2026-10-06: JavaSE-1.6 → 1.8 | 적용됨 |
 | 안정성 | `LogFilterMain` · `LogFilterTableModel` · `IndicatorPanel` · `RecentFileMenu` | 2026-10-06: EDT 반영(`refreshTable`), 목록 교체 방식 `clearData`, 모델 행 수 고정, `ConcurrentHashMap`, 재필터 요청 플래그, 파싱 세대 번호, adb devices 백그라운드, 설정 키별 기본값, try-with-resources | 적용됨 |
@@ -56,14 +57,14 @@ java -cp bin LogFilterMain [로그파일]
 
 | 파일 | 줄 수 | 역할 |
 |---|---:|---|
-| [LogFilterMain.java](../src/LogFilterMain.java) | 1330 (원본 2084) | 메인 프레임. 화면 구성과 이벤트 연결만 담당, 동작은 아래 세 클래스에 위임 |
+| [LogFilterMain.java](../src/LogFilterMain.java) | 1346 (원본 2084) | 메인 프레임. 화면 구성과 이벤트 연결만 담당, 동작은 아래 세 클래스에 위임 |
 | [FilterEngine.java](../src/FilterEngine.java) | 339 | **신규.** 로그 목록·북마크/에러 맵, 필터 조건과 토큰, 재필터 스레드 |
 | [LogSource.java](../src/LogSource.java) | 269 | **신규.** 파일 파싱, adb 실행·기록 파일 이어 읽기, 장치 목록 |
 | [AppConfig.java](../src/AppConfig.java) | 249 | **신규.** 설정 파일(*.ini) 읽기/쓰기, 키별 기본값 |
 | [LogTable.java](../src/LogTable.java) | 664 | 로그 테이블. 셀 렌더링(하이라이트), 키/마우스, 복사, 북마크 이동 |
 | [IndicatorPanel.java](../src/IndicatorPanel.java) | 222 | 북마크/에러 위치 바, 북마크만/에러만 보기 |
 | [LogFilterTableModel.java](../src/LogFilterTableModel.java) | 76 | 테이블 모델, 컬럼 정의/폭, EDT에서 알린 행 수 |
-| [LogCatParser.java](../src/LogCatParser.java) | 204 | 로그 한 줄 → `LogInfo` (time / threadtime / kernel) |
+| [LogCatParser.java](../src/LogCatParser.java) | 230 | 로그 한 줄 → `LogInfo` (threadtime · time · year · uid · brief · process · tag · kernel/dmesg) |
 | [ILogParser.java](../src/ILogParser.java) | 15 | 파서 인터페이스 |
 | [LogInfo.java](../src/LogInfo.java) | 94 | 로그 한 줄(VO), 레벨 비트, 줄 번호·레벨 int |
 | [FilterToken.java](../src/FilterToken.java) | 51 | 필터 토큰 분리, 대소문자 무시 부분 일치 |
@@ -142,7 +143,8 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 - **AppConfig:** `load()`/`save()`, `loadCmds()`, `loadColors()`/`saveColors()`, `intOf`/`hexOf`(키별 기본값).
 - **LogTable:** 하이라이트 보관, `setFilterEngine()`, Alt+클릭 → `FilterEngine.setShowTag/RemoveTag`, `gotoBookmark()`(TreeSet), `LogCellRenderer`(조기 반환, 이스케이프, Font/Color 재사용).
 - **LogFilterTableModel:** `setData()`/`syncRowCount()`(EDT 전용), `getData()`. **IndicatorPanel:** `Map` 값 순회로 그리기, 재필터 중 생략.
-- **LogCatParser / LogInfo / FilterToken / RecentFileMenu / LogColor / INotiEvent / T:** 역할은 이전과 같다. `T`는 `log()` 하나로 정리(S7).
+- **LogCatParser:** 첫 글자로 후보 형식을 좁히고, threadtime 기본형은 정규식 없이 직접 나눈다(빠른 경로). 나머지 형식(time, year, uid, brief, process, tag, kernel/dmesg)은 미리 컴파일한 정규식. 레벨 `A`(Assert)는 Fatal로 취급.
+- **LogInfo / FilterToken / RecentFileMenu / LogColor / INotiEvent / T:** 역할은 이전과 같다. `T`는 `log()` 하나로 정리(S7).
 
 ---
 ## 6. 설정 파일 (`KLogFilter/` 작업 디렉터리 기준)
@@ -180,7 +182,7 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 | B10 | 🟡 ✅ 수정됨 | [T.java:151](../src/T.java#L151) | 날짜 포맷이 `yyyy-mm-dd hh`이다. `mm`(분)이 월 자리에 들어가고 `hh`는 12시간제라서, 콘솔 로그에 `2026-28-02` 같은 날짜가 찍힌다. → `yyyy-MM-dd HH` |
 | B11 | 🟡 ✅ 수정됨 | `loadXxx`, `saveXxx`, `RecentFileMenu` | `FileInputStream`, `FileOutputStream`, `FileReader`를 close하지 않는다(리소스 누수). |
 | B12 | 🟡 | `LogFilterTableModel.setColumnWidth` | 기본값보다 좁힌 컬럼 폭은 저장해도 다음 실행 때 무시된다. |
-| B13 | 🟡 | LogCatParser | 고정 위치로 형식을 판별해서 `-v year`, `-v uid`, 최신 logcat 포맷, 공백이나 `/`가 들어간 태그를 제대로 파싱하지 못한다. threadtime 형식에서는 Tag에 `:`가 붙고 Message 앞에 공백이 남는다. |
+| B13 | 🟡 ✅ 수정됨 | LogCatParser | 고정 위치로 형식을 판별해서 `-v year`, `-v uid`, 최신 logcat 포맷, 공백이나 `/`가 들어간 태그를 제대로 파싱하지 못한다. threadtime 형식에서는 Tag에 `:`가 붙고 Message 앞에 공백이 남는다. |
 
 ---
 
@@ -250,4 +252,4 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 3. ✅ **완료(2026-10-06) — 안정성:** B4/B5/B8 + S8(EDT 반영, 목록 교체 방식 clearData, 모델 행 수 고정, ConcurrentHashMap), B6(adb devices 백그라운드), B7/S9(설정 키별 기본값), B11(스트림 닫기), P7. 재필터 요청 유실 경합, 파일 연속 열기 시 이전 파싱 혼입, Stop 직후 Run 시 새 프로세스 중단 문제도 수정. 스트레스 테스트(파싱·실시간 추가·필터 변경·Clear·스크롤 동시 실행): 수정 전 20초 동안 예외 17건 → 수정 후 60초 동안 0건.
 4. ✅ **완료(2026-10-06) — 구조 개선:** 미사용 클래스 7개·주석 코드 삭제, S1(`LogFilterMain` 2,235 → 1,330줄, `FilterEngine`·`LogSource`·`AppConfig` 분리), S5, S6, S7, P10. 단위 테스트·실제 창 기능 테스트 8항목·스트레스 테스트 60초 예외 0건.
 5. ✅ **완료(2026-10-06) — 저장소 정리:** UTF-8·JavaSE-1.8 통일, 실행 중 바뀌는 `LogFilter.ini`·`LogFilterColor.ini`·`RecentFile.ini`를 저장소에서 제외(`.gitignore`), `.gitattributes`·`README.md` 추가, 작업 브랜치를 `master`에 반영.
-6. **기능 보완(선택):** `installInputHistory` 연결, 드래그&드롭과 실행 인자로 연 파일도 Recent에 추가, 파서 포맷 확장(B13)
+6. ✅ **완료(2026-10-06) — 기능 보완:** 필터·하이라이트 입력창 7개에 ↑/↓ 입력 히스토리 연결(↓가 입력을 지우던 문제 수정, 맨 앞을 지나면 탐색 전 값 복원), 드래그&드롭·실행 인자·Recent로 연 파일도 Recent 맨 위에 추가, 파서 포맷 확장(B13: year·uid·brief·process·tag·dmesg, 긴 PID, threadtime 태그 정리). threadtime 빠른 경로로 30만 줄 파싱 약 720 ms → 약 90 ms(필드 30만 건 일치 확인).

@@ -2,7 +2,8 @@
 
 Android `logcat` 로그를 보면서 필터링하는 Java Swing 데스크톱 툴입니다.
 
-- 저장된 로그 파일(logcat, DDMS)을 열거나, `adb logcat` 출력을 실시간으로 받아 봅니다.
+- 저장된 로그 파일(logcat, DDMS, dmesg)을 열거나, `adb logcat` 출력을 실시간으로 받아 봅니다.
+- 지원 형식: `adb logcat -v` threadtime · time · brief · process · tag (+ year · uid), 커널 로그(`<4>[시간] msg`), dmesg(`[시간] msg`). 형식을 알 수 없는 줄은 메시지로 그대로 표시합니다.
 - 워드 / 태그 / PID / TID / 레벨 필터 (`|`로 OR 조건, 대소문자 무시)
 - 하이라이트(여러 색), 북마크(메모 포함), 북마크·에러 위치 인디케이터
 - 컬럼 숨기기, 선택 행·셀 복사, 드래그&드롭으로 파일 열기
@@ -30,6 +31,7 @@ java -cp bin LogFilterMain [로그파일]
 | 복사 | <kbd>Ctrl</kbd>+<kbd>C</kbd>: 선택 행의 보이는 컬럼 / 우클릭: 셀 하나 |
 | Find 입력창으로 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 필터 입력 되돌리기 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> |
+| 최근 필터 입력 불러오기 | 필터 입력창에서 <kbd>↑</kbd> / <kbd>↓</kbd> (Enter나 포커스 이동 때 기록, 최근 10개) |
 | 북마크만 / 에러만 보기 | 왼쪽 인디케이터 위의 체크박스 |
 
 ## 설정 파일
@@ -39,7 +41,7 @@ java -cp bin LogFilterMain [로그파일]
 | `LogFilterCmd.ini` | Cmd 콤보의 adb 명령 목록 (`CMD_COUNT`, `CMD_0`…). 저장소에 포함 |
 | `LogFilter.ini` | 필터 문자열, 폰트, 창 크기, 컬럼 폭. 종료할 때 생성/저장 |
 | `LogFilterColor.ini` | 레벨별 색상과 하이라이트 색상(`INI_HIGILIGHT_COUNT`, `INI_HIGILIGHT_0`…). 종료할 때 생성/저장 |
-| `RecentFile.ini` | 최근 파일 목록 |
+| `RecentFile.ini` | 최근 파일 목록 (Open·Recent·드래그&드롭·실행 인자로 연 파일) |
 
 아래 세 파일은 실행할 때마다 바뀌므로 저장소에서 제외했습니다(`.gitignore`). 파일이 없거나 키가 빠지면 기본값을 씁니다.
 

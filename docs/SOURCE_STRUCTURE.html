@@ -290,6 +290,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td class="nw">기능 추가</td><td class="nw"><code>LogFilterMain.java</code></td><td><code>installInputHistory()</code>: 입력창별 최근 입력 10개, <kbd>↑</kbd>/<kbd>↓</kbd>로 불러오기</td><td><span class="badge b-org">호출 안 됨</span></td></tr>
 <tr><td class="nw">UI 변경</td><td class="nw"><code>LogFilterMain.java</code></td><td>Highlight 입력창을 FlowLayout 패널 안에 넣고 폭을 300px로 고정(원본은 남은 폭 전체 사용)</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">버그 수정</td><td class="nw"><code>LogFilterMain</code> · <code>LogCatParser</code> · <code>LogTable</code> · <code>T</code></td><td>2026-10-04: B1(<code>==</code> → <code>equals</code>), B2(메시지의 <code>'</code> 보존), B3·B9(HTML 이스케이프, 대소문자 무시 하이라이트), B10(날짜 포맷), 안내 문구의 ini 키 이름(<code>INI_HIGILIGHT_n</code>)</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">기능 보완</td><td class="nw"><code>LogCatParser</code> · <code>LogFilterMain</code> · <code>LogInfo</code></td><td>2026-10-06: 파서 포맷 확장과 threadtime 빠른 경로(B13), 입력 히스토리 ↑/↓ 연결, 모든 열기 경로에서 Recent 추가</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">구조 개선</td><td class="nw"><code>AppConfig</code> · <code>FilterEngine</code> · <code>LogSource</code>(신규) 외 전체</td><td>2026-10-06: <code>LogFilterMain</code>(2,235줄 → 1,330줄)을 화면 전용으로 분리(S1), 필터 상태를 <code>LogTable</code>에서 <code>FilterEngine</code>으로 이동(S5), 북마크 이동을 정렬 집합 탐색으로(S6), <code>T</code> 정리(S7), EDT 대기 제거(P10), 미사용 클래스 7개와 주석 처리된 코드 삭제</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">Java 버전</td><td class="nw"><code>.classpath</code> · JDT 설정</td><td>2026-10-06: JavaSE-1.6 → 1.8 (최신 Eclipse/VS Code가 1.6을 지원하지 않음)</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">안정성</td><td class="nw"><code>LogFilterMain</code> · <code>LogFilterTableModel</code> · <code>IndicatorPanel</code> · <code>RecentFileMenu</code></td><td>2026-10-06: EDT 반영(<code>refreshTable</code>·<code>runOnEdt</code>), 목록 교체 방식 <code>clearData</code>, 모델 행 수 고정(<code>syncRowCount</code>), <code>ConcurrentHashMap</code>, 재필터 요청 플래그, 파싱 세대 번호, adb devices 백그라운드 실행, 설정 키별 기본값, try-with-resources (B4~B8, B11, S8, S9, P7)</td><td><span class="badge b-use">적용됨</span></td></tr>
@@ -308,14 +309,14 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <div class="tbl"><table>
 <thead><tr><th>파일</th><th>줄 수</th><th>역할</th><th>구분</th></tr></thead>
 <tbody>
-<tr><td class="nw"><code>LogFilterMain.java</code></td><td class="num">1330<br><small style="color:var(--muted)">원본 2084</small></td><td>메인 프레임. 화면 구성과 이벤트 연결만 담당하고, 동작은 아래 세 클래스에 위임</td><td><span class="badge b-core">화면</span></td></tr>
+<tr><td class="nw"><code>LogFilterMain.java</code></td><td class="num">1346<br><small style="color:var(--muted)">원본 2084</small></td><td>메인 프레임. 화면 구성과 이벤트 연결만 담당하고, 동작은 아래 세 클래스에 위임</td><td><span class="badge b-core">화면</span></td></tr>
 <tr><td class="nw"><code>FilterEngine.java</code></td><td class="num">339</td><td>로그 목록(전체/필터 결과)과 북마크·에러 위치, 필터 조건과 토큰, 재필터 스레드</td><td><span class="badge b-core">신규 · 데이터</span></td></tr>
 <tr><td class="nw"><code>LogSource.java</code></td><td class="num">269</td><td>로그 입력: 파일 파싱, adb 실행과 기록 파일 이어 읽기, 장치 목록</td><td><span class="badge b-core">신규 · 입력</span></td></tr>
 <tr><td class="nw"><code>AppConfig.java</code></td><td class="num">249</td><td>설정 파일(*.ini) 읽기/쓰기와 키별 기본값</td><td><span class="badge b-core">신규 · 설정</span></td></tr>
 <tr><td class="nw"><code>LogTable.java</code></td><td class="num">664</td><td>로그 테이블(JTable). 셀 렌더링(하이라이트), 키/마우스 처리, 복사, 북마크 이동</td><td><span class="badge b-core">화면</span></td></tr>
 <tr><td class="nw"><code>IndicatorPanel.java</code></td><td class="num">222</td><td>좌측 북마크/에러 위치 표시 바, "북마크만/에러만 보기" 체크박스</td><td><span class="badge b-core">화면</span></td></tr>
 <tr><td class="nw"><code>LogFilterTableModel.java</code></td><td class="num">76</td><td>테이블 모델, 컬럼 정의/폭, EDT에서 알린 행 수</td><td><span class="badge b-core">화면</span></td></tr>
-<tr><td class="nw"><code>LogCatParser.java</code></td><td class="num">204</td><td>로그 한 줄을 <code>LogInfo</code>로 파싱(time / threadtime / kernel 형식)</td><td><span class="badge b-use">파싱</span></td></tr>
+<tr><td class="nw"><code>LogCatParser.java</code></td><td class="num">230</td><td>로그 한 줄을 <code>LogInfo</code>로 파싱(threadtime · time · year · uid · brief · process · tag · kernel/dmesg)</td><td><span class="badge b-use">파싱</span></td></tr>
 <tr><td class="nw"><code>ILogParser.java</code></td><td class="num">15</td><td>파서 인터페이스</td><td><span class="badge b-use">파싱</span></td></tr>
 <tr><td class="nw"><code>LogInfo.java</code></td><td class="num">94</td><td>로그 한 줄 데이터(VO), 레벨 비트 상수, 줄 번호·레벨 int 필드</td><td><span class="badge b-use">데이터</span></td></tr>
 <tr><td class="nw"><code>FilterToken.java</code></td><td class="num">51</td><td>필터 토큰 분리, 대소문자 무시 부분 일치 판정</td><td><span class="badge b-use">유틸</span></td></tr>
@@ -440,6 +441,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td class="nw">헤더 더블클릭</td><td class="nw"><code>ColumnHeaderListener</code></td><td>보이는 행 기준으로 컬럼 폭 자동 맞춤</td></tr>
 <tr><td class="nw">Goto 입력</td><td class="nw">CaretListener</td><td>해당 줄로 이동(화면 중앙)</td></tr>
 <tr><td class="nw"><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td class="nw"><code>installUndoRedo</code></td><td>필터/하이라이트 입력창 실행 취소/다시 실행 <span class="badge b-yel">로컬 추가</span></td></tr>
+<tr><td class="nw"><kbd>↑</kbd> / <kbd>↓</kbd> · <kbd>Enter</kbd></td><td class="nw"><code>installInputHistory</code></td><td>필터/하이라이트 입력창의 최근 입력 10개 불러오기. Enter나 포커스 이동 때 기록되고, ↓로 맨 앞을 지나면 탐색 전 값으로 돌아갑니다 <span class="badge b-yel">2026-10-06</span></td></tr>
 </tbody></table></div>
 
 <h3 id="seq-exit">4.8 종료</h3>
@@ -526,7 +528,20 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 
 <h4>LogCatParser · LogInfo · FilterToken · 기타</h4>
 <ul>
-  <li><b>LogCatParser:</b> 고정 위치 문자로 형식(time / threadtime / kernel)을 판별해 <code>LogInfo</code>를 만들고, 레벨 비트(<code>m_nLogLV</code>)와 색상까지 정합니다. 색상 객체는 RGB별로 재사용합니다.</li>
+  <li><b>LogCatParser:</b> 줄 첫 글자로 후보 형식을 좁힌 뒤 형식을 판별합니다(2026-10-06 확장, B13). 가장 흔한 threadtime 기본형은 정규식 없이 직접 나누고(빠른 경로), 나머지는 미리 컴파일한 정규식으로 처리합니다. 어느 형식에도 맞지 않으면 줄 전체를 메시지로 씁니다.
+    <div class="tbl"><table>
+      <thead><tr><th>형식 (<code>adb logcat -v …</code>)</th><th>예</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">threadtime</td><td><code>04-20 12:06:02.125   146   179 D BatteryService: update start</code></td></tr>
+        <tr><td class="nw">time</td><td><code>04-17 09:01:18.910 D/LightsService(  139): BKL : 106</code></td></tr>
+        <tr><td class="nw">+ year</td><td><code>2026-04-20 12:06:02.125 …</code> (위 두 형식 앞에 연도)</td></tr>
+        <tr><td class="nw">+ uid</td><td><code>04-20 12:06:02.125  1000   146   179 D Tag: msg</code> / <code>D/Tag( 1000:  139): msg</code></td></tr>
+        <tr><td class="nw">brief</td><td><code>D/LightsService(  139): BKL : 106</code></td></tr>
+        <tr><td class="nw">process</td><td><code>D(  139) BKL : 106  (LightsService)</code></td></tr>
+        <tr><td class="nw">tag</td><td><code>D/LightsService: BKL : 106</code></td></tr>
+        <tr><td class="nw">kernel / dmesg</td><td><code>&lt;4&gt;[19553.494855] msg</code> / <code>[19553.494855] msg</code></td></tr>
+      </tbody></table></div>
+    레벨 <code>A</code>(Assert)는 Fatal로 다룹니다. threadtime 태그는 <code>:</code> 앞까지에서 오른쪽 공백을 뺀 값이고, 메시지 앞 공백 한 칸도 뺍니다.</li>
   <li><b>LogInfo:</b> 문자열 필드 9개와 줄 번호·레벨 int, 색상, 북마크 여부를 가집니다.</li>
   <li><b>FilterToken:</b> <code>"a|B"</code> → <code>{"a","b"}</code> 분리와, 새 문자열을 만들지 않는 대소문자 무시 부분 일치 판정.</li>
   <li><b>RecentFileMenu</b>(GPL v2), <b>LogColor</b>(static 색상), <b>INotiEvent</b>(이벤트 0~3), <b>T</b>(디버그 출력, 항상 켜짐)는 역할이 그대로입니다.</li>
@@ -565,7 +580,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td class="nw">B10</td><td><span class="badge b-yel">경미</span> <span class="badge b-use">✔ 수정됨</span></td><td class="nw"><code>T.java:151</code></td><td>날짜 포맷 <code>yyyy-mm-dd hh</code>의 <code>mm</code>(분)이 월 자리에 들어가고 <code>hh</code>는 12시간제라서, 콘솔에 <code>2026-28-02</code> 같은 날짜가 찍힙니다. → <code>yyyy-MM-dd HH</code></td></tr>
 <tr><td class="nw">B11</td><td><span class="badge b-yel">경미</span> <span class="badge b-use">✔ 수정됨</span></td><td class="nw">load/save, RecentFileMenu</td><td><code>FileInputStream</code>, <code>FileOutputStream</code>, <code>FileReader</code>를 close하지 않습니다(리소스 누수).</td></tr>
 <tr><td class="nw">B12</td><td><span class="badge b-yel">경미</span></td><td class="nw"><code>LogFilterTableModel.setColumnWidth</code></td><td>기본값보다 좁힌 컬럼 폭은 저장해도 다음 실행 때 무시됩니다.</td></tr>
-<tr><td class="nw">B13</td><td><span class="badge b-yel">경미</span></td><td class="nw">LogCatParser</td><td>고정 위치로 형식을 판별해서 <code>-v year</code>, <code>-v uid</code>, 최신 logcat 포맷, 공백이나 <code>/</code>가 들어간 태그를 제대로 파싱하지 못합니다. threadtime 형식에서는 Tag에 <code>:</code>가 붙고 Message 앞에 공백이 남습니다.</td></tr>
+<tr><td class="nw">B13</td><td><span class="badge b-yel">경미</span> <span class="badge b-use">✔ 수정됨</span></td><td class="nw">LogCatParser</td><td>고정 위치로 형식을 판별해서 <code>-v year</code>, <code>-v uid</code>, 최신 logcat 포맷, 공백이나 <code>/</code>가 들어간 태그를 제대로 파싱하지 못합니다. threadtime 형식에서는 Tag에 <code>:</code>가 붙고 Message 앞에 공백이 남습니다.</td></tr>
 </tbody></table></div>
 
 <!-- 8 -->
@@ -641,7 +656,8 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
   <li><span class="badge b-use">✔ 완료 2026-10-06</span> <b>구조 개선:</b> 미사용 클래스 7개·주석 처리된 코드·미사용 필드/상수 삭제, S1(<code>LogFilterMain</code> 2,235줄 → 1,330줄, <code>FilterEngine</code>·<code>LogSource</code>·<code>AppConfig</code> 분리), S5(필터 상태를 <code>FilterEngine</code>으로), S6(북마크 이동 <code>TreeSet</code> 탐색), S7(<code>T</code> 정리), P10(EDT 대기 제거). S2~S4는 앞 단계에서 처리.
     <br>검증: 단위 테스트 전체 통과, 실제 창 기능 테스트(열기·필터·F2/F3·에러만 보기) 8항목 통과, 스트레스 테스트 60초 예외 0건.</li>
   <li><span class="badge b-use">✔ 완료 2026-10-06</span> <b>저장소 정리:</b> 소스·Eclipse 설정 UTF-8 통일, JavaSE-1.8 전환, 실행할 때마다 바뀌는 <code>LogFilter.ini</code>·<code>LogFilterColor.ini</code>·<code>RecentFile.ini</code>를 저장소에서 제외(<code>.gitignore</code>), <code>.gitattributes</code>(줄바꿈)·<code>README.md</code> 추가, 작업 브랜치를 <code>master</code>에 반영.</li>
-  <li><b>기능 보완(선택):</b> <code>installInputHistory</code> 연결, 드래그&amp;드롭과 실행 인자로 연 파일도 Recent에 추가, 파서 포맷 확장(B13)</li>
+  <li><span class="badge b-use">✔ 완료 2026-10-06</span> <b>기능 보완:</b> 필터·하이라이트 입력창 7개에 ↑/↓ 입력 히스토리 연결(탐색 중이 아닐 때 ↓가 입력을 지우던 문제와, ↓로 맨 앞을 지나면 입력이 사라지던 문제도 고쳐 탐색 전 값으로 돌아가게 함), 드래그&amp;드롭·실행 인자·Recent로 연 파일도 Recent 맨 위에 추가, 파서 포맷 확장(B13: <code>year</code>·<code>uid</code>·<code>brief</code>·<code>process</code>·<code>tag</code>·dmesg 형식, 6자리 이상 PID, threadtime 태그의 <code>:</code>·메시지 앞 공백 제거).
+    <br>파서는 가장 흔한 threadtime을 정규식 없이 직접 나누는 빠른 경로를 두어, 30만 줄 파싱이 약 720 ms → 약 90 ms로 빨라졌습니다(같은 데이터로 필드 30만 건 모두 일치, 필터 결과 동일). 검증: 파서 형식 테스트 26건, 기능 테스트 11건, 기존 기능 테스트·스트레스 테스트 통과.</li>
 </ol>
 </main>
 </div>
@@ -1108,7 +1124,7 @@ const CLS_NODES = {
   Info:       {name:'LogInfo', c:1, r:3, sub:'로그 한 줄 (VO)'},
   Token:      {name:'FilterToken', c:2, r:3, kind:'util', stereo:'«utility»', sub:'토큰 분리 · 대소문자 무시 비교'},
   Color:      {name:'LogColor', c:3, r:3, kind:'util', stereo:'«static»', sub:'레벨 · 하이라이트 색상'},
-  Parser:     {name:'LogCatParser', c:4, r:3, sub:'time · threadtime · kernel'}
+  Parser:     {name:'LogCatParser', c:4, r:3, sub:'threadtime · time · brief · kernel …'}
 };
 const CLS_EDGES = [
   {f:'Main', t:'Noti', type:'impl'},
@@ -1140,7 +1156,7 @@ const CLS_EDGES = [
  *        ['§', '그룹 이름'] = 그룹 머리글
  * ------------------------------------------------------------- */
 const UML = [
-{ name:'LogFilterMain', wide:true, rel:'extends JFrame · implements INotiEvent, FilterEngine.Listener, LogSource.Listener', file:'LogFilterMain.java · 1,330줄 (구조 개선 전 2,235줄)',
+{ name:'LogFilterMain', wide:true, rel:'extends JFrame · implements INotiEvent, FilterEngine.Listener, LogSource.Listener', file:'LogFilterMain.java · 1,346줄 (구조 개선 전 2,235줄)',
   fields:[
     ['§','상수'],
     ['~','LOGFILTER, VERSION : String = "Version 1.8"','s'],
@@ -1179,7 +1195,7 @@ const UML = [
     ['~','getFilterPanel · getCheckPanel · getHighlightPanel · getBookmarkPanel · getStatusPanel · getTabPanel : Component'],
     ['~','addChangeListener() · setDnDListener() : void'],
     ['~','installUndoRedo(JTextComponent) : void'],
-    ['~','installInputHistory(JTextComponent) : void','x','호출 안 됨'],
+    ['~','installInputHistory(JTextComponent) : void','l','필터·하이라이트 입력창 ↑/↓'],
     ['~','addDesc() · addDesc(String) : void'],
     ['§','화면 반영 (EDT)'],
     ['~','runOnEdt(Runnable) : void','s'],
@@ -1360,19 +1376,18 @@ const UML = [
     ['+','getData(int nColumn) : Object · display()']
   ]
 },
-{ name:'LogCatParser', rel:'implements ILogParser', file:'LogCatParser.java · 204줄',
+{ name:'LogCatParser', rel:'implements ILogParser', file:'LogCatParser.java · 230줄',
   fields:[
-    ['~','TOKEN_KERNEL · TOKEN_PID · TOKEN_SPACE · TOKEN_REST : String'],
+    ['~','THREADTIME · TIME · BRIEF · PROCESS · TAG · KERNEL : Pattern','s','형식별 정규식'],
     ['~','m_hmColor : ConcurrentHashMap<Integer, Color>','','P8']
   ],
   methods:[
-    ['+','parseLog(String) : LogInfo','','레벨 비트까지 계산'],
-    ['+','isNormal · isThreadTime · isKernel(String) : boolean'],
-    ['+','getNormal · getThreadTime · getKernel(String) : LogInfo'],
+    ['+','parseLog(String) : LogInfo','','레벨 비트·색상까지 계산'],
+    ['~','parseThreadTimeFast(String) : LogInfo','sl','threadtime 빠른 경로 (정규식 없음)'],
+    ['~','parseFormatted(String) : LogInfo','l','첫 글자로 후보를 좁혀 정규식 적용'],
     ['+','getColor(LogInfo) : Color · colorOf(int)']
   ]
-},
-{ name:'ILogParser', kind:'iface', stereo:'«interface»', rel:'', file:'ILogParser.java · 15줄',
+},{ name:'ILogParser', kind:'iface', stereo:'«interface»', rel:'', file:'ILogParser.java · 15줄',
   fields:[],
   methods:[['+','parseLog(String) : LogInfo','a'],['+','getColor(LogInfo) : Color','a']]
 },

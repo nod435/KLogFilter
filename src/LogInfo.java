@@ -36,6 +36,7 @@ public class LogInfo
         if(strLogLV.equals("W") || strLogLV.equals("WARN"))    return LOG_LV_WARN;
         if(strLogLV.equals("E") || strLogLV.equals("ERROR"))   return LOG_LV_ERROR;
         if(strLogLV.equals("F") || strLogLV.equals("FATAL"))   return LOG_LV_FATAL;
+        if(strLogLV.equals("A") || strLogLV.equals("ASSERT"))  return LOG_LV_FATAL;   // Assert는 Fatal로 취급
         return LOG_LV_NONE;
     }
 

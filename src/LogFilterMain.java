@@ -449,6 +449,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_engine.setBookmark(nLine, strBookmark);
     }
 
+    // Open · Recent · 드래그&드롭 · 실행 인자로 연 파일이 모두 여기로 온다. 연 파일은 Recent 맨 위에 올린다.
     void parseFile(File file)
     {
         if(file == null)
@@ -457,6 +458,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             return;
         }
         m_source.parseFile(file, "UTF-8".equals(m_comboEncode.getSelectedItem()));
+        if(m_recentMenu != null)
+            m_recentMenu.addEntry(file.getAbsolutePath());
     }
 
     void startProcess()
@@ -676,6 +679,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             }
         });
 
+        // 히스토리 탐색을 시작하기 전에 입력창에 있던 값. ↓로 맨 앞을 지나면 이 값으로 돌아온다.
+        final String[] draft = { "" };
+
         // ↑ : 더 예전 입력값으로 이동
         comp.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "HistoryPrev");
         comp.getActionMap().put("HistoryPrev", new AbstractAction()
@@ -685,28 +691,30 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             {
                 if(history.isEmpty())
                     return;
-                if(cursor[0] < history.size() - 1)
+                if(cursor[0] == -1)
+                {
+                    draft[0] = comp.getText();
+                    // 지금 값이 가장 최근 기록과 같으면 그 다음 것부터 보여준다.
+                    cursor[0] = history.get(0).equals(draft[0]) && history.size() > 1 ? 1 : 0;
+                }
+                else if(cursor[0] < history.size() - 1)
                     cursor[0]++;
                 comp.setText(history.get(cursor[0]));
                 comp.setCaretPosition(comp.getDocument().getLength());
             }
         });
 
-        // ↓ : 더 최근 입력값으로 이동(맨 앞을 지나면 빈 값으로)
+        // ↓ : 더 최근 입력값으로 이동. 맨 앞을 지나면 탐색 전 값으로 돌아간다. (탐색 중이 아니면 아무 동작 안 함)
         comp.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "HistoryNext");
         comp.getActionMap().put("HistoryNext", new AbstractAction()
         {
             private static final long serialVersionUID = 1L;
             public void actionPerformed(ActionEvent e)
             {
-                if(cursor[0] <= 0)
-                {
-                    cursor[0] = -1;
-                    comp.setText("");
+                if(cursor[0] == -1)
                     return;
-                }
                 cursor[0]--;
-                comp.setText(history.get(cursor[0]));
+                comp.setText(cursor[0] == -1 ? draft[0] : history.get(cursor[0]));
                 comp.setCaretPosition(comp.getDocument().getLength());
             }
         });
@@ -750,6 +758,14 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         installUndoRedo(m_tfRemoveTag);
         installUndoRedo(m_tfShowPid);
         installUndoRedo(m_tfShowTid);
+
+        // 필터 편집창에 최근 입력값 ↑/↓ 불러오기 기능 추가
+        installInputHistory(m_tfFindWord);
+        installInputHistory(m_tfRemoveWord);
+        installInputHistory(m_tfShowTag);
+        installInputHistory(m_tfRemoveTag);
+        installInputHistory(m_tfShowPid);
+        installInputHistory(m_tfShowTid);
 
         JPanel jpMain = new JPanel(new BorderLayout());
 
@@ -824,6 +840,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tfHighlight   = new JTextField();
         m_tfHighlight.setPreferredSize(new Dimension(300, 25));
         installUndoRedo(m_tfHighlight);
+        installInputHistory(m_tfHighlight);
 
         JPanel jpMain = new JPanel(new BorderLayout());
         jpMain.setBorder(BorderFactory.createTitledBorder("Highlight"));
@@ -1325,7 +1342,6 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         if (fd.getFile() != null)
         {
             parseFile(new File(fd.getDirectory() + fd.getFile()));
-            m_recentMenu.addEntry( fd.getDirectory() + fd.getFile() );
         }
     }
 }
