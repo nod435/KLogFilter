@@ -533,7 +533,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 </ul>
 <!-- 6 -->
 <h2 id="s6"><span class="no">6</span>설정 파일</h2>
-<p>모두 실행할 때의 작업 디렉터리(<code>KLogFilter/</code>)를 기준으로 읽고 씁니다.</p>
+<p>모두 실행할 때의 작업 디렉터리(<code>KLogFilter/</code>)를 기준으로 읽고 씁니다. 저장소에는 <code>LogFilterCmd.ini</code>만 들어 있고, 나머지 셋은 실행할 때마다 바뀌므로 <code>.gitignore</code>로 제외했습니다(없으면 기본값을 쓰고 종료할 때 만들어짐).</p>
 <div class="tbl"><table>
 <thead><tr><th>파일</th><th>읽기/쓰기</th><th>주요 키</th></tr></thead>
 <tbody>
@@ -640,7 +640,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
     <br>검증: 실제 창을 띄우고 대용량 파일 반복 파싱 · 실시간 줄 추가 · 필터 입력 변경 · 에러만 보기 토글 · Clear · 스크롤을 동시에 실행하는 스트레스 테스트에서, 수정 전 20초 동안 예외 17건(<code>ConcurrentModificationException</code> 16, <code>IndexOutOfBoundsException</code> 1)이 수정 후 60초 동안 0건입니다.</li>
   <li><span class="badge b-use">✔ 완료 2026-10-06</span> <b>구조 개선:</b> 미사용 클래스 7개·주석 처리된 코드·미사용 필드/상수 삭제, S1(<code>LogFilterMain</code> 2,235줄 → 1,330줄, <code>FilterEngine</code>·<code>LogSource</code>·<code>AppConfig</code> 분리), S5(필터 상태를 <code>FilterEngine</code>으로), S6(북마크 이동 <code>TreeSet</code> 탐색), S7(<code>T</code> 정리), P10(EDT 대기 제거). S2~S4는 앞 단계에서 처리.
     <br>검증: 단위 테스트 전체 통과, 실제 창 기능 테스트(열기·필터·F2/F3·에러만 보기) 8항목 통과, 스트레스 테스트 60초 예외 0건.</li>
-  <li><b>저장소 정리:</b> 소스 인코딩을 UTF-8로 통일하고 Eclipse 설정(<code>encoding/&lt;project&gt;</code>)도 맞춘 뒤, 로컬 변경분(1.1)을 GitHub에 커밋</li>
+  <li><span class="badge b-use">✔ 완료 2026-10-06</span> <b>저장소 정리:</b> 소스·Eclipse 설정 UTF-8 통일, JavaSE-1.8 전환, 실행할 때마다 바뀌는 <code>LogFilter.ini</code>·<code>LogFilterColor.ini</code>·<code>RecentFile.ini</code>를 저장소에서 제외(<code>.gitignore</code>), <code>.gitattributes</code>(줄바꿈)·<code>README.md</code> 추가, 작업 브랜치를 <code>master</code>에 반영.</li>
   <li><b>기능 보완(선택):</b> <code>installInputHistory</code> 연결, 드래그&amp;드롭과 실행 인자로 연 파일도 Recent에 추가, 파서 포맷 확장(B13)</li>
 </ol>
 </main>

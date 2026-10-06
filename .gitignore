@@ -1,0 +1,16 @@
+# 빌드 결과
+bin/
+out/
+*.class
+
+# 실행할 때마다 바뀌는 설정 (없으면 기본값 사용, 종료할 때 생성)
+LogFilter.ini
+LogFilterColor.ini
+RecentFile.ini
+
+# adb 실시간 수집 기록 파일
+LogFilter_*.txt
+
+# 에디터
+.vscode/
+.metadata/

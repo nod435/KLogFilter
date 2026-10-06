@@ -147,6 +147,8 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 ---
 ## 6. 설정 파일 (`KLogFilter/` 작업 디렉터리 기준)
 
+저장소에는 `LogFilterCmd.ini`만 들어 있다. 나머지 셋은 실행할 때마다 바뀌므로 `.gitignore`로 제외했다(없으면 기본값을 쓰고 종료할 때 만들어짐).
+
 | 파일 | 읽기/쓰기 | 주요 키 |
 |---|---|---|
 | `LogFilter.ini` | 시작할 때 읽고 종료할 때 씀 | `WORD_FIND`, `WORD_REMOVE`, `TAG_SHOW`, `TAG_REMOVE`, `PID_SHOW`, `TID_SHOW`, `HIGHLIGHT`, `FONT_TYPE`, `INI_WIDTH/HEIGHT`, `INI_WINDOW_STATE`, `INI_COMUMN_0~8` |
@@ -247,5 +249,5 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
    | 셀 렌더링 5만 회, 하이라이트+Find | 234 ms | 154 ms | −34% |
 3. ✅ **완료(2026-10-06) — 안정성:** B4/B5/B8 + S8(EDT 반영, 목록 교체 방식 clearData, 모델 행 수 고정, ConcurrentHashMap), B6(adb devices 백그라운드), B7/S9(설정 키별 기본값), B11(스트림 닫기), P7. 재필터 요청 유실 경합, 파일 연속 열기 시 이전 파싱 혼입, Stop 직후 Run 시 새 프로세스 중단 문제도 수정. 스트레스 테스트(파싱·실시간 추가·필터 변경·Clear·스크롤 동시 실행): 수정 전 20초 동안 예외 17건 → 수정 후 60초 동안 0건.
 4. ✅ **완료(2026-10-06) — 구조 개선:** 미사용 클래스 7개·주석 코드 삭제, S1(`LogFilterMain` 2,235 → 1,330줄, `FilterEngine`·`LogSource`·`AppConfig` 분리), S5, S6, S7, P10. 단위 테스트·실제 창 기능 테스트 8항목·스트레스 테스트 60초 예외 0건.
-5. **저장소 정리:** 소스 인코딩을 UTF-8로 통일하고 Eclipse 설정(`encoding/<project>`)도 맞춘 뒤, 로컬 변경분(1.1)을 GitHub에 커밋
+5. ✅ **완료(2026-10-06) — 저장소 정리:** UTF-8·JavaSE-1.8 통일, 실행 중 바뀌는 `LogFilter.ini`·`LogFilterColor.ini`·`RecentFile.ini`를 저장소에서 제외(`.gitignore`), `.gitattributes`·`README.md` 추가, 작업 브랜치를 `master`에 반영.
 6. **기능 보완(선택):** `installInputHistory` 연결, 드래그&드롭과 실행 인자로 연 파일도 Recent에 추가, 파서 포맷 확장(B13)
