@@ -65,10 +65,12 @@ public abstract class RecentFileMenu extends JMenu{
 		//load the recent entries if they exist
 		File recentFile=new File(this.pathToSavedFile);
 		if(recentFile.exists()){
-			try{
-				LineNumberReader reader=new LineNumberReader(new FileReader(this.pathToSavedFile));
-				while(reader.ready()){
-					this.addEntry(reader.readLine(),false);
+			try(LineNumberReader reader=new LineNumberReader(new FileReader(this.pathToSavedFile))){
+				String line;
+				while((line=reader.readLine())!=null){
+					if(line.trim().length()>0){
+						this.addEntry(line,false);
+					}
 				}
 			} catch(Exception x){
 				x.printStackTrace();
@@ -130,8 +132,7 @@ public abstract class RecentFileMenu extends JMenu{
         }
         //update the file
 		if(updateFile){
-			try{
-				FileWriter writer=new FileWriter(new File(this.pathToSavedFile));
+			try(FileWriter writer=new FileWriter(new File(this.pathToSavedFile))){
 				int topIndex=this.itemCount-1;
 				for(int index=topIndex;index>=0;index--){
 					if(!this.recentEntries[index].equals(defaultText)){
@@ -139,8 +140,6 @@ public abstract class RecentFileMenu extends JMenu{
 						writer.write("\n");
 					}
 				}
-				writer.flush();
-				writer.close();
 			} catch(Exception x){
 				x.printStackTrace();
 			}

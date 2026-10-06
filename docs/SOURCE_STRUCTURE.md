@@ -30,6 +30,7 @@ java -cp bin LogFilterMain [로그파일]
 
 | 구분 | 파일 | 내용 | 상태 |
 |---|---|---|---|
+| 안정성 | `LogFilterMain` · `LogFilterTableModel` · `IndicatorPanel` · `RecentFileMenu` | 2026-10-06: EDT 반영(`refreshTable`), 목록 교체 방식 `clearData`, 모델 행 수 고정, `ConcurrentHashMap`, 재필터 요청 플래그, 파싱 세대 번호, adb devices 백그라운드, 설정 키별 기본값, try-with-resources | 적용됨 |
 | 성능 개선 | `FilterToken`(신규) · `LogInfo` · `LogCatParser` · `LogTable` · `LogFilterMain` | 2026-10-06: 필터 토큰 캐시(P2), 레벨·줄 번호 int 필드(P3/P4), 렌더러 조기 반환과 Font/Color 재사용(P1), 입력 디바운스 250ms(P5), Color 재사용(P8), DocumentListener 통합(S4) | 적용됨 |
 | 버그 수정 | `LogFilterMain` · `LogCatParser` · `LogTable` · `T` | 2026-10-04: B1(`==` → `equals`), B2(메시지의 `'` 보존), B3·B9(HTML 이스케이프, 대소문자 무시 하이라이트), B10(날짜 포맷), 안내 문구의 ini 키 이름(`INI_HIGILIGHT_n`) | 적용됨 |
 | 기능 추가 | `LogFilterMain.java` | `installUndoRedo()`: 필터 입력창 6개와 Highlight 입력창에 Ctrl+Z / Ctrl+Y | 적용됨 |
@@ -354,14 +355,14 @@ startProcess()
 | B1 | 🔴 ✅ 수정됨 | [LogFilterMain.java:758](../src/LogFilterMain.java#L758) (GitHub :750) | `m_strLogLV == "E"`로 **참조를 비교**한다. 파싱된 문자열과는 항상 false라서, 필터가 켜진 상태로 실시간 수집하면 에러 인디케이터가 갱신되지 않는다(다음 재필터 때만 반영). |
 | B2 | 🔴 ✅ 수정됨 | [LogCatParser.java:134-137](../src/LogCatParser.java#L134-L137) | 메시지를 `'`를 구분자로 토큰화한 뒤 다시 이어 붙여서, **메시지 안의 작은따옴표(`'`)가 모두 사라진다**. |
 | B3 | 🔴 ✅ 수정됨 | [LogTable.java:514-531](../src/LogTable.java#L514-L531) | HTML 이스케이프가 없다. 하이라이트나 Find가 일치하면 메시지의 `<init>`, `<tag>` 같은 부분이 HTML로 해석돼 화면에서 사라진다. 또 토큰이 `b`, `span`, `color`처럼 태그 이름과 같으면 이미 넣은 태그 내부까지 치환돼 마크업이 깨진다. |
-| B4 | 🟠 | 전반 | **EDT 밖에서 Swing을 조작한다**. 백그라운드 스레드에서 `setStatus`, `model.setData`, `fireTableRowsUpdated`, `clearSelection`, `changeSelection`을 직접 호출해서, 간헐적 예외나 화면 깨짐이 생길 수 있다. |
-| B5 | 🟠 | `clearData()`, `parseFile()`, `startFileParse()` | 락 없이 `m_arLogInfoAll.clear()`를 호출한다. 필터 스레드나 렌더러가 순회하는 중이면 `IndexOutOfBounds`/`ConcurrentModification`이 날 수 있다(Clear 버튼, 파일 재오픈). |
-| B6 | 🟠 | [LogFilterMain.java:1402-1443](../src/LogFilterMain.java#L1402-L1443) (GitHub :1248-1289) | `setDeviceList()`가 EDT에서 `adb devices`를 동기 실행한다. adb가 느리면 UI가 멈춘다. `exitValue()`를 종료 대기 없이 호출해서 `IllegalThreadStateException`이 목록에 표시될 수 있다. stdout과 stderr를 순차로 읽어서 교착 가능성도 있다. |
-| B7 | 🟠 | `loadFilter()`, `loadColor()` | 키 하나만 빠져도 예외가 나서 **그 뒤의 설정 전체**가 적용되지 않는다(키마다 개별 기본값이 없음). |
-| B8 | 🟡 | [LogFilterMain.java:757](../src/LogFilterMain.java#L757), [1811-1815](../src/LogFilterMain.java#L1811-L1815) (GitHub :749, 1657-1661) | Filtered 맵에 index를 `add()` 후의 `size()`로 넣어서 1이 크다. 북마크/에러 전용 분기는 add 전에 넣으므로 서로 일관성이 없다(인디케이터가 1행 어긋남). |
+| B4 | 🟠 ✅ 수정됨 | 전반 | **EDT 밖에서 Swing을 조작한다**. 백그라운드 스레드에서 `setStatus`, `model.setData`, `fireTableRowsUpdated`, `clearSelection`, `changeSelection`을 직접 호출해서, 간헐적 예외나 화면 깨짐이 생길 수 있다. |
+| B5 | 🟠 ✅ 수정됨 | `clearData()`, `parseFile()`, `startFileParse()` | 락 없이 `m_arLogInfoAll.clear()`를 호출한다. 필터 스레드나 렌더러가 순회하는 중이면 `IndexOutOfBounds`/`ConcurrentModification`이 날 수 있다(Clear 버튼, 파일 재오픈). |
+| B6 | 🟠 ✅ 수정됨 | [LogFilterMain.java:1402-1443](../src/LogFilterMain.java#L1402-L1443) (GitHub :1248-1289) | `setDeviceList()`가 EDT에서 `adb devices`를 동기 실행한다. adb가 느리면 UI가 멈춘다. `exitValue()`를 종료 대기 없이 호출해서 `IllegalThreadStateException`이 목록에 표시될 수 있다. stdout과 stderr를 순차로 읽어서 교착 가능성도 있다. |
+| B7 | 🟠 ✅ 수정됨 | `loadFilter()`, `loadColor()` | 키 하나만 빠져도 예외가 나서 **그 뒤의 설정 전체**가 적용되지 않는다(키마다 개별 기본값이 없음). |
+| B8 | 🟡 ✅ 수정됨 | [LogFilterMain.java:757](../src/LogFilterMain.java#L757), [1811-1815](../src/LogFilterMain.java#L1811-L1815) (GitHub :749, 1657-1661) | Filtered 맵에 index를 `add()` 후의 `size()`로 넣어서 1이 크다. 북마크/에러 전용 분기는 add 전에 넣으므로 서로 일관성이 없다(인디케이터가 1행 어긋남). |
 | B9 | 🟡 ✅ 수정됨 | [LogTable.java:549-560](../src/LogTable.java#L549-L560) | 일치 여부는 대소문자 무시로 검사하는데 `replace`는 대소문자를 구분한다. `error`로 하이라이트하면 `Error`는 색이 안 바뀌고 HTML로만 감싸진다. |
 | B10 | 🟡 ✅ 수정됨 | [T.java:151](../src/T.java#L151) | 날짜 포맷이 `yyyy-mm-dd hh`이다. `mm`(분)이 월 자리에 들어가고 `hh`는 12시간제라서, 콘솔 로그에 `2026-28-02` 같은 날짜가 찍힌다. → `yyyy-MM-dd HH` |
-| B11 | 🟡 | `loadXxx`, `saveXxx`, `RecentFileMenu` | `FileInputStream`, `FileOutputStream`, `FileReader`를 close하지 않는다(리소스 누수). |
+| B11 | 🟡 ✅ 수정됨 | `loadXxx`, `saveXxx`, `RecentFileMenu` | `FileInputStream`, `FileOutputStream`, `FileReader`를 close하지 않는다(리소스 누수). |
 | B12 | 🟡 | `LogFilterTableModel.setColumnWidth` | 기본값보다 좁힌 컬럼 폭은 저장해도 다음 실행 때 무시된다. |
 | B13 | 🟡 | LogCatParser | 고정 위치로 형식을 판별해서 `-v year`, `-v uid`, 최신 logcat 포맷, 공백이나 `/`가 들어간 태그를 제대로 파싱하지 못한다. threadtime 형식에서는 Tag에 `:`가 붙고 Message 앞에 공백이 남는다. |
 
@@ -379,7 +380,7 @@ startProcess()
 | P4 ✅ | ★★ | 줄 번호 | `Integer.parseInt(m_strLine)`을 반복 호출 | `int m_nLine` 필드를 추가하고 표시할 때만 문자열로 변환 |
 | P5 ✅ | ★★ | 입력 즉시 재필터 | 키를 누를 때마다 전체 로그를 재필터 | `javax.swing.Timer`로 200~300ms 디바운스 |
 | P6 | ★★ | 실시간 수집 | adb → 파일 기록(줄마다 flush) → 50ms 폴링으로 다시 읽기(디스크 I/O 2배) | stdout을 바로 파싱하고 파일 기록은 버퍼링(주기적 flush) |
-| P7 | ★★ | 테이블 갱신 | 행이 추가될 때마다 `fireTableRowsUpdated(0, 전체)`와 `validate`, `repaint` | `fireTableRowsInserted(old, new-1)`로 증분 통지 |
+| P7 ✅ | ★★ | 테이블 갱신 | 행이 추가될 때마다 `fireTableRowsUpdated(0, 전체)`와 `validate`, `repaint` | `fireTableRowsInserted(old, new-1)`로 증분 통지 |
 | P8 ✅ | ★ | Color 객체 | 줄마다 `getColor()`가 `new Color()`를 생성 | 레벨별 Color 인스턴스 캐시(메모리와 GC 절감) |
 | P9 | ★ | 인디케이터 | 스크롤할 때마다 북마크/에러 맵 전체를 순회해 다시 그림 | 픽셀 단위로 모은 결과나 BufferedImage를 캐시하고 데이터가 바뀔 때만 다시 그림 |
 | P10 | ★ | `runFilter()` | EDT에서 `Thread.sleep(100)` 바쁜 대기 | 대기 제거(상태 플래그와 notify만으로 충분) |
@@ -396,8 +397,8 @@ startProcess()
 | S5 | 필터 상태 위치 | 필터 문자열을 `LogTable`(뷰)에서 `FilterEngine`(모델)으로 이동 |
 | S6 | `gotoNext/PreBookmark` | 표시 리스트를 선형 탐색 → 정렬된 북마크 index 목록에서 이진 탐색 |
 | S7 | `T.java` | 거의 같은 메서드 8개 → `log(level, msg)` 하나로 |
-| S8 | Swing 스레드 | 백그라운드 결과는 `SwingUtilities.invokeLater`나 `SwingWorker`로 EDT에 반영 (B4 해결) |
-| S9 | 설정 로드 | `getProperty(key, default)`로 키마다 기본값 지정 (B7 해결), try-with-resources는 JDK 7 이상 |
+| S8 ✅ | Swing 스레드 | 백그라운드 결과는 `SwingUtilities.invokeLater`나 `SwingWorker`로 EDT에 반영 (B4 해결) |
+| S9 ✅ | 설정 로드 | `getProperty(key, default)`로 키마다 기본값 지정 (B7 해결), try-with-resources는 JDK 7 이상 |
 
 ### 8.3 정리 가능한 죽은 코드
 
@@ -428,7 +429,7 @@ startProcess()
    | 필터 판정 30만 줄 | 391 ms | 112 ms | 3.5배 |
    | 셀 렌더링 5만 회, 필터 없음 | 214 ms | 6.5 ms | 33배 |
    | 셀 렌더링 5만 회, 하이라이트+Find | 234 ms | 154 ms | −34% |
-3. **안정성:** B4/B5/B8을 S8(EDT 반영)과 동기화 정리로 함께 해결, B6(adb devices 비동기화), B7/S9(설정 기본값)
+3. ✅ **완료(2026-10-06) — 안정성:** B4/B5/B8 + S8(EDT 반영, 목록 교체 방식 clearData, 모델 행 수 고정, ConcurrentHashMap), B6(adb devices 백그라운드), B7/S9(설정 키별 기본값), B11(스트림 닫기), P7. 재필터 요청 유실 경합, 파일 연속 열기 시 이전 파싱 혼입, Stop 직후 Run 시 새 프로세스 중단 문제도 수정. 스트레스 테스트(파싱·실시간 추가·필터 변경·Clear·스크롤 동시 실행): 수정 전 20초 동안 예외 17건 → 수정 후 60초 동안 0건.
 4. **구조 개선:** 죽은 코드 제거 → S2/S3/S4 중복 제거 → S1 클래스 분리
 5. **저장소 정리:** 소스 인코딩을 UTF-8로 통일하고 Eclipse 설정(`encoding/<project>`)도 맞춘 뒤, 로컬 변경분(1.1)을 GitHub에 커밋
 6. **기능 보완(선택):** `installInputHistory` 연결, 드래그&드롭과 실행 인자로 연 파일도 Recent에 추가, 파서 포맷 확장(B13)

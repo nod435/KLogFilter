@@ -28,7 +28,6 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -38,10 +37,12 @@ import java.io.Writer;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
+import java.util.Map;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -63,6 +64,7 @@ import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.event.CaretEvent;
 import javax.swing.event.CaretListener;
 import javax.swing.event.ChangeEvent;
@@ -120,13 +122,18 @@ public class LogFilterMain extends JFrame implements INotiEvent
     JTabbedPane               m_tpTab;
     JTextField                m_tfStatus;
     IndicatorPanel            m_ipIndicator;
-    ArrayList<TagInfo>        m_arTagInfo;
-    ArrayList<LogInfo>        m_arLogInfoAll;
-    ArrayList<LogInfo>        m_arLogInfoFiltered;
-    HashMap<Integer, Integer> m_hmBookmarkAll;
-    HashMap<Integer, Integer> m_hmBookmarkFiltered;
-    HashMap<Integer, Integer> m_hmErrorAll;
-    HashMap<Integer, Integer> m_hmErrorFiltered;
+    // 아래 리스트/맵은 여러 스레드가 함께 쓴다. 비울 때는 clear() 대신 새 객체로 교체하고(clearData),
+    // 화면(테이블 모델·인디케이터)에는 refreshTable()로 EDT에서만 반영한다.
+    volatile ArrayList<TagInfo>          m_arTagInfo;
+    volatile ArrayList<LogInfo>          m_arLogInfoAll;
+    volatile ArrayList<LogInfo>          m_arLogInfoFiltered;
+    volatile Map<Integer, Integer>       m_hmBookmarkAll;
+    volatile Map<Integer, Integer>       m_hmBookmarkFiltered;
+    volatile Map<Integer, Integer>       m_hmErrorAll;
+    volatile Map<Integer, Integer>       m_hmErrorFiltered;
+    // 인디케이터의 "북마크만/에러만 보기" 체크 상태 (EDT에서 갱신, 필터 스레드에서 읽음)
+    volatile boolean                     m_bShowBookmarkOnly;
+    volatile boolean                     m_bShowErrorOnly;
     ILogParser                m_iLogParser;
     LogTable                  m_tbLogTable;
 //    TagTable                    m_tbTagTable;
@@ -134,7 +141,7 @@ public class LogFilterMain extends JFrame implements INotiEvent
 //    JScrollPane                 m_scrollVTagBar;
     LogFilterTableModel       m_tmLogTableModel;
 //    TagFilterTableModel         m_tmTagTableModel;
-    boolean                   m_bUserFilter;
+    volatile boolean          m_bUserFilter;
     
     //Word Filter, tag filter
     JTextField                m_tfHighlight;
@@ -192,11 +199,11 @@ public class LogFilterMain extends JFrame implements INotiEvent
     String                    m_strLogFileName;
     String                    m_strSelectedDevice;
 //    String                      m_strProcessCmd;
-    Process                   m_Process;
-    Thread                    m_thProcess;
-    Thread                    m_thWatchFile;
+    volatile Process          m_Process;
+    volatile Thread           m_thProcess;
+    volatile Thread           m_thWatchFile;
     Thread                    m_thFilterParse;
-    boolean                   m_bPauseADB;
+    volatile boolean          m_bPauseADB;
     
     Object                    FILE_LOCK;
     Object                    FILTER_LOCK;
@@ -306,6 +313,7 @@ public class LogFilterMain extends JFrame implements INotiEvent
 
         setVisible(true);
         addDesc();
+        refreshTable(REFRESH_KEEP);     // 안내 문구 행을 테이블에 반영
         loadFilter();
         loadColor();
         loadCmd();
@@ -349,169 +357,197 @@ public class LogFilterMain extends JFrame implements INotiEvent
 
     final String INI_COMUMN         = "INI_COMUMN_";
     
-    void loadCmd()
+    // LogFilterCmd.ini가 없거나 비어 있을 때 쓰는 기본 명령 (배포본 ini와 같은 값)
+    static final String[] DEFAULT_CMDS = { "logcat -v threadtime", "logcat -v time", "logcat -b radio -v time",
+                                           "logcat -b events -v time", "shell cat /proc/kmsg" };
+
+    // 설정 파일 읽기. 파일이 없거나 읽을 수 없으면 빈 Properties를 돌려준다(각 키는 기본값 사용).
+    static Properties loadProperties(String strFile)
     {
-        try
+        Properties p = new Properties();
+        File file = new File(strFile);
+        if(!file.exists()) return p;
+        try(FileInputStream in = new FileInputStream(file))
         {
-            Properties p = new Properties();
-            
-            // ini 파일 읽기
-            p.load(new FileInputStream(INI_FILE_CMD));
-            
-            T.d("p.getProperty(INI_CMD_COUNT) = " + p.getProperty(INI_CMD_COUNT));
-            int nCount = Integer.parseInt(p.getProperty(INI_CMD_COUNT));
-            T.d("nCount = " + nCount);
-            for(int nIndex = 0; nIndex < nCount; nIndex++)
-            {
-                T.d("CMD = " + INI_CMD + nIndex);
-                m_comboCmd.addItem(p.getProperty(INI_CMD + nIndex));
-            }
+            p.load(in);
         }
         catch(Exception e)
         {
-            System.out.println(e);
+            System.out.println(strFile + " : " + e);
+        }
+        return p;
+    }
+
+    static void storeProperties(Properties p, String strFile)
+    {
+        try(FileOutputStream out = new FileOutputStream(strFile))
+        {
+            p.store(out, "done.");
+        }
+        catch(Exception e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    // 키가 없거나 숫자가 아니면 기본값을 쓴다. (키 하나가 잘못돼도 나머지 설정은 그대로 적용)
+    static int intOf(Properties p, String strKey, int nDefault)
+    {
+        try
+        {
+            String strValue = p.getProperty(strKey);
+            return strValue == null ? nDefault : Integer.parseInt(strValue.trim());
+        }
+        catch(NumberFormatException e)
+        {
+            System.out.println(strKey + " : " + e);
+            return nDefault;
+        }
+    }
+
+    static int hexOf(Properties p, String strKey, int nDefault)
+    {
+        try
+        {
+            String strValue = p.getProperty(strKey);
+            return strValue == null ? nDefault : Integer.parseInt(strValue.trim().replace("0x", "").replace("0X", ""), 16);
+        }
+        catch(NumberFormatException e)
+        {
+            System.out.println(strKey + " : " + e);
+            return nDefault;
+        }
+    }
+
+    void loadCmd()
+    {
+        Properties p = loadProperties(INI_FILE_CMD);
+        int nCount = intOf(p, INI_CMD_COUNT, 0);
+        T.d("nCount = " + nCount);
+        for(int nIndex = 0; nIndex < nCount; nIndex++)
+        {
+            String strCmd = p.getProperty(INI_CMD + nIndex);
+            if(strCmd != null && strCmd.trim().length() > 0)
+                m_comboCmd.addItem(strCmd);
+        }
+        if(m_comboCmd.getItemCount() == 0)
+        {
+            for(String strCmd : DEFAULT_CMDS)
+                m_comboCmd.addItem(strCmd);
         }
     }
     
     void loadColor()
     {
-        try
+        Properties p = loadProperties(INI_FILE_COLOR);
+
+        LogColor.COLOR_0 = hexOf(p, INI_COLOR_0, LogColor.COLOR_0);
+        LogColor.COLOR_1 = hexOf(p, INI_COLOR_1, LogColor.COLOR_1);
+        LogColor.COLOR_2 = hexOf(p, INI_COLOR_2, LogColor.COLOR_2);
+        LogColor.COLOR_ERROR = LogColor.COLOR_3 = hexOf(p, INI_COLOR_3, LogColor.COLOR_3);
+        LogColor.COLOR_WARN  = LogColor.COLOR_4 = hexOf(p, INI_COLOR_4, LogColor.COLOR_4);
+        LogColor.COLOR_5 = hexOf(p, INI_COLOR_5, LogColor.COLOR_5);
+        LogColor.COLOR_INFO  = LogColor.COLOR_6 = hexOf(p, INI_COLOR_6, LogColor.COLOR_6);
+        LogColor.COLOR_DEBUG = LogColor.COLOR_7 = hexOf(p, INI_COLOR_7, LogColor.COLOR_7);
+        LogColor.COLOR_FATAL = LogColor.COLOR_8 = hexOf(p, INI_COLOR_8, LogColor.COLOR_8);
+
+        // 하이라이트 색상: 개수만큼 읽되, 빠졌거나 잘못된 값은 건너뛴다.
+        ArrayList<String> arHighlight = new ArrayList<String>();
+        int nCount = intOf(p, INI_HIGILIGHT_COUNT, 0);
+        for(int nIndex = 0; nIndex < nCount; nIndex++)
         {
-            Properties p = new Properties();
-            
-            p.load(new FileInputStream(INI_FILE_COLOR));
-            
-            LogColor.COLOR_0 = Integer.parseInt(p.getProperty(INI_COLOR_0).replace("0x", ""), 16);
-            LogColor.COLOR_1 = Integer.parseInt(p.getProperty(INI_COLOR_1).replace("0x", ""), 16);
-            LogColor.COLOR_2 = Integer.parseInt(p.getProperty(INI_COLOR_2).replace("0x", ""), 16);
-            LogColor.COLOR_ERROR = LogColor.COLOR_3 = Integer.parseInt(p.getProperty(INI_COLOR_3).replace("0x", ""), 16);
-            LogColor.COLOR_WARN  = LogColor.COLOR_4 = Integer.parseInt(p.getProperty(INI_COLOR_4).replace("0x", ""), 16);
-            LogColor.COLOR_5 = Integer.parseInt(p.getProperty(INI_COLOR_5).replace("0x", ""), 16);
-            LogColor.COLOR_INFO  = LogColor.COLOR_6 = Integer.parseInt(p.getProperty(INI_COLOR_6).replace("0x", ""), 16);
-            LogColor.COLOR_DEBUG = LogColor.COLOR_7 = Integer.parseInt(p.getProperty(INI_COLOR_7).replace("0x", ""), 16);
-            LogColor.COLOR_FATAL = LogColor.COLOR_8 = Integer.parseInt(p.getProperty(INI_COLOR_8).replace("0x", ""), 16);
-            
-            int nCount = Integer.parseInt(p.getProperty( INI_HIGILIGHT_COUNT, "0" ));
-            if(nCount > 0)
-            {
-                LogColor.COLOR_HIGHLIGHT = new String[nCount];
-                for(int nIndex = 0; nIndex < nCount; nIndex++)
-                    LogColor.COLOR_HIGHLIGHT[nIndex] = p.getProperty(INI_HIGILIGHT_ + nIndex).replace("0x", "");
-            }
-            else
-            {
-                LogColor.COLOR_HIGHLIGHT = new String[1];
-                LogColor.COLOR_HIGHLIGHT[0] = "ffff";
-            }
+            String strValue = p.getProperty(INI_HIGILIGHT_ + nIndex);
+            if(strValue == null) continue;
+            strValue = strValue.trim().replace("0x", "").replace("0X", "");
+            if(strValue.matches("[0-9a-fA-F]{1,6}"))
+                arHighlight.add(strValue);
         }
-        catch(Exception e)
-        {
-            System.out.println(e);
-        }
+        if(arHighlight.isEmpty())
+            arHighlight.add("ffff");
+        LogColor.COLOR_HIGHLIGHT = arHighlight.toArray(new String[arHighlight.size()]);
     }
     
     void saveColor()
     {
-        try
+        Properties p = new Properties();
+
+        p.setProperty(INI_COLOR_0, "0x" + Integer.toHexString(LogColor.COLOR_0).toUpperCase());
+        p.setProperty(INI_COLOR_1, "0x" + Integer.toHexString(LogColor.COLOR_1).toUpperCase());
+        p.setProperty(INI_COLOR_2, "0x" + Integer.toHexString(LogColor.COLOR_2).toUpperCase());
+        p.setProperty(INI_COLOR_3, "0x" + Integer.toHexString(LogColor.COLOR_3).toUpperCase());
+        p.setProperty(INI_COLOR_4, "0x" + Integer.toHexString(LogColor.COLOR_4).toUpperCase());
+        p.setProperty(INI_COLOR_5, "0x" + Integer.toHexString(LogColor.COLOR_5).toUpperCase());
+        p.setProperty(INI_COLOR_6, "0x" + Integer.toHexString(LogColor.COLOR_6).toUpperCase());
+        p.setProperty(INI_COLOR_7, "0x" + Integer.toHexString(LogColor.COLOR_7).toUpperCase());
+        p.setProperty(INI_COLOR_8, "0x" + Integer.toHexString(LogColor.COLOR_8).toUpperCase());
+
+        if(LogColor.COLOR_HIGHLIGHT != null)
         {
-            Properties p = new Properties();
-
-            p.setProperty(INI_COLOR_0, "0x" + Integer.toHexString(LogColor.COLOR_0).toUpperCase());
-            p.setProperty(INI_COLOR_1, "0x" + Integer.toHexString(LogColor.COLOR_1).toUpperCase());
-            p.setProperty(INI_COLOR_2, "0x" + Integer.toHexString(LogColor.COLOR_2).toUpperCase());
-            p.setProperty(INI_COLOR_3, "0x" + Integer.toHexString(LogColor.COLOR_3).toUpperCase());
-            p.setProperty(INI_COLOR_4, "0x" + Integer.toHexString(LogColor.COLOR_4).toUpperCase());
-            p.setProperty(INI_COLOR_5, "0x" + Integer.toHexString(LogColor.COLOR_5).toUpperCase());
-            p.setProperty(INI_COLOR_6, "0x" + Integer.toHexString(LogColor.COLOR_6).toUpperCase());
-            p.setProperty(INI_COLOR_7, "0x" + Integer.toHexString(LogColor.COLOR_7).toUpperCase());
-            p.setProperty(INI_COLOR_8, "0x" + Integer.toHexString(LogColor.COLOR_8).toUpperCase());
-
-            if(LogColor.COLOR_HIGHLIGHT != null)
-            {
-                p.setProperty(INI_HIGILIGHT_COUNT, "" + LogColor.COLOR_HIGHLIGHT.length);
-                for(int nIndex = 0; nIndex < LogColor.COLOR_HIGHLIGHT.length; nIndex++)
-                    p.setProperty(INI_HIGILIGHT_ + nIndex, "0x" + LogColor.COLOR_HIGHLIGHT[nIndex].toUpperCase());
-            }
-
-            p.store( new FileOutputStream(INI_FILE_COLOR), "done.");
+            p.setProperty(INI_HIGILIGHT_COUNT, "" + LogColor.COLOR_HIGHLIGHT.length);
+            for(int nIndex = 0; nIndex < LogColor.COLOR_HIGHLIGHT.length; nIndex++)
+                p.setProperty(INI_HIGILIGHT_ + nIndex, "0x" + LogColor.COLOR_HIGHLIGHT[nIndex].toUpperCase());
         }
-        catch(Exception e)
-        {
-            e.printStackTrace();
-        }
+
+        storeProperties(p, INI_FILE_COLOR);
     }
     
     void loadFilter()
     {
-        try
+        Properties p = loadProperties(INI_FILE);
+
+        String strFontType = p.getProperty(INI_FONT_TYPE);
+        if(strFontType != null && strFontType.length() > 0)
+            m_jcFontType.setSelectedItem(strFontType);
+        m_tfFindWord.setText(p.getProperty(INI_WORD_FIND, ""));
+        m_tfRemoveWord.setText(p.getProperty(INI_WORD_REMOVE, ""));
+        m_tfShowTag.setText(p.getProperty(INI_TAG_SHOW, ""));
+        m_tfRemoveTag.setText(p.getProperty(INI_TAG_REMOVE, ""));
+        m_tfShowPid.setText(p.getProperty(INI_PID_SHOW, ""));
+        m_tfShowTid.setText(p.getProperty(INI_TID_SHOW, ""));
+        m_tfHighlight.setText(p.getProperty(INI_HIGHLIGHT, ""));
+        m_nWinWidth  = Math.max(MIN_WIDTH,  intOf(p, INI_WIDTH,  DEFAULT_WIDTH));
+        m_nWinHeight = Math.max(MIN_HEIGHT, intOf(p, INI_HEIGHT, DEFAULT_HEIGHT));
+        m_nWindState = intOf(p, INI_WINDOW_STATE, JFrame.NORMAL);
+        if(m_nWindState == JFrame.ICONIFIED)
+            m_nWindState = JFrame.NORMAL;   // 최소화 상태로 시작하지 않도록
+
+        for(int nIndex = 0; nIndex < LogFilterTableModel.COMUMN_MAX; nIndex++)
         {
-            Properties p = new Properties();
-            
-            // ini 파일 읽기
-            p.load(new FileInputStream(INI_FILE));
-            
-            // Key 값 읽기
-            String strFontType = p.getProperty(INI_FONT_TYPE);
-            if(strFontType != null && strFontType.length() > 0)
-                m_jcFontType.setSelectedItem(p.getProperty(INI_FONT_TYPE));
-            m_tfFindWord.setText(p.getProperty(INI_WORD_FIND));
-            m_tfRemoveWord.setText(p.getProperty(INI_WORD_REMOVE));
-            m_tfShowTag.setText(p.getProperty(INI_TAG_SHOW));
-            m_tfRemoveTag.setText(p.getProperty(INI_TAG_REMOVE));
-            m_tfShowPid.setText(p.getProperty(INI_PID_SHOW));
-            m_tfShowTid.setText(p.getProperty(INI_TID_SHOW));
-            m_tfHighlight.setText(p.getProperty(INI_HIGHLIGHT));
-            m_nWinWidth  = Integer.parseInt( p.getProperty( INI_WIDTH ));
-            m_nWinHeight = Integer.parseInt( p.getProperty( INI_HEIGHT ));
-            m_nWindState = Integer.parseInt( p.getProperty( INI_WINDOW_STATE ));
-            
-            for(int nIndex = 0; nIndex < LogFilterTableModel.COMUMN_MAX; nIndex++)
-            {
-                LogFilterTableModel.setColumnWidth( nIndex, Integer.parseInt( p.getProperty( INI_COMUMN + nIndex) ) );
-            }
-        }
-        catch(Exception e)
-        {
-            System.out.println(e);
+            LogFilterTableModel.setColumnWidth(nIndex, intOf(p, INI_COMUMN + nIndex, LogFilterTableModel.ColWidth[nIndex]));
         }
     }
     
     void saveFilter()
     {
-        try
+        // 창 크기는 최대화가 아닐 때 마지막으로 기록된 값을 쓴다. (한 번도 기록되지 않았으면 기존 값 유지)
+        if(m_nLastWidth > 0 && m_nLastHeight > 0)
         {
             m_nWinWidth  = m_nLastWidth;
             m_nWinHeight = m_nLastHeight;
-            m_nWindState = getExtendedState();
-            T.d("m_nWindState = " + m_nWindState);
-            
-            Properties p = new Properties();
-//            p.setProperty( INI_LAST_DIR, m_strLastDir );
-            p.setProperty(INI_FONT_TYPE,   (String)m_jcFontType.getSelectedItem());
-            p.setProperty(INI_WORD_FIND,   m_tfFindWord.getText());
-            p.setProperty(INI_WORD_REMOVE, m_tfRemoveWord.getText());
-            p.setProperty(INI_TAG_SHOW,    m_tfShowTag.getText());
-            p.setProperty(INI_TAG_REMOVE,  m_tfRemoveTag.getText());
-            p.setProperty(INI_PID_SHOW,    m_tfShowPid.getText());
-            p.setProperty(INI_TID_SHOW,    m_tfShowTid.getText());
-            p.setProperty(INI_HIGHLIGHT,   m_tfHighlight.getText());
-            p.setProperty(INI_WIDTH,       "" + m_nWinWidth);
-            p.setProperty(INI_HEIGHT,      "" + m_nWinHeight);
-            p.setProperty(INI_WINDOW_STATE,"" + m_nWindState);
+        }
+        m_nWindState = getExtendedState();
+        T.d("m_nWindState = " + m_nWindState);
 
-            for(int nIndex = 0; nIndex < LogFilterTableModel.COMUMN_MAX; nIndex++)
-            {
-                p.setProperty(INI_COMUMN + nIndex, "" + m_tbLogTable.getColumnWidth(nIndex));
-            }
-            p.store( new FileOutputStream(INI_FILE), "done.");
-        }
-        catch(Exception e)
+        Properties p = new Properties();
+        p.setProperty(INI_FONT_TYPE,   (String)m_jcFontType.getSelectedItem());
+        p.setProperty(INI_WORD_FIND,   m_tfFindWord.getText());
+        p.setProperty(INI_WORD_REMOVE, m_tfRemoveWord.getText());
+        p.setProperty(INI_TAG_SHOW,    m_tfShowTag.getText());
+        p.setProperty(INI_TAG_REMOVE,  m_tfRemoveTag.getText());
+        p.setProperty(INI_PID_SHOW,    m_tfShowPid.getText());
+        p.setProperty(INI_TID_SHOW,    m_tfShowTid.getText());
+        p.setProperty(INI_HIGHLIGHT,   m_tfHighlight.getText());
+        p.setProperty(INI_WIDTH,       "" + m_nWinWidth);
+        p.setProperty(INI_HEIGHT,      "" + m_nWinHeight);
+        p.setProperty(INI_WINDOW_STATE,"" + m_nWindState);
+
+        for(int nIndex = 0; nIndex < LogFilterTableModel.COMUMN_MAX; nIndex++)
         {
-            e.printStackTrace();
+            p.setProperty(INI_COMUMN + nIndex, "" + m_tbLogTable.getColumnWidth(nIndex));
         }
+        storeProperties(p, INI_FILE);
     }
-    
-    void addDesc(String strMessage)
+        void addDesc(String strMessage)
     {
         LogInfo logInfo = new LogInfo();
         logInfo.setLine(m_arLogInfoAll.size() + 1);
@@ -569,9 +605,10 @@ public class LogFilterMain extends JFrame implements INotiEvent
     {
         synchronized(FILTER_LOCK)
         {
+            // 화면에 아직 이전 목록이 보이는 동안(clearData 직후) 클릭한 경우 범위를 벗어날 수 있다.
+            if(nLine < 0 || nLine >= m_arLogInfoAll.size()) return;
             LogInfo logInfo = m_arLogInfoAll.get(nLine);
             logInfo.m_bMarked = bBookmark;
-            m_arLogInfoAll.set(nLine, logInfo);
 
             if(logInfo.m_bMarked)
             {
@@ -589,17 +626,104 @@ public class LogFilterMain extends JFrame implements INotiEvent
         m_ipIndicator.repaint();
     }
 
+    // 모든 로그를 지운다. 화면이 참조 중인 리스트를 clear()하지 않고 새 객체로 교체한 뒤 EDT에서 반영한다.
     void clearData()
     {
-        m_arTagInfo.clear();
-        m_arLogInfoAll.clear();
-        m_arLogInfoFiltered.clear();
-        m_hmBookmarkAll.clear();
-        m_hmBookmarkFiltered.clear();
-        m_hmErrorAll.clear();
-        m_hmErrorFiltered.clear();
+        synchronized(FILTER_LOCK)
+        {
+            m_arTagInfo         = new ArrayList<TagInfo>();
+            m_arLogInfoAll      = new ArrayList<LogInfo>();
+            m_arLogInfoFiltered = new ArrayList<LogInfo>();
+            m_hmBookmarkAll     = new ConcurrentHashMap<Integer, Integer>();
+            m_hmBookmarkFiltered= new ConcurrentHashMap<Integer, Integer>();
+            m_hmErrorAll        = new ConcurrentHashMap<Integer, Integer>();
+            m_hmErrorFiltered   = new ConcurrentHashMap<Integer, Integer>();
+        }
+        refreshTable(REFRESH_KEEP);
     }
 
+    // ---- 화면 반영 (항상 EDT에서 실행) ----------------------------------------------------
+    static final int REFRESH_KEEP        = 0;   // 선택 유지
+    static final int REFRESH_FOLLOW_END  = 1;   // 마지막 행을 보고 있었다면 새 마지막 행으로 따라감
+    static final int REFRESH_SELECT_LAST = 2;   // 마지막 행을 선택하고 스크롤
+
+    // 지금 스레드가 EDT면 바로, 아니면 EDT에 넘겨 실행한다.
+    static void runOnEdt(Runnable runnable)
+    {
+        if(SwingUtilities.isEventDispatchThread())
+            runnable.run();
+        else
+            SwingUtilities.invokeLater(runnable);
+    }
+
+    // 필터 사용 여부에 맞는 목록(All/Filtered)을 테이블과 인디케이터에 반영한다. 어느 스레드에서 불러도 된다.
+    void refreshTable(final int nMode)
+    {
+        runOnEdt(new Runnable()
+        {
+            public void run()
+            {
+                ArrayList<LogInfo>    arList;
+                Map<Integer, Integer> hmBookmark, hmError;
+                if(m_bUserFilter)
+                {
+                    arList = m_arLogInfoFiltered; hmBookmark = m_hmBookmarkFiltered; hmError = m_hmErrorFiltered;
+                }
+                else
+                {
+                    arList = m_arLogInfoAll;      hmBookmark = m_hmBookmarkAll;      hmError = m_hmErrorAll;
+                }
+
+                int nOldCount    = m_tmLogTableModel.getRowCount();
+                int nSelected    = m_tbLogTable.getSelectedRow();
+                boolean bAtEnd   = nSelected == -1 || nSelected == nOldCount - 1;
+
+                if(m_tmLogTableModel.getData() != arList)
+                {
+                    // 다른 목록으로 교체: 전체 다시 그리기 (선택은 해제됨)
+                    m_tmLogTableModel.setData(arList);
+                    m_tmLogTableModel.fireTableDataChanged();
+                }
+                else
+                {
+                    // 같은 목록에 줄이 추가된 경우: 추가된 행만 알려서 선택을 유지한다.
+                    int nNewCount = m_tmLogTableModel.syncRowCount();
+                    if(nNewCount > nOldCount)
+                        m_tmLogTableModel.fireTableRowsInserted(nOldCount, nNewCount - 1);
+                    else if(nNewCount < nOldCount)
+                        m_tmLogTableModel.fireTableDataChanged();
+                }
+                m_ipIndicator.setData(arList, hmBookmark, hmError);
+
+                int nLast = m_tmLogTableModel.getRowCount() - 1;
+                if(nLast >= 0 && (nMode == REFRESH_SELECT_LAST || (nMode == REFRESH_FOLLOW_END && bAtEnd)))
+                    m_tbLogTable.changeSelection(nLast, 0, false, false, true);
+                m_ipIndicator.repaint();
+            }
+        });
+    }
+
+    // 필터 조건을 통과하면 arFiltered에 추가하고 북마크/에러 위치를 기록한다. (addLogInfo와 재필터가 함께 사용)
+    void addIfAccepted(LogInfo logInfo, ArrayList<LogInfo> arFiltered, Map<Integer, Integer> hmBookmark, Map<Integer, Integer> hmError)
+    {
+        boolean bAccept;
+        if(m_bShowBookmarkOnly || m_bShowErrorOnly)
+            bAccept = (logInfo.m_bMarked && m_bShowBookmarkOnly) || (logInfo.isError() && m_bShowErrorOnly);
+        else
+            bAccept = checkLogLVFilter(logInfo)
+                   && checkPidFilter(logInfo)
+                   && checkTidFilter(logInfo)
+                   && checkShowTagFilter(logInfo)
+                   && checkRemoveTagFilter(logInfo)
+                   && checkFindFilter(logInfo)
+                   && checkRemoveFilter(logInfo);
+        if(!bAccept) return;
+
+        int nPos = arFiltered.size();   // 추가되기 전 크기 = 이 줄이 표시될 행 번호
+        if(logInfo.m_bMarked) hmBookmark.put(logInfo.m_nLine - 1, nPos);
+        if(logInfo.isError()) hmError.put(logInfo.m_nLine - 1, nPos);
+        arFiltered.add(logInfo);
+    }
     void createComponent()
     {
     }
@@ -717,50 +841,13 @@ public class LogFilterMain extends JFrame implements INotiEvent
         {
             m_tbLogTable.setTagLength( logInfo.m_strTag.length() );
             m_arLogInfoAll.add(logInfo);
-//            addTagList(logInfo.m_strTag);
             if(logInfo.isError())
                 m_hmErrorAll.put(logInfo.m_nLine - 1, logInfo.m_nLine - 1);
 
             if(m_bUserFilter)
-            {
-                if(m_ipIndicator.m_chBookmark.isSelected() || m_ipIndicator.m_chError.isSelected())
-                {
-                    boolean bAddFilteredArray = false;
-                    if(logInfo.m_bMarked && m_ipIndicator.m_chBookmark.isSelected())
-                    {
-                        bAddFilteredArray = true;
-                        m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                        if(logInfo.isError())
-                            m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                    }
-                    if(logInfo.isError() && m_ipIndicator.m_chError.isSelected())
-                    {
-                        bAddFilteredArray = true;
-                        m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                        if(logInfo.m_bMarked)
-                            m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                    }
-
-                    if(bAddFilteredArray) m_arLogInfoFiltered.add(logInfo);
-                }
-                else if(checkLogLVFilter(logInfo)
-                        && checkPidFilter(logInfo)
-                        && checkTidFilter(logInfo)
-                        && checkShowTagFilter(logInfo)
-                        && checkRemoveTagFilter(logInfo)
-                        && checkFindFilter(logInfo)
-                        && checkRemoveFilter(logInfo))
-                {
-                    m_arLogInfoFiltered.add(logInfo);
-                    if(logInfo.m_bMarked)
-                        m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                    if(logInfo.isError())
-                        m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                }
-            }
+                addIfAccepted(logInfo, m_arLogInfoFiltered, m_hmBookmarkFiltered, m_hmErrorFiltered);
         }
     }
-
     void addChangeListener()
     {
         m_tfHighlight.getDocument().addDocumentListener(m_dlFilterListener);
@@ -1308,14 +1395,17 @@ public class LogFilterMain extends JFrame implements INotiEvent
         m_arTagInfo         = new ArrayList<TagInfo>();
         m_arLogInfoAll      = new ArrayList<LogInfo>();
         m_arLogInfoFiltered = new ArrayList<LogInfo>();
-        m_hmBookmarkAll     = new HashMap<Integer, Integer>();
-        m_hmBookmarkFiltered= new HashMap<Integer, Integer>();
-        m_hmErrorAll        = new HashMap<Integer, Integer>();
-        m_hmErrorFiltered   = new HashMap<Integer, Integer>();
+        m_hmBookmarkAll     = new ConcurrentHashMap<Integer, Integer>();
+        m_hmBookmarkFiltered= new ConcurrentHashMap<Integer, Integer>();
+        m_hmErrorAll        = new ConcurrentHashMap<Integer, Integer>();
+        m_hmErrorFiltered   = new ConcurrentHashMap<Integer, Integer>();
 
         m_strLogFileName = makeFilename();
 //        m_strProcessCmd     = ANDROID_DEFAULT_CMD + m_strLogFileName;
     }
+
+    // 파일 파싱 세대 번호. 새 파일을 열면 증가하고, 이전 파싱 스레드는 번호가 바뀐 것을 보고 멈춘다.
+    final AtomicInteger m_nParseGeneration = new AtomicInteger();
 
     void parseFile(final File file)
     {
@@ -1326,56 +1416,45 @@ public class LogFilterMain extends JFrame implements INotiEvent
         }
 
         setTitle(file.getPath());
+        // Swing 컴포넌트 값은 호출한 스레드(보통 EDT)에서 미리 읽어 둔다.
+        final boolean bUtf8 = "UTF-8".equals(m_comboEncode.getSelectedItem());
+        final int nGeneration = m_nParseGeneration.incrementAndGet();
         new Thread(new Runnable()
         {
             public void run()
             {
-                FileInputStream fstream = null;
-                DataInputStream in = null;
-                BufferedReader br = null;
                 int nIndex = 1;
-
-                try {
-                    fstream = new FileInputStream(file);
-                    in = new DataInputStream(fstream);
-                    if(m_comboEncode.getSelectedItem().equals("UTF-8"))
-                        br = new BufferedReader(new InputStreamReader(in, "UTF-8"));
-                    else
-                        br = new BufferedReader(new InputStreamReader(in));
-
+                try(BufferedReader br = new BufferedReader(bUtf8 ? new InputStreamReader(new FileInputStream(file), "UTF-8")
+                                                                 : new InputStreamReader(new FileInputStream(file))))
+                {
                     String strLine;
 
                     setStatus("Parsing");
                     clearData();
-                    m_tbLogTable.clearSelection();
                     while ((strLine = br.readLine()) != null)
                     {
-                        if(strLine != null && !"".equals(strLine.trim()))
+                        if(!"".equals(strLine.trim()))
                         {
                             LogInfo logInfo = m_iLogParser.parseLog(strLine);
                             logInfo.setLine(nIndex++);
-                            addLogInfo(logInfo);
+                            // 세대 확인과 추가를 같은 락 안에서 해야, 새 파일의 clearData() 뒤에 이전 줄이 섞이지 않는다.
+                            synchronized(FILTER_LOCK)
+                            {
+                                if(nGeneration != m_nParseGeneration.get())
+                                    return;     // 그 사이 다른 파일을 열었음
+                                addLogInfo(logInfo);
+                            }
                         }
                     }
                     runFilter();
                     setStatus("Parse complete");
                 } catch(Exception ioe) {
                     T.e(ioe);
-                }
-                try
-                {
-                    if(br != null)br.close();
-                    if(in != null) in.close();
-                    if(fstream != null) fstream.close();
-                }
-                catch(Exception e)
-                {
-                    T.e(e);
+                    setStatus("Parse error : " + ioe.getMessage());
                 }
             }
-        }).start();
+        }, "ParseFile").start();
     }
-
     void pauseProcess()
     {
         if(m_tbtnPause.isSelected())
@@ -1392,54 +1471,69 @@ public class LogFilterMain extends JFrame implements INotiEvent
 
     void setBookmark(int nLine, String strBookmark)
     {
-        LogInfo logInfo = m_arLogInfoAll.get(nLine);
-        logInfo.m_strBookmark = strBookmark;
-        m_arLogInfoAll.set(nLine, logInfo);
+        ArrayList<LogInfo> arAll = m_arLogInfoAll;
+        if(nLine < 0 || nLine >= arAll.size()) return;
+        arAll.get(nLine).m_strBookmark = strBookmark;
     }
 
+    // adb devices를 백그라운드에서 실행하고 결과를 EDT에서 목록에 넣는다. (실행 중 UI가 멈추지 않도록)
     void setDeviceList()
     {
         m_strSelectedDevice = "";
+        final DefaultListModel listModel = (DefaultListModel)m_lDeviceList.getModel();
+        listModel.clear();
 
-        DefaultListModel listModel = (DefaultListModel)m_lDeviceList.getModel();
-        try
+        String strCommand = DEVICES_CMD[m_comboDeviceCmd.getSelectedIndex()];
+        if(m_comboDeviceCmd.getSelectedIndex() == DEVICES_CUSTOM)
+            strCommand = (String)m_comboDeviceCmd.getSelectedItem();
+        final String strCmd = strCommand;
+
+        m_btnDevice.setEnabled(false);
+        setStatus("adb devices ...");
+        new Thread(new Runnable()
         {
-            listModel.clear();
-            String s;
-            String strCommand = DEVICES_CMD[m_comboDeviceCmd.getSelectedIndex()];
-            if(m_comboDeviceCmd.getSelectedIndex() == DEVICES_CUSTOM)
-                strCommand = (String)m_comboDeviceCmd.getSelectedItem();
-            Process oProcess = Runtime.getRuntime().exec(strCommand);
-
-            // 외부 프로그램 출력 읽기
-            BufferedReader stdOut   = new BufferedReader(new InputStreamReader(oProcess.getInputStream()));
-            BufferedReader stdError = new BufferedReader(new InputStreamReader(oProcess.getErrorStream()));
-
-            // "표준 출력"과 "표준 에러 출력"을 출력
-            while ((s =   stdOut.readLine()) != null)
+            public void run()
             {
-                if(!s.equals("List of devices attached "))
+                final ArrayList<Object> arItem = new ArrayList<Object>();
+                try
                 {
-                    s = s.replace("\t", " ");
-                    s = s.replace("device", "");
-                    listModel.addElement(s);
+                    // stderr를 stdout에 합쳐 한 번에 읽는다. (둘을 순서대로 읽다 버퍼가 차서 멈추는 일 방지)
+                    ProcessBuilder pb = new ProcessBuilder(strCmd.trim().split("\\s+"));
+                    pb.redirectErrorStream(true);
+                    Process oProcess = pb.start();
+                    try(BufferedReader stdOut = new BufferedReader(new InputStreamReader(oProcess.getInputStream())))
+                    {
+                        String s;
+                        while ((s = stdOut.readLine()) != null)
+                        {
+                            if(s.trim().length() == 0 || s.startsWith("List of devices attached"))
+                                continue;
+                            s = s.replace("\t", " ");
+                            s = s.replace("device", "");
+                            arItem.add(s);
+                        }
+                    }
+                    System.out.println("Exit Code: " + oProcess.waitFor());
                 }
-            }
-            while ((s = stdError.readLine()) != null)
-            {
-                listModel.addElement(s);
-            }
+                catch(Exception e)
+                {
+                    T.e("e = " + e);
+                    arItem.add(e);
+                }
 
-            // 외부 프로그램 반환값 출력 (이 부분은 필수가 아님)
-            System.out.println("Exit Code: " + oProcess.exitValue());
-        }
-        catch(Exception e)
-        {
-            T.e("e = " + e);
-            listModel.addElement(e);
-        }
+                SwingUtilities.invokeLater(new Runnable()
+                {
+                    public void run()
+                    {
+                        for(Object item : arItem)
+                            listModel.addElement(item);
+                        m_btnDevice.setEnabled(true);
+                        setStatus(arItem.isEmpty() ? "No device" : "ready");
+                    }
+                });
+            }
+        }, "AdbDevices").start();
     }
-
     public void setFindFocus()
     {
         m_tfFindWord.requestFocus();
@@ -1587,59 +1681,60 @@ public class LogFilterMain extends JFrame implements INotiEvent
         }
     }
 
-    void setStatus(String strText)
+    void setStatus(final String strText)
     {
-        m_tfStatus.setText(strText);
+        runOnEdt(new Runnable()
+        {
+            public void run()
+            {
+                m_tfStatus.setText(strText);
+            }
+        });
     }
 
-    public void setTitle(String strTitle)
+    public void setTitle(final String strTitle)
     {
-        super.setTitle(strTitle);
+        runOnEdt(new Runnable()
+        {
+            public void run()
+            {
+                LogFilterMain.super.setTitle(strTitle);
+            }
+        });
     }
 
     void stopProcess()
     {
-        setProcessBtn(false);
-        if(m_Process != null) m_Process.destroy();
-        if(m_thProcess != null) m_thProcess.interrupt();
-        if(m_thWatchFile != null) m_thWatchFile.interrupt();
+        runOnEdt(new Runnable()
+        {
+            public void run()
+            {
+                setProcessBtn(false);
+            }
+        });
+        Process process = m_Process;
+        Thread  thProcess = m_thProcess, thWatchFile = m_thWatchFile;
         m_Process = null;
         m_thProcess = null;
         m_thWatchFile = null;
         m_bPauseADB = false;
+        if(process != null) process.destroy();
+        if(thProcess != null) thProcess.interrupt();
+        if(thWatchFile != null) thWatchFile.interrupt();
     }
 
-    void startFileParse()
+    // adb 출력이 기록되는 파일을 50ms마다 이어 읽어 화면에 반영한다.
+    void startFileParse(final String strFile, final boolean bUtf8)
     {
         m_thWatchFile = new Thread(new Runnable()
         {
             public void run()
             {
-                FileInputStream fstream = null;
-                DataInputStream in = null;
-                BufferedReader br = null;
-
-                try {
-                    fstream = new FileInputStream(m_strLogFileName);
-                    in = new DataInputStream(fstream);
-                    if(m_comboEncode.getSelectedItem().equals("UTF-8"))
-                        br = new BufferedReader(new InputStreamReader(in, "UTF-8"));
-                    else
-                        br = new BufferedReader(new InputStreamReader(in));
-
+                setTitle(strFile);
+                try(BufferedReader br = new BufferedReader(bUtf8 ? new InputStreamReader(new FileInputStream(strFile), "UTF-8")
+                                                                 : new InputStreamReader(new FileInputStream(strFile))))
+                {
                     String strLine;
-
-                    setTitle(m_strLogFileName);
-
-                    m_arLogInfoAll.clear();
-                    m_arTagInfo.clear();
-
-                    boolean bEndLine;
-                    int nSelectedIndex;
-                    int nAddCount;
-                    int nPreRowCount = 0;
-                    int nEndLine;
-
                     while(true)
                     {
                         Thread.sleep(50);
@@ -1648,73 +1743,45 @@ public class LogFilterMain extends JFrame implements INotiEvent
                             continue;
                         if(m_bPauseADB) continue;
 
-                        bEndLine = false;
-                        nSelectedIndex = m_tbLogTable.getSelectedRow();
-                        nPreRowCount = m_tbLogTable.getRowCount();
-                        nAddCount = 0;
-
-                        if(nSelectedIndex == -1 || nSelectedIndex == m_tbLogTable.getRowCount() - 1)
-                            bEndLine = true;
-
+                        int nAddCount = 0;
                         synchronized(FILE_LOCK)
                         {
-                            int nLine = m_arLogInfoAll.size() + 1;
                             while (!m_bPauseADB && (strLine = br.readLine()) != null)
                             {
-                                if(strLine != null && !"".equals(strLine.trim()))
+                                if(!"".equals(strLine.trim()))
                                 {
                                     LogInfo logInfo = m_iLogParser.parseLog(strLine);
-                                    logInfo.setLine(nLine++);
-                                    addLogInfo(logInfo);
+                                    synchronized(FILTER_LOCK)
+                                    {
+                                        // 줄 번호는 추가 직전에 정한다. (Clear로 목록이 바뀌어도 번호와 위치가 맞도록)
+                                        logInfo.setLine(m_arLogInfoAll.size() + 1);
+                                        addLogInfo(logInfo);
+                                    }
                                     nAddCount++;
                                 }
                             }
                         }
-                        if(nAddCount == 0) continue;
-
-                        synchronized(FILTER_LOCK)
-                        {
-                            if(m_bUserFilter == false)
-                            {
-                                m_tmLogTableModel.setData(m_arLogInfoAll);
-                                m_ipIndicator.setData(m_arLogInfoAll, m_hmBookmarkAll, m_hmErrorAll);
-                            }
-                            else
-                            {
-                                m_tmLogTableModel.setData(m_arLogInfoFiltered);
-                                m_ipIndicator.setData(m_arLogInfoFiltered, m_hmBookmarkFiltered, m_hmErrorFiltered);
-                            }
-
-                            nEndLine = m_tmLogTableModel.getRowCount();
-                            if(nPreRowCount != nEndLine)
-                            {
-                                if(bEndLine)
-                                    updateTable(nEndLine - 1, true);
-                                else
-                                    updateTable(nSelectedIndex, false);
-                            }
-                        }
+                        if(nAddCount > 0)
+                            refreshTable(REFRESH_FOLLOW_END);
                     }
-                } catch(Exception e) {
-                    T.e(e);
-                    e.printStackTrace();
                 }
-                try
+                catch(InterruptedException e)
                 {
-                    if(br != null)br.close();
-                    if(in != null) in.close();
-                    if(fstream != null) fstream.close();
+                    // Stop
                 }
                 catch(Exception e)
                 {
                     T.e(e);
+                    e.printStackTrace();
                 }
                 System.out.println("End m_thWatchFile thread");
-//                setTitle(LOGFILTER + " " + VERSION);
             }
-        });
+        }, "WatchFile");
         m_thWatchFile.start();
     }
+
+    // 재필터 요청 표시. notify()가 필터 스레드의 wait() 직전에 와도 요청을 잃지 않도록 플래그로 남긴다.
+    boolean m_bFilterRequested;
 
     void runFilter()
     {
@@ -1730,6 +1797,7 @@ public class LogFilterMain extends JFrame implements INotiEvent
             }
         synchronized(FILTER_LOCK)
         {
+            m_bFilterRequested = true;
             FILTER_LOCK.notify();
         }
     }
@@ -1746,148 +1814,111 @@ public class LogFilterMain extends JFrame implements INotiEvent
                         synchronized(FILTER_LOCK)
                         {
                             m_nChangedFilter = STATUS_READY;
-                            FILTER_LOCK.wait();
+                            while(!m_bFilterRequested)
+                                FILTER_LOCK.wait();
+                            m_bFilterRequested = false;
 
                             m_nChangedFilter = STATUS_PARSING;
 
-                            m_arLogInfoFiltered.clear();
-                            m_hmBookmarkFiltered.clear();
-                            m_hmErrorFiltered.clear();
-                            m_tbLogTable.clearSelection();
-
                             if(m_bUserFilter == false)
                             {
-                                m_tmLogTableModel.setData(m_arLogInfoAll);
-                                m_ipIndicator.setData(m_arLogInfoAll, m_hmBookmarkAll, m_hmErrorAll);
-                                updateTable(m_arLogInfoAll.size() - 1, true);
                                 m_nChangedFilter = STATUS_READY;
+                                refreshTable(REFRESH_SELECT_LAST);
                                 continue;
                             }
-                            m_tmLogTableModel.setData(m_arLogInfoFiltered);
-                            m_ipIndicator.setData(m_arLogInfoFiltered, m_hmBookmarkFiltered, m_hmErrorFiltered);
-    //                        updateTable(-1);
                             setStatus("Parsing");
 
-                            int nRowCount = m_arLogInfoAll.size();
-                            LogInfo logInfo;
-                            boolean bAddFilteredArray;
+                            // 새 리스트에 채운다. 완료될 때까지 화면은 이전 결과를 그대로 보여준다.
+                            ArrayList<LogInfo>    arAll      = m_arLogInfoAll;
+                            ArrayList<LogInfo>    arFiltered = new ArrayList<LogInfo>();
+                            Map<Integer, Integer> hmBookmark = new ConcurrentHashMap<Integer, Integer>();
+                            Map<Integer, Integer> hmError    = new ConcurrentHashMap<Integer, Integer>();
 
+                            int nRowCount = arAll.size();
                             for(int nIndex = 0; nIndex < nRowCount; nIndex++)
                             {
-                                if(nIndex % 10000 == 0)
-                                    Thread.sleep(1);
                                 if(m_nChangedFilter == STATUS_CHANGE)
-                                {
-//                                    T.d("m_nChangedFilter == STATUS_CHANGE");
                                     break;
-                                }
-                                logInfo = m_arLogInfoAll.get(nIndex);
-
-                                if(m_ipIndicator.m_chBookmark.isSelected() || m_ipIndicator.m_chError.isSelected())
-                                {
-                                    bAddFilteredArray = false;
-                                    if(logInfo.m_bMarked && m_ipIndicator.m_chBookmark.isSelected())
-                                    {
-                                        bAddFilteredArray = true;
-                                        m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                                        if(logInfo.isError())
-                                            m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                                    }
-                                    if(logInfo.isError() && m_ipIndicator.m_chError.isSelected())
-                                    {
-                                        bAddFilteredArray = true;
-                                        m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                                        if(logInfo.m_bMarked)
-                                            m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                                    }
-
-                                    if(bAddFilteredArray) m_arLogInfoFiltered.add(logInfo);
-                                }
-                                else if(checkLogLVFilter(logInfo)
-                                    && checkPidFilter(logInfo)
-                                    && checkTidFilter(logInfo)
-                                    && checkShowTagFilter(logInfo)
-                                    && checkRemoveTagFilter(logInfo)
-                                    && checkFindFilter(logInfo)
-                                    && checkRemoveFilter(logInfo))
-                                {
-                                    m_arLogInfoFiltered.add(logInfo);
-                                    if(logInfo.m_bMarked)
-                                        m_hmBookmarkFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                                    if(logInfo.isError())
-                                        m_hmErrorFiltered.put(logInfo.m_nLine - 1, m_arLogInfoFiltered.size());
-                                }
+                                addIfAccepted(arAll.get(nIndex), arFiltered, hmBookmark, hmError);
                             }
                             if(m_nChangedFilter == STATUS_PARSING)
                             {
+                                m_arLogInfoFiltered  = arFiltered;
+                                m_hmBookmarkFiltered = hmBookmark;
+                                m_hmErrorFiltered    = hmError;
                                 m_nChangedFilter = STATUS_READY;
-                                m_tmLogTableModel.setData(m_arLogInfoFiltered);
-                                m_ipIndicator.setData(m_arLogInfoFiltered, m_hmBookmarkFiltered, m_hmErrorFiltered);
-                                updateTable(m_arLogInfoFiltered.size() - 1, true);
+                                refreshTable(REFRESH_SELECT_LAST);
                                 setStatus("Complete");
                             }
                         }
                     }
+                } catch(InterruptedException e) {
+                    // 종료
                 } catch(Exception e) {
                     T.e(e);
                     e.printStackTrace();
                 }
                 System.out.println("End m_thFilterParse thread");
             }
-        });
+        }, "FilterParse");
         m_thFilterParse.start();
     }
 
     void startProcess()
     {
         clearData();
-        m_tbLogTable.clearSelection();
+        // Swing 값은 EDT에서 미리 읽어 둔다.
+        final boolean bUtf8   = "UTF-8".equals(m_comboEncode.getSelectedItem());
+        final String  strCmd  = getProcessCmd();
+        m_strLogFileName      = makeFilename();
+        final String  strFile = m_strLogFileName;
+
         m_thProcess = new Thread(new Runnable()
         {
             public void run()
             {
                 try
                 {
-                    String s;
-                    m_Process = null;
-                    setProcessCmd(m_comboDeviceCmd.getSelectedIndex(), m_strSelectedDevice);
+                    T.d("getProcessCmd() = " + strCmd);
+                    // stderr도 함께 받아 기록한다. (adb 오류 메시지 확인 + stderr 버퍼가 차서 멈추는 일 방지)
+                    ProcessBuilder pb = new ProcessBuilder(strCmd.trim().split("\\s+"));
+                    pb.redirectErrorStream(true);
+                    Process process = pb.start();
+                    m_Process = process;
 
-                    T.d("getProcessCmd() = " + getProcessCmd());
-                    m_Process = Runtime.getRuntime().exec(getProcessCmd());
-                    BufferedReader stdOut   = new BufferedReader(new InputStreamReader(m_Process.getInputStream(), "UTF-8"));
-
-//                    BufferedWriter fileOut = new BufferedWriter(new FileWriter(m_strLogFileName));
-                    Writer fileOut = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(m_strLogFileName), "UTF-8"));
-
-                    startFileParse();
-
-                    while ((s =   stdOut.readLine()) != null)
+                    try(BufferedReader stdOut = new BufferedReader(new InputStreamReader(process.getInputStream(), "UTF-8"));
+                        Writer fileOut = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(strFile), "UTF-8")))
                     {
-                        if(s != null && !"".equals(s.trim()))
+                        startFileParse(strFile, bUtf8);
+
+                        String s;
+                        while ((s = stdOut.readLine()) != null)
                         {
-                            synchronized(FILE_LOCK)
+                            if(!"".equals(s.trim()))
                             {
-                                fileOut.write(s);
-                                fileOut.write("\r\n");
-//                                fileOut.newLine();
-                                fileOut.flush();
+                                synchronized(FILE_LOCK)
+                                {
+                                    fileOut.write(s);
+                                    fileOut.write("\r\n");
+                                    fileOut.flush();
+                                }
                             }
                         }
                     }
-                    fileOut.close();
-//                    T.d("Exit Code: " + m_Process.exitValue());
                 }
                 catch(Exception e)
                 {
                     T.e("e = " + e);
+                    setStatus("adb error : " + e.getMessage());
                 }
-                stopProcess();
+                // 그 사이 Stop 후 다시 Run 했다면 새 프로세스를 건드리지 않는다.
+                if(m_thProcess == Thread.currentThread())
+                    stopProcess();
             }
-        });
+        }, "AdbProcess");
         m_thProcess.start();
         setProcessBtn(true);
     }
-
     // 레벨은 파싱할 때 m_nLogLV(비트)로 계산해 두었으므로 비트 연산으로 판정한다.
     // 레벨이 없는 줄(LOG_LV_NONE)은 모든 레벨이 선택된 경우에만 보인다.
     boolean checkLogLVFilter(LogInfo logInfo)
@@ -1941,8 +1972,8 @@ public class LogFilterMain extends JFrame implements INotiEvent
 
     boolean checkUseFilter()
     {
-        if(!m_ipIndicator.m_chBookmark.isSelected()
-            && !m_ipIndicator.m_chError.isSelected()
+        if(!m_bShowBookmarkOnly
+            && !m_bShowErrorOnly
             && checkLogLVFilter(new LogInfo())
             && (m_tbLogTable.GetFilterShowPid().length() == 0   || !m_chkEnableShowPid.isSelected())
             && (m_tbLogTable.GetFilterShowTid().length() == 0   || !m_chkEnableShowTid.isSelected())
@@ -1965,8 +1996,8 @@ public class LogFilterMain extends JFrame implements INotiEvent
                 setDeviceList();
             else if(e.getSource().equals(m_btnSetFont))
             {
-                m_tbLogTable.setFontSize(Integer.parseInt(m_tfFontSize.getText()));
-                updateTable(-1, false);
+                m_tbLogTable.setFontSize(fontSizeOf(m_tfFontSize.getText()));
+                m_tbLogTable.repaint();
             }
             else if(e.getSource().equals(m_btnRun))
             {
@@ -1981,7 +2012,6 @@ public class LogFilterMain extends JFrame implements INotiEvent
                 boolean bBackup = m_bPauseADB;
                 m_bPauseADB = true;
                 clearData();
-                updateTable(-1, false);
                 m_bPauseADB = bBackup;
             }
             else if(e.getSource().equals(m_tbtnPause))
@@ -1991,10 +2021,24 @@ public class LogFilterMain extends JFrame implements INotiEvent
                 T.d("font = " + m_tbLogTable.getFont());
                 
                 m_tbLogTable.setFont(new Font((String)m_jcFontType.getSelectedItem(), Font.PLAIN, 12));
-                m_tbLogTable.setFontSize(Integer.parseInt(m_tfFontSize.getText()));
+                m_tbLogTable.setFontSize(fontSizeOf(m_tfFontSize.getText()));
             }
         }
     };
+
+    // 글꼴 크기 입력값. 숫자가 아니거나 범위를 벗어나면 기본 12로 (잘못 입력해도 예외로 멈추지 않도록)
+    static int fontSizeOf(String strText)
+    {
+        try
+        {
+            int nSize = Integer.parseInt(strText.trim());
+            return nSize >= 6 && nSize <= 72 ? nSize : 12;
+        }
+        catch(NumberFormatException e)
+        {
+            return 12;
+        }
+    }
 
     public void notiEvent(EventParam param)
     {
@@ -2002,6 +2046,8 @@ public class LogFilterMain extends JFrame implements INotiEvent
         {
             case EVENT_CLICK_BOOKMARK:
             case EVENT_CLICK_ERROR:
+                m_bShowBookmarkOnly = m_ipIndicator.m_chBookmark.isSelected();
+                m_bShowErrorOnly    = m_ipIndicator.m_chError.isSelected();
                 m_nChangedFilter = STATUS_CHANGE;
                 runFilter();
                 break;
@@ -2012,18 +2058,6 @@ public class LogFilterMain extends JFrame implements INotiEvent
                 m_tfRemoveTag.setText(m_tbLogTable.GetFilterRemoveTag());
                 break;
         }
-    }
-
-    void updateTable(int nRow, boolean bMove)
-    {
-        m_tmLogTableModel.fireTableRowsUpdated(0, m_tmLogTableModel.getRowCount() - 1);
-        m_scrollVBar.validate();
-//        if(nRow >= 0)
-//            m_tbLogTable.changeSelection(nRow, 0, false, false);
-        m_tbLogTable.invalidate();
-        m_tbLogTable.repaint();
-        if(nRow >= 0)
-            m_tbLogTable.changeSelection(nRow, 0, false, false, bMove);
     }
 
     // 필터 입력이 멈춘 뒤 이 시간(ms)이 지나면 재필터한다. (키를 누를 때마다 전체 재필터하지 않도록)

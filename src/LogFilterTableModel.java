@@ -1,4 +1,3 @@
-import java.io.ObjectInputStream.GetField;
 import java.util.ArrayList;
 
 import javax.swing.table.AbstractTableModel;
@@ -23,6 +22,9 @@ public class LogFilterTableModel extends AbstractTableModel
     public static int     DEFULT_WIDTH[]= { 50,     50,     100,    20,      50,    50,       100,   100,        600};
     
     ArrayList<LogInfo> m_arData;
+    // 테이블에 알린(fire) 행 수. 다른 스레드가 m_arData에 줄을 추가해도, EDT에서 syncRowCount()로
+    // 알리기 전까지는 늘어나지 않는다. (JTable이 알림 없이 바뀐 행 수를 보지 않도록)
+    int                m_nRowCount;
 
     public static void setColumnWidth(int nColumn, int nWidth)
     {
@@ -38,10 +40,19 @@ public class LogFilterTableModel extends AbstractTableModel
 
     public int getRowCount()
     {
-        if(m_arData != null)
-            return m_arData.size();
-        else
-            return 0;
+        return m_nRowCount;
+    }
+
+    // EDT에서만 호출: 리스트의 현재 크기를 행 수로 반영하고 새 행 수를 돌려준다.
+    public int syncRowCount()
+    {
+        m_nRowCount = m_arData != null ? m_arData.size() : 0;
+        return m_nRowCount;
+    }
+
+    public ArrayList<LogInfo> getData()
+    {
+        return m_arData;
     }
 
     public String getColumnName(int col) {
@@ -57,8 +68,10 @@ public class LogFilterTableModel extends AbstractTableModel
         return m_arData.get(row);
     }
     
+    // EDT에서만 호출 (호출 후 fireTableDataChanged 필요)
     public void setData(ArrayList<LogInfo> arData)
     {
         m_arData = arData;
+        syncRowCount();
     }
 }

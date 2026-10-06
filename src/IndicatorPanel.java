@@ -11,7 +11,7 @@ import java.awt.event.MouseMotionListener;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Map;
 
 import javax.swing.JCheckBox;
 import javax.swing.JOptionPane;
@@ -34,8 +34,8 @@ public class IndicatorPanel extends JPanel
     JCheckBox                 m_chBookmark;
     JCheckBox                 m_chError;
     ArrayList<LogInfo>        m_arLogInfo;
-    HashMap<Integer, Integer> m_hmBookmark;
-    HashMap<Integer, Integer> m_hmError;
+    Map<Integer, Integer>     m_hmBookmark;
+    Map<Integer, Integer>     m_hmError;
     Graphics                  m_g;
     LogFilterMain             m_LogFilterMain;
     public boolean            m_bDrawFull;
@@ -136,11 +136,11 @@ public class IndicatorPanel extends JPanel
                 HEIGHT = m_rcBookmark.height / TOTAL_COUNT + 1;
 
             //북마크 indicator를 그린다.
-            for( Integer nIndex : m_hmBookmark.keySet())
+            for( Integer nPos : m_hmBookmark.values())
             {
                 if(m_LogFilterMain.m_nChangedFilter == LogFilterMain.STATUS_CHANGE || m_LogFilterMain.m_nChangedFilter == LogFilterMain.STATUS_PARSING)
                     break;
-                int nY1 = (int)(INDICATRO_Y_POS + m_hmBookmark.get(nIndex) * fRate);
+                int nY1 = (int)(INDICATRO_Y_POS + nPos * fRate);
                 int nY2 = (int)(nY1 + HEIGHT);
                 if(nY2 - nY1 <= 0)
                     nY2 = nY1 + MIN_HEIGHT;
@@ -152,11 +152,11 @@ public class IndicatorPanel extends JPanel
 
 
             //에러 indicator를 그린다.
-            for( Integer nIndex : m_hmError.keySet())
+            for( Integer nPos : m_hmError.values())
             {
                 if(m_LogFilterMain.m_nChangedFilter == LogFilterMain.STATUS_CHANGE || m_LogFilterMain.m_nChangedFilter == LogFilterMain.STATUS_PARSING)
                     break;
-                int nY1 = (int)(INDICATRO_Y_POS + m_hmError.get(nIndex) * fRate);
+                int nY1 = (int)(INDICATRO_Y_POS + nPos * fRate);
                 int nY2 = (int)(nY1 + HEIGHT);
                 if(nY2 - nY1 <= 0)
                     nY2 = nY1 + MIN_HEIGHT;
@@ -228,7 +228,8 @@ public class IndicatorPanel extends JPanel
         }
     };
     
-    public void setData(ArrayList<LogInfo> arLogInfo, HashMap<Integer, Integer> hmBookmark, HashMap<Integer, Integer> hmError)
+    // EDT에서만 호출. 맵은 ConcurrentHashMap이라 다른 스레드가 추가하는 중에도 순회할 수 있다.
+    public void setData(ArrayList<LogInfo> arLogInfo, Map<Integer, Integer> hmBookmark, Map<Integer, Integer> hmError)
     {
         m_arLogInfo     = arLogInfo;
         m_hmBookmark    = hmBookmark;
