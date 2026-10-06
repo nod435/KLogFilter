@@ -32,6 +32,30 @@ public class LogSource
 
     static final String  DEVICES_CMD = "adb devices";
 
+    // adb devices의 한 줄: 시리얼과 상태(device / offline / unauthorized / ...)
+    public static class Device
+    {
+        final String m_strSerial;
+        final String m_strState;
+
+        Device(String strSerial, String strState)
+        {
+            m_strSerial = strSerial;
+            m_strState  = strState;
+        }
+
+        boolean isOnline()
+        {
+            return "device".equals(m_strState);
+        }
+
+        // 연결된 장치는 시리얼만, 그 외에는 상태를 함께 보여준다.
+        public String toString()
+        {
+            return isOnline() ? m_strSerial : m_strSerial + "  (" + m_strState + ")";
+        }
+    }
+
     final FilterEngine   m_engine;
     final ILogParser     m_parser;
     final Listener       m_listener;
@@ -127,14 +151,19 @@ public class LogSource
         {
             public void run()
             {
+                final int[]    nLines   = { 0 };
+                final String[] lastLine = { "" };
+                Process process = null;
                 try
                 {
                     T.d("cmd = " + strCmd);
                     // stderr도 함께 받아 기록한다. (adb 오류 메시지 확인 + stderr 버퍼가 차서 멈추는 일 방지)
                     ProcessBuilder pb = new ProcessBuilder(strCmd.trim().split("\\s+"));
                     pb.redirectErrorStream(true);
-                    Process process = pb.start();
+                    process = pb.start();
                     m_process = process;
+                    m_listener.onStatus("adb 실행 중 : " + strCmd);
+                    startNoOutputWatch(process, nLines);
 
                     try(BufferedReader stdOut = new BufferedReader(new InputStreamReader(process.getInputStream(), "UTF-8"));
                         Writer fileOut = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(strFile), "UTF-8")))
@@ -146,6 +175,12 @@ public class LogSource
                         {
                             if(!"".equals(s.trim()))
                             {
+                                // adb가 장치를 못 찾으면 이 문구만 출력하고 계속 기다린다. 로그로 세지 않고 바로 알린다.
+                                if(s.startsWith("- waiting for device"))
+                                    m_listener.onStatus("장치를 기다리는 중 : 장치가 연결되어 있지 않거나 offline 상태입니다. Stop 후 Device OK로 상태를 확인하세요.");
+                                else
+                                    nLines[0]++;
+                                lastLine[0] = s;
                                 synchronized(FILE_LOCK)
                                 {
                                     fileOut.write(s);
@@ -163,10 +198,58 @@ public class LogSource
                 }
                 // 그 사이 Stop 후 다시 Run 했다면 새 프로세스를 건드리지 않는다.
                 if(m_thProcess == Thread.currentThread())
+                {
+                    // 사용자가 Stop하지 않았는데 adb가 끝났다: 오류 메시지(마지막 줄)를 상태 표시줄에 보여준다.
+                    reportProcessEnd(process, nLines[0], lastLine[0]);
                     stopProcess();
+                }
             }
         }, "AdbProcess");
         m_thProcess.start();
+    }
+
+    static final int NO_OUTPUT_WARN_MS = 5000;
+
+    // adb가 일정 시간 아무것도 출력하지 않으면 경고한다. (offline 장치에서는 adb logcat이 오류 없이 멈춰 있음)
+    void startNoOutputWatch(final Process process, final int[] nLines)
+    {
+        Thread th = new Thread(new Runnable()
+        {
+            public void run()
+            {
+                try
+                {
+                    Thread.sleep(NO_OUTPUT_WARN_MS);
+                }
+                catch(InterruptedException e)
+                {
+                    return;
+                }
+                if(nLines[0] == 0 && m_process == process)
+                    m_listener.onStatus("adb에서 " + NO_OUTPUT_WARN_MS / 1000 + "초 동안 출력이 없습니다. 장치가 offline/unauthorized인지 확인하세요 (Device OK로 목록 갱신).");
+            }
+        }, "AdbNoOutputWatch");
+        th.setDaemon(true);
+        th.start();
+    }
+
+    // adb가 스스로 끝났을 때 종료 코드와 마지막 출력을 상태 표시줄에 알린다.
+    void reportProcessEnd(Process process, int nLines, String strLastLine)
+    {
+        if(process == null) return;
+        int nExit;
+        try
+        {
+            nExit = process.waitFor();
+        }
+        catch(InterruptedException e)
+        {
+            return;
+        }
+        if(nExit != 0)
+            m_listener.onStatus("adb 종료 (코드 " + nExit + ") : " + strLastLine.trim());
+        else
+            m_listener.onStatus("adb 종료 (" + nLines + "줄)");
     }
 
     // adb 출력이 기록되는 파일을 50ms마다 이어 읽어 FilterEngine에 추가한다.
@@ -250,11 +333,12 @@ public class LogSource
                         String s;
                         while ((s = stdOut.readLine()) != null)
                         {
-                            if(s.trim().length() == 0 || s.startsWith("List of devices attached"))
+                            s = s.trim();
+                            // 머리글과 adb 서버 시작 메시지("* daemon started ...")는 건너뛴다.
+                            if(s.length() == 0 || s.startsWith("List of devices attached") || s.startsWith("*"))
                                 continue;
-                            s = s.replace("\t", " ");
-                            s = s.replace("device", "");
-                            arItem.add(s);
+                            String[] arToken = s.split("\\s+");
+                            arItem.add(new Device(arToken[0], arToken.length > 1 ? arToken[1] : ""));
                         }
                     }
                     System.out.println("Exit Code: " + process.waitFor());

@@ -47,6 +47,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
+import javax.swing.ListModel;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -430,10 +431,27 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             public void run()
             {
                 DefaultListModel listModel = (DefaultListModel)m_lDeviceList.getModel();
+                int nOnline = 0;
+                LogSource.Device online = null;
                 for(Object item : arItem)
+                {
                     listModel.addElement(item);
+                    if(item instanceof LogSource.Device && ((LogSource.Device)item).isOnline())
+                    {
+                        nOnline++;
+                        online = (LogSource.Device)item;
+                    }
+                }
                 m_btnDevice.setEnabled(true);
-                setStatus(arItem.isEmpty() ? "No device" : "ready");
+                // 연결된 장치가 하나뿐이면 바로 선택해 둔다.
+                if(nOnline == 1)
+                    m_lDeviceList.setSelectedValue(online, true);
+                if(arItem.isEmpty())
+                    setStatus("장치 없음 : USB로 연결하거나 adb connect <IP>:5555 실행 후 다시 OK를 누르세요.");
+                else if(nOnline == 0)
+                    setStatus("연결된(device 상태) 장치가 없습니다. 목록의 상태를 확인하세요.");
+                else
+                    setStatus("장치 " + arItem.size() + "개 중 연결됨 " + nOnline + "개" + (nOnline > 1 ? " : 사용할 장치를 선택하세요." : ""));
             }
         });
     }
@@ -466,8 +484,59 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
     void startProcess()
     {
+        String strProblem = checkDeviceBeforeRun();
+        if(strProblem != null)
+        {
+            setStatus(strProblem);
+            return;
+        }
         m_source.startProcess(getProcessCmd(), "UTF-8".equals(m_comboEncode.getSelectedItem()));
         setProcessBtn(true);
+    }
+
+    // Run 전에 장치 상태를 확인한다. 실행하면 안 되는 경우 그 이유를, 괜찮으면 null을 돌려준다.
+    // (offline 장치에 adb logcat을 실행하면 오류 없이 멈춰 있어서, 화면이 비어 있는 이유를 알기 어렵다)
+    String checkDeviceBeforeRun()
+    {
+        Object selected = m_lDeviceList.getSelectedValue();
+        if(selected instanceof LogSource.Device)
+        {
+            LogSource.Device device = (LogSource.Device)selected;
+            if(device.isOnline())
+                return null;
+            return deviceStateMessage(device);
+        }
+
+        // 선택한 장치가 없을 때: 목록에서 연결된 장치를 센다. (목록을 한 번도 불러오지 않았으면 adb에 맡긴다)
+        ListModel model = m_lDeviceList.getModel();
+        if(model.getSize() == 0)
+            return null;
+        LogSource.Device online = null;
+        int nOnline = 0;
+        for(int i = 0; i < model.getSize(); i++)
+        {
+            Object item = model.getElementAt(i);
+            if(item instanceof LogSource.Device && ((LogSource.Device)item).isOnline())
+            {
+                nOnline++;
+                online = (LogSource.Device)item;
+            }
+        }
+        if(nOnline == 0)
+            return "연결된(device 상태) 장치가 없습니다. 장치를 다시 연결한 뒤 OK로 목록을 갱신하세요.";
+        if(nOnline > 1)
+            return "연결된 장치가 " + nOnline + "개입니다. 목록에서 사용할 장치를 선택하세요.";
+        m_lDeviceList.setSelectedValue(online, true);   // 하나뿐이면 그 장치로 실행
+        return null;
+    }
+
+    static String deviceStateMessage(LogSource.Device device)
+    {
+        if("offline".equals(device.m_strState))
+            return device.m_strSerial + " 은(는) offline 상태입니다. 장치를 다시 연결(adb connect 등)한 뒤 OK로 목록을 갱신하세요.";
+        if("unauthorized".equals(device.m_strState))
+            return device.m_strSerial + " 은(는) unauthorized 상태입니다. 장치 화면에서 USB 디버깅을 허용하세요.";
+        return device.m_strSerial + " 의 상태가 " + device.m_strState + " 입니다. 연결된(device) 장치를 선택하세요.";
     }
 
     void setDeviceList()
@@ -536,8 +605,12 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                 JList deviceList = (JList)e.getSource();
                 Object selectedItem = deviceList.getSelectedValue();
                 m_strSelectedDevice = "";
-                if(selectedItem != null)
-                    m_strSelectedDevice = selectedItem.toString().replace("\t", " ").replace("device", "").replace("offline", "");
+                if(selectedItem instanceof LogSource.Device)
+                {
+                    LogSource.Device device = (LogSource.Device)selectedItem;
+                    m_strSelectedDevice = device.m_strSerial;
+                    setStatus(device.isOnline() ? "선택한 장치 : " + device.m_strSerial : deviceStateMessage(device));
+                }
             }
         });
         jpOptionDevice.add(vbar);
@@ -1155,10 +1228,10 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
     String getProcessCmd()
     {
-        if(m_lDeviceList.getSelectedIndex() < 0)
+        if(m_strSelectedDevice == null || m_strSelectedDevice.length() == 0)
             return ADB_CMD_FIRST + m_comboCmd.getSelectedItem();
         else
-            return ADB_SELECTED_CMD_FIRST + m_strSelectedDevice + m_comboCmd.getSelectedItem();
+            return ADB_SELECTED_CMD_FIRST + m_strSelectedDevice + " " + m_comboCmd.getSelectedItem();
     }
 
     ActionListener m_alButtonListener = new ActionListener()

@@ -31,6 +31,7 @@ java -cp bin LogFilterMain [로그파일]
 
 | 구분 | 파일 | 내용 | 상태 |
 |---|---|---|---|
+| 장치 연결 | `LogSource` · `LogFilterMain` | 2026-10-06: 장치 상태 표시, 하나면 자동 선택, offline·unauthorized·여러 장치 미선택 시 Run 전에 이유 표시, adb 대기·무출력 경고, adb 오류 종료 메시지 | 적용됨 |
 | 기능 보완 | `LogCatParser` · `LogFilterMain` · `LogInfo` | 2026-10-06: 파서 포맷 확장과 threadtime 빠른 경로(B13), 입력 히스토리 ↑/↓, 모든 열기 경로에서 Recent 추가 | 적용됨 |
 | 구조 개선 | `AppConfig`·`FilterEngine`·`LogSource`(신규) 외 전체 | 2026-10-06: `LogFilterMain` 화면 전용 분리(S1), 필터 상태 이동(S5), 북마크 이동 TreeSet(S6), `T` 정리(S7), EDT 대기 제거(P10), 미사용 클래스 7개·주석 코드 삭제 | 적용됨 |
 | Java 버전 | `.classpath`·JDT 설정 | 2026-10-06: JavaSE-1.6 → 1.8 | 적용됨 |
