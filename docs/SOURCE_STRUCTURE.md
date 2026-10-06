@@ -14,6 +14,7 @@ KLogFilter는 Android `logcat` 로그를 보면서 필터링하는 Java Swing �
 - **기능:** 워드/태그/PID/TID/레벨 필터, 하이라이트, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사
 - **빌드 환경:** Eclipse Java 프로젝트, JavaSE-1.8(원본은 1.6). JDK 8로 빌드한다.
 - **패키지:** default 패키지만 사용하고, 외부 라이브러리 의존성은 없다.
+- **버전 규칙(2026-10-06~):** `큰버전.중간버전.날짜`. 중간버전은 신규 기능 추가 때 +1, 날짜는 빌드 날짜시간 `yyyyMMddHHmmss`. `src/AppVersion.java`(MAJOR·MINOR)와 `build.bat`(날짜)이 담당. 현재 1.9.
 
 ```powershell
 # 빌드 — 로컬 소스(UTF-8)
@@ -71,6 +72,7 @@ java -cp bin LogFilterMain [로그파일]
 | [RecentFileMenu.java](../src/RecentFileMenu.java) | 154 | 최근 파일 메뉴. 외부 GPL v2 코드 |
 | [LogColor.java](../src/LogColor.java) | 21 | 색상 static 값 |
 | [INotiEvent.java](../src/INotiEvent.java) | 26 | 테이블/인디케이터 → 메인 프레임 이벤트 |
+| [AppVersion.java](../src/AppVersion.java) | 48 | 버전 규칙, 빌드 날짜 읽기 |
 | [T.java](../src/T.java) | 67 | 디버그 로그 출력 |
 
 **삭제한 파일(7개):** `ClassTaster`, `TagTable`, `TagFilterTableModel`, `TagInfo`, `DevicesPanel`, `MouseEventHandler`, `WindowEventHandler`. GitHub 이력에 남아 있다.

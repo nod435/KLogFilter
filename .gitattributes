@@ -4,3 +4,5 @@
 *.md   text
 *.html text
 *.ini  text
+# 배치 파일은 cmd가 읽을 수 있게 항상 CRLF
+*.bat  text eol=crlf

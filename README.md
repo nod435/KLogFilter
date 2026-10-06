@@ -13,11 +13,25 @@ Android `logcat` 로그를 보면서 필터링하는 Java Swing 데스크톱 툴
 JDK 8 이상이 필요합니다. 외부 라이브러리는 없습니다.
 
 ```
-javac -encoding UTF-8 -d bin src/*.java
-java -cp bin LogFilterMain [로그파일]
+build.bat                       → dist\KLogFilter.jar (+ KLogFilter.bat, LogFilterCmd.ini)
+dist\KLogFilter.bat [로그파일]   → 실행 (또는 java -jar dist\KLogFilter.jar [로그파일])
 ```
 
-설정 파일을 실행한 폴더에서 읽고 쓰므로, 프로젝트 폴더에서 실행하세요. Eclipse 프로젝트(`.project`, `.classpath`, JavaSE-1.8)로도 열 수 있습니다.
+개발 중에는 `javac -encoding UTF-8 -d bin src/*.java` 후 `java -cp bin LogFilterMain`으로 바로 실행할 수 있습니다(버전의 날짜 자리가 `dev`로 표시됨).
+
+## 버전 규칙
+
+`큰버전.중간버전.날짜` (예: `1.9.20261006115205`)
+
+| 자리 | 의미 |
+|---|---|
+| 큰버전 | 큰 변경이 있을 때 올립니다. |
+| 중간버전 | 신규 기능을 추가할 때마다 1 올립니다. |
+| 날짜 | 버전을 만든(빌드한) 날짜시간 `yyyyMMddHHmmss`. `build.bat`이 자동으로 넣습니다. |
+
+큰버전·중간버전은 `src/AppVersion.java`의 `MAJOR`·`MINOR`에서 바꿉니다. 버전은 창 제목, 시작 안내 문구, JAR 매니페스트(`Implementation-Version`)에 표시됩니다.
+
+설정 파일을 실행한 폴더에서 읽고 쓰므로, `KLogFilter.bat`으로 실행하거나 JAR이 있는 폴더에서 실행하세요. Eclipse 프로젝트(`.project`, `.classpath`, JavaSE-1.8)로도 열 수 있습니다.
 
 실시간 수집(Run)을 쓰려면 `adb`가 PATH에 있어야 합니다.
 

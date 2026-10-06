@@ -271,8 +271,12 @@ figure.cls svg{max-width:100%;height:auto}
   <li><b>기능:</b> 워드/태그/PID/TID/레벨 필터, 하이라이트, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사</li>
   <li><b>빌드 환경:</b> Eclipse Java 프로젝트이며 JavaSE-1.8(<code>.classpath</code>, 컴파일러 1.8)입니다. JDK 8(Zulu 1.8.0_382)로 빌드했습니다. 원본은 JavaSE-1.6이었습니다.</li>
   <li><b>패키지:</b> default 패키지만 사용하고, 외부 라이브러리 의존성은 없습니다.</li>
+  <li><b>버전 규칙(2026-10-06~):</b> <code>큰버전.중간버전.날짜</code>. 중간버전은 신규 기능을 추가할 때 1 올리고, 날짜는 버전을 만든(빌드한) 날짜시간 <code>yyyyMMddHHmmss</code>입니다. <code>src/AppVersion.java</code>(MAJOR·MINOR)와 <code>build.bat</code>(날짜)이 담당합니다. 현재 1.9.</li>
 </ul>
-<pre><code># 빌드 — 로컬 소스(UTF-8)
+<pre><code># 배포용 빌드 — dist\KLogFilter.jar (버전 날짜 자동 기록)
+build.bat
+
+# 개발용 빌드 — 로컬 소스(UTF-8), 버전 날짜는 dev
 javac -encoding UTF-8 -d bin src\*.java
 
 # 빌드 — GitHub 원본(MS949)
@@ -323,6 +327,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td class="nw"><code>RecentFileMenu.java</code></td><td class="num">154</td><td>최근 파일 메뉴(<code>RecentFile.ini</code>). 외부 GPL v2 코드</td><td><span class="badge b-use">화면</span></td></tr>
 <tr><td class="nw"><code>LogColor.java</code></td><td class="num">21</td><td>레벨별/하이라이트 색상 전역 static 값</td><td><span class="badge b-use">유틸</span></td></tr>
 <tr><td class="nw"><code>INotiEvent.java</code></td><td class="num">26</td><td>테이블/인디케이터 → 메인 프레임 이벤트 콜백 인터페이스</td><td><span class="badge b-use">화면</span></td></tr>
+<tr><td class="nw"><code>AppVersion.java</code></td><td class="num">48</td><td>버전 규칙 <code>큰버전.중간버전.날짜(yyyyMMddHHmmss)</code>. 날짜는 <code>build.bat</code>이 넣은 <code>version.properties</code>에서 읽음</td><td><span class="badge b-use">유틸</span></td></tr>
 <tr><td class="nw"><code>T.java</code></td><td class="num">67</td><td>디버그 로그 출력 유틸(<code>System.out</code>)</td><td><span class="badge b-use">유틸</span></td></tr>
 </tbody></table></div>
 <p><b>삭제한 파일(7개, 2026-10-06):</b> <code>ClassTaster</code>(리플렉션 테스트 유틸), <code>TagTable</code>, <code>TagFilterTableModel</code>, <code>TagInfo</code>(생성 코드가 주석 처리된 태그 목록), <code>DevicesPanel</code>(빈 패널), <code>MouseEventHandler</code>·<code>WindowEventHandler</code>(쓰이지 않는 WindowListener). GitHub 원본과 이력에 남아 있습니다.</p>

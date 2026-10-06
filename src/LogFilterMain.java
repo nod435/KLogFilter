@@ -77,7 +77,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     private static final long serialVersionUID           = 1L;
 
     static final String       LOGFILTER                  = "LogFilter";
-    static final String       VERSION                    = "Version 1.8";
+    // 버전 규칙(큰버전.중간버전.날짜)은 AppVersion 참고. 예: "Version 1.9.20261006153000"
+    static final String       VERSION                    = "Version " + AppVersion.full();
     static final String       COMBO_ANDROID              = "Android          ";
     static final String       ADB_CMD_FIRST              = "adb ";
     static final String       ADB_SELECTED_CMD_FIRST     = "adb -s ";
@@ -296,6 +297,10 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.9 : 필터 입력 히스토리(↑/↓), Ctrl+Z/Y 되돌리기, 드래그&드롭·실행 인자로 연 파일 Recent 추가");
+        addDesc("   - logcat 형식 확장: year, uid, brief, process, tag, dmesg");
+        addDesc("   - 대용량 로그 성능 개선, 버그·안정성 수정");
+        addDesc("   - 버전 규칙: 큰버전.중간버전.빌드날짜(yyyyMMddHHmmss)");
         addDesc("Version 1.8 : java -jar LogFilter_xx.jar [filename] 추가");
         addDesc("Version 1.7 : copy시 보이는 column만 clipboard에 복사(Line 제외)");
         addDesc("Version 1.6 : cmd콤보박스 길이 고정");
