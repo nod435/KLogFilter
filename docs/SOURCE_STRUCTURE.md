@@ -1,6 +1,6 @@
 # KLogFilter 소스 구조 및 동작 흐름
 
-> 작성일: 2026-10-02 · 대상 버전: LogFilter Version 1.8 · 기준 소스: [github.com/nod435/KLogFilter](https://github.com/nod435/KLogFilter) `fd5e19f` + 로컬 변경분(1.1절) (18개 파일, 약 4,400줄)
+> 작성일: 2026-10-02 · 대상 버전: LogFilter Version 1.8 · 기준 소스: [github.com/nod435/KLogFilter](https://github.com/nod435/KLogFilter) `fd5e19f` + 로컬 변경분(1.1절) (현재 15개 파일, 약 3,800줄 / 원본 18개, 약 4,400줄)
 >
 > 시퀀스 다이어그램(4장), 클래스 관계도와 클래스별 UML 구조(5.1·5.2절)는 HTML 버전에만 있다: [SOURCE_STRUCTURE.html](SOURCE_STRUCTURE.html)
 
@@ -12,7 +12,7 @@ KLogFilter는 Android `logcat` 로그를 보면서 필터링하는 Java Swing �
 
 - **입력:** 저장된 로그 파일(Open, Recent, 드래그&드롭, 실행 인자)을 읽거나, `adb logcat` 출력을 실시간으로 받는다.
 - **기능:** 워드/태그/PID/TID/레벨 필터, 하이라이트, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사
-- **빌드 환경:** Eclipse Java 프로젝트이며 `.classpath`에는 JavaSE-1.6이 설정되어 있다. 현재는 JDK 8로도 빌드된다.
+- **빌드 환경:** Eclipse Java 프로젝트, JavaSE-1.8(원본은 1.6). JDK 8로 빌드한다.
 - **패키지:** default 패키지만 사용하고, 외부 라이브러리 의존성은 없다.
 
 ```powershell
@@ -26,10 +26,12 @@ java -cp bin LogFilterMain [로그파일]
 
 ### 1.1 GitHub 원본 대비 로컬 변경 사항
 
-이 문서는 [nod435/KLogFilter](https://github.com/nod435/KLogFilter)의 유일한 커밋 `fd5e19f`("파일 등록")를 기준으로 한다. 로컬 작업 폴더에만 있는 변경분도 함께 설명한다. 코드가 바뀐 파일은 `LogFilterMain.java`, `LogCatParser.java`, `LogTable.java`, `T.java` 네 개다(뒤의 셋은 2026-10-04 버그 수정).
+이 문서는 [nod435/KLogFilter](https://github.com/nod435/KLogFilter)의 유일한 커밋 `fd5e19f`("파일 등록")를 기준으로 한다. 로컬 작업 폴더에만 있는 변경분도 함께 설명한다. 2026-10-06 구조 개선으로 대부분의 파일이 바뀌었고, 7개를 삭제하고 3개를 새로 만들었다.
 
 | 구분 | 파일 | 내용 | 상태 |
 |---|---|---|---|
+| 구조 개선 | `AppConfig`·`FilterEngine`·`LogSource`(신규) 외 전체 | 2026-10-06: `LogFilterMain` 화면 전용 분리(S1), 필터 상태 이동(S5), 북마크 이동 TreeSet(S6), `T` 정리(S7), EDT 대기 제거(P10), 미사용 클래스 7개·주석 코드 삭제 | 적용됨 |
+| Java 버전 | `.classpath`·JDT 설정 | 2026-10-06: JavaSE-1.6 → 1.8 | 적용됨 |
 | 안정성 | `LogFilterMain` · `LogFilterTableModel` · `IndicatorPanel` · `RecentFileMenu` | 2026-10-06: EDT 반영(`refreshTable`), 목록 교체 방식 `clearData`, 모델 행 수 고정, `ConcurrentHashMap`, 재필터 요청 플래그, 파싱 세대 번호, adb devices 백그라운드, 설정 키별 기본값, try-with-resources | 적용됨 |
 | 성능 개선 | `FilterToken`(신규) · `LogInfo` · `LogCatParser` · `LogTable` · `LogFilterMain` | 2026-10-06: 필터 토큰 캐시(P2), 레벨·줄 번호 int 필드(P3/P4), 렌더러 조기 반환과 Font/Color 재사용(P1), 입력 디바운스 250ms(P5), Color 재사용(P8), DocumentListener 통합(S4) | 적용됨 |
 | 버그 수정 | `LogFilterMain` · `LogCatParser` · `LogTable` · `T` | 2026-10-04: B1(`==` → `equals`), B2(메시지의 `'` 보존), B3·B9(HTML 이스케이프, 대소문자 무시 하이라이트), B10(날짜 포맷), 안내 문구의 ini 키 이름(`INI_HIGILIGHT_n`) | 적용됨 |
@@ -40,9 +42,9 @@ java -cp bin LogFilterMain [로그파일]
 | 인코딩 | 전체 `.java` | GitHub는 **MS949**, 로컬은 **UTF-8**(+ CRLF → LF). 한글이 있는 `LogFilterMain`, `IndicatorPanel`, `ClassTaster`만 실제 내용이 다름 | — |
 | 프로젝트 설정 | `.project` | VS Code Java 확장이 리소스 필터(`node_modules\|.git\|…`) 추가 | — |
 
-> ⚠️ **인코딩 설정 불일치:** 로컬 `.settings/org.eclipse.core.resources.prefs`는 아직 `encoding/<project>=MS949`이다. 로컬 소스는 이미 UTF-8이라서 Eclipse에서 열면 한글 주석과 `addDesc()` 안내 문구가 깨진다. 설정을 UTF-8로 바꾸거나, 저장소에 올릴 때 인코딩을 하나로 통일해야 한다.
+> ✅ **인코딩 정리 완료(2026-10-04):** 소스와 Eclipse 설정(`encoding/<project>`)을 모두 UTF-8로 맞췄다. GitHub 원본 커밋(`fd5e19f`)만 MS949다.
 
-**줄 번호:** 이 문서의 줄 번호는 로컬 소스 기준이다.
+**줄 번호:** 7장 문제점 표의 줄 번호는 2026-10-04 시점 로컬 소스 기준이다(구조 개선 뒤에는 코드가 다른 클래스로 옮겨져 위치가 다르다).
 - `LogFilterMain.java`는 GitHub 2,084줄, 로컬 2,236줄이다. GitHub 줄 번호는 약 816행 이전은 8, 그 뒤는 약 154 작다.
 - 7장 표에는 두 줄 번호를 함께 적었다. 다른 파일은 줄 번호가 같다.
 
@@ -50,287 +52,99 @@ java -cp bin LogFilterMain [로그파일]
 
 ## 2. 파일 구성
 
-| 파일 | 줄 수 | 역할 | 사용 여부 |
-|---|---:|---|---|
-| [LogFilterMain.java](../src/LogFilterMain.java) | 2236 | 메인 프레임. UI 구성, 파일/프로세스 읽기, 필터 엔진, 설정 저장 | **핵심** |
-| [LogTable.java](../src/LogTable.java) | 712 | 로그 테이블(JTable). 셀 렌더링(하이라이트), 키/마우스 처리, 복사, 필터 문자열 보관 | **핵심** |
-| [LogCatParser.java](../src/LogCatParser.java) | 212 | 로그 한 줄을 `LogInfo`로 파싱(time / threadtime / kernel 형식) | **핵심** |
-| [IndicatorPanel.java](../src/IndicatorPanel.java) | 237 | 좌측 북마크/에러 위치 표시 바, "북마크만/에러만 보기" 체크박스 | **핵심** |
-| [LogInfo.java](../src/LogInfo.java) | 67 | 로그 한 줄 데이터(VO), 레벨 비트 상수 | **핵심** |
-| [LogFilterTableModel.java](../src/LogFilterTableModel.java) | 64 | 테이블 모델, 컬럼 정의/폭 | **핵심** |
-| [RecentFileMenu.java](../src/RecentFileMenu.java) | 155 | 최근 파일 메뉴(`RecentFile.ini`). 외부 GPL v2 코드 | 사용 |
-| [LogColor.java](../src/LogColor.java) | 22 | 레벨별/하이라이트 색상 전역 static 값 | 사용 |
-| [ILogParser.java](../src/ILogParser.java) | 19 | 파서 인터페이스 | 사용 |
-| [INotiEvent.java](../src/INotiEvent.java) | 31 | 컴포넌트 → 메인 프레임 이벤트 콜백 인터페이스 | 사용 |
-| [T.java](../src/T.java) | 156 | 디버그 로그 출력 유틸(`System.out`) | 사용 |
-| [TagTable.java](../src/TagTable.java) | 187 | 태그 목록 테이블 | **미사용**(생성 코드가 주석 처리됨) |
-| [TagFilterTableModel.java](../src/TagFilterTableModel.java) | 45 | 태그 테이블 모델 | **미사용** |
-| [TagInfo.java](../src/TagInfo.java) | 25 | 태그 데이터 | **미사용**(`m_arTagInfo`는 clear만 함) |
-| [ClassTaster.java](../src/ClassTaster.java) | 261 | 리플렉션 기반 메서드 테스트 유틸. LogFilter 기능과 무관 | **미사용** |
-| [DevicesPanel.java](../src/DevicesPanel.java) | 7 | 빈 JPanel | **미사용** |
-| [MouseEventHandler.java](../src/MouseEventHandler.java) | 13 | 빈 WindowListener(이름과 내용 불일치) | **미사용** |
-| [WindowEventHandler.java](../src/WindowEventHandler.java) | 19 | 종료용 WindowListener | **미사용**(익명 WindowAdapter로 대체됨) |
+2026-10-06 구조 개선 후 기준이다. 원본 18개 중 미사용 7개를 삭제하고 `AppConfig`, `FilterEngine`, `LogSource`를 새로 만들었다(`FilterToken`은 성능 개선 때 추가).
 
-18개 중 7개(약 560줄)가 실제 동작에 쓰이지 않는다.
+| 파일 | 줄 수 | 역할 |
+|---|---:|---|
+| [LogFilterMain.java](../src/LogFilterMain.java) | 1330 (원본 2084) | 메인 프레임. 화면 구성과 이벤트 연결만 담당, 동작은 아래 세 클래스에 위임 |
+| [FilterEngine.java](../src/FilterEngine.java) | 339 | **신규.** 로그 목록·북마크/에러 맵, 필터 조건과 토큰, 재필터 스레드 |
+| [LogSource.java](../src/LogSource.java) | 269 | **신규.** 파일 파싱, adb 실행·기록 파일 이어 읽기, 장치 목록 |
+| [AppConfig.java](../src/AppConfig.java) | 249 | **신규.** 설정 파일(*.ini) 읽기/쓰기, 키별 기본값 |
+| [LogTable.java](../src/LogTable.java) | 664 | 로그 테이블. 셀 렌더링(하이라이트), 키/마우스, 복사, 북마크 이동 |
+| [IndicatorPanel.java](../src/IndicatorPanel.java) | 222 | 북마크/에러 위치 바, 북마크만/에러만 보기 |
+| [LogFilterTableModel.java](../src/LogFilterTableModel.java) | 76 | 테이블 모델, 컬럼 정의/폭, EDT에서 알린 행 수 |
+| [LogCatParser.java](../src/LogCatParser.java) | 204 | 로그 한 줄 → `LogInfo` (time / threadtime / kernel) |
+| [ILogParser.java](../src/ILogParser.java) | 15 | 파서 인터페이스 |
+| [LogInfo.java](../src/LogInfo.java) | 94 | 로그 한 줄(VO), 레벨 비트, 줄 번호·레벨 int |
+| [FilterToken.java](../src/FilterToken.java) | 51 | 필터 토큰 분리, 대소문자 무시 부분 일치 |
+| [RecentFileMenu.java](../src/RecentFileMenu.java) | 154 | 최근 파일 메뉴. 외부 GPL v2 코드 |
+| [LogColor.java](../src/LogColor.java) | 21 | 색상 static 값 |
+| [INotiEvent.java](../src/INotiEvent.java) | 26 | 테이블/인디케이터 → 메인 프레임 이벤트 |
+| [T.java](../src/T.java) | 67 | 디버그 로그 출력 |
+
+**삭제한 파일(7개):** `ClassTaster`, `TagTable`, `TagFilterTableModel`, `TagInfo`, `DevicesPanel`, `MouseEventHandler`, `WindowEventHandler`. GitHub 이력에 남아 있다.
 
 ---
 
 ## 3. 아키텍처
 
-### 3.1 계층 구성
+### 3.1 구성
 
 ```
-┌────────────────────────────── LogFilterMain (JFrame) ──────────────────────────────┐
-│ [UI 구성]  getOptionPanel / getFilterPanel / getCheckPanel / getTabPanel ...       │
-│ [입력]     parseFile()  startProcess() → startFileParse()                          │
-│ [필터엔진] startFilterParse() 스레드, check*Filter(), addLogInfo()                  │
-│ [설정]     load/saveFilter, load/saveColor, loadCmd  (*.ini)                       │
-│ [데이터]   m_arLogInfoAll, m_arLogInfoFiltered, m_hmBookmark*, m_hmError*          │
-└───────┬───────────────────────┬───────────────────────────┬────────────────────────┘
-        │ 소유/참조               │ 소유/참조                   │ 사용
-        ▼                       ▼                           ▼
-  ┌───────────┐  setData  ┌─────────────────────┐    ┌──────────────┐
-  │ LogTable  │◀────────▶│ LogFilterTableModel │    │ ILogParser   │
-  │ (JTable)  │           │  (ArrayList 참조)    │    │ └LogCatParser│
-  │ ·필터문자열│           └─────────────────────┘    └──────┬───────┘
-  │ ·Renderer │                                             │ 생성
-  └─────┬─────┘                                             ▼
-        │ notiEvent()        ┌────────────────┐        ┌─────────┐
-        └──────────────────▶│ IndicatorPanel │        │ LogInfo │
-                             └────────────────┘        └─────────┘
-  공용: LogColor(static 색상), T(디버그 로그), RecentFileMenu(메뉴)
+LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Listener, LogSource.Listener
+ ├─ FilterEngine   데이터(전체/필터 목록, 북마크·에러 맵) · 필터 조건/토큰 · 재필터 스레드 · LOCK
+ ├─ LogSource      파일 파싱 · adb 프로세스/기록 파일 감시 · 장치 목록 · FILE_LOCK ──▶ FilterEngine.addNext()
+ ├─ AppConfig      LogFilter.ini / LogFilterColor.ini / LogFilterCmd.ini
+ ├─ LogCatParser   (ILogParser) 한 줄 → LogInfo
+ ├─ LogTable       (JTable) 하이라이트 · 렌더러 · 복사 · 북마크 이동 ──▶ FilterEngine (Find/Tag 토큰, 북마크 위치)
+ ├─ LogFilterTableModel   FilterEngine 목록을 참조, EDT에서 알린 행 수
+ ├─ IndicatorPanel        북마크/에러 바
+ └─ RecentFileMenu        File > Recent
+알림: FilterEngine/LogSource ──Listener──▶ LogFilterMain ──runOnEdt()──▶ 화면
 ```
 
 ### 3.2 구조적 특징
 
-- **God class:** `LogFilterMain`이 UI, I/O, 필터링, 설정을 모두 맡고 있다(전체 코드의 약 50%).
-- **양방향 결합:** `LogTable`과 `IndicatorPanel`이 `LogFilterMain`의 필드(`m_scrollVBar`, `m_tbLogTable`, `m_nChangedFilter`)에 직접 접근한다.
-- **필터 상태가 뷰에 있음:** 필터 문자열(`m_strFilterFind` 등)은 `LogTable` 필드로 보관되고, 실제 필터 판정은 `LogFilterMain.check*Filter()`가 `LogTable` getter를 통해 읽는다.
-- **전역 static 상태:** `LogColor`의 색상과 `LogFilterTableModel.ColWidth`가 모두 public static이다.
+- **역할 분리(S1):** 화면은 `LogFilterMain`, 데이터·필터는 `FilterEngine`, 입력은 `LogSource`, 설정은 `AppConfig`. `FilterEngine`과 `LogSource`는 Swing을 직접 쓰지 않고 Listener로만 알린다.
+- **스레드 경계:** Listener 알림은 어느 스레드에서든 올 수 있으므로 `LogFilterMain`이 `runOnEdt()`로 EDT에서 반영한다.
+- **필터 상태(S5):** 필터 조건은 `FilterEngine`에 있다. 표시 설정인 하이라이트만 `LogTable`에 남았다.
+- **남은 결합:** `LogTable`·`IndicatorPanel`은 여전히 `LogFilterMain` 필드(`m_scrollVBar`, `m_tbLogTable`, `m_engine`)를 직접 참조한다. `LogColor`와 컬럼 폭은 public static이다.
 
-### 3.3 핵심 데이터 구조
+### 3.3 핵심 데이터 구조 (`FilterEngine`)
 
-| 필드 | 타입 | 의미 |
-|---|---|---|
-| `m_arLogInfoAll` | `ArrayList<LogInfo>` | 읽은 모든 로그 |
-| `m_arLogInfoFiltered` | `ArrayList<LogInfo>` | 필터를 통과한 로그 (`m_bUserFilter == true`일 때 화면에 표시) |
-| `m_hmBookmarkAll / Filtered` | `HashMap<Integer,Integer>` | key = 원본 라인 index, value = 표시 리스트 내 index (인디케이터 위치 계산용) |
-| `m_hmErrorAll / Filtered` | `HashMap<Integer,Integer>` | E/ERROR 레벨 라인. 구조는 위와 같음 |
-| `m_bUserFilter` | boolean | 필터가 하나라도 활성화됐는지 여부 (`checkUseFilter()`로 결정) |
-| `m_nChangedFilter` | volatile int | 필터 스레드 상태: `STATUS_READY(4)` / `STATUS_CHANGE(1)` / `STATUS_PARSING(2)` |
-| `FILTER_LOCK` | Object | 리스트/맵 접근 동기화 + 필터 스레드 wait/notify |
-| `FILE_LOCK` | Object | logcat 기록 파일 쓰기/읽기 동기화 |
-
-`LogFilterTableModel`은 데이터를 복사하지 않는다. `setData()`로 두 리스트 중 하나를 **참조로 바꿔 끼우는** 방식이다.
+| 필드 | 의미 |
+|---|---|
+| `m_arLogInfoAll` / `m_arLogInfoFiltered` | 전체 / 필터 결과 목록(volatile). 비울 때·재필터 완료 때 새 객체로 교체 |
+| `m_hmBookmarkAll/Filtered`, `m_hmErrorAll/Filtered` | ConcurrentHashMap. key = 원본 위치, value = 표시 행 번호 |
+| `m_bUserFilter` | 필터 조건이 하나라도 켜졌는지 |
+| `m_nChangedFilter` | `STATUS_READY` / `STATUS_CHANGE`(중단 요청) / `STATUS_PARSING` |
+| `m_bFilterRequested` | 재필터 요청 플래그(LOCK 안). 대기 직전 요청도 잃지 않음 |
+| `m_str*` / `m_ar*Token` | 필터 조건 6종과 소문자 토큰 |
+| `LOCK`, `LogSource.FILE_LOCK` | 목록 변경·재필터 대기 / 기록 파일 동기화 |
 
 ---
 
 ## 4. 동작 흐름
 
-### 4.1 시작 (main → 생성자)
+시퀀스 다이어그램은 [HTML 버전](SOURCE_STRUCTURE.html) 4장에 있다. 요약:
 
-```
-main(args)
- └ new LogFilterMain()
-    ├ initValue()            리스트/맵/락 생성, 로그 파일명 생성(LogFilter_yyyyMMdd_HHmmss.txt)
-    ├ getOptionPanel()       상단: Device 선택 | Word/Tag 필터 | 레벨·컬럼 체크 | Highlight
-    │                        하단: Font, Encode, Goto, Cmd 콤보, Clear/Run/Pause/Stop
-    ├ getBookmarkPanel()     좌측 IndicatorPanel
-    ├ getStatusPanel()       하단 상태 텍스트
-    ├ getTabPanel()          LogFilterTableModel + LogTable + LogCatParser 생성, 중앙 스크롤
-    ├ setDnDListener()       파일 드롭 → stopProcess() + parseFile()
-    ├ addChangeListener()    텍스트필드 DocumentListener, 체크박스 ItemListener, 뷰포트 리스너
-    ├ startFilterParse()     ★ 필터 스레드 시작 (FILTER_LOCK.wait()로 대기)
-    ├ setVisible(true)
-    ├ addDesc()              버전 이력/단축키 안내를 로그 행으로 추가
-    ├ loadFilter()           LogFilter.ini → 필터 문자열, 폰트, 창 크기, 컬럼 폭
-    ├ loadColor()            LogFilterColor.ini → LogColor static 값
-    └ loadCmd()              LogFilterCmd.ini → Cmd 콤보 항목
- └ JMenuBar(File > Open, Recent) 설정
- └ args[0]이 있으면 invokeLater(parseFile)
-```
+| 흐름 | 순서 |
+|---|---|
+| 시작 | `new LogFilterMain()` → `FilterEngine`·`LogCatParser`·`LogSource` 생성 → 화면 구성 → `m_engine.start()` → `addDesc()` → `AppConfig.load()` → `applyConfig()` → `loadColors()`·`loadCmds()` |
+| 파일 열기 | Open/Recent/드래그&드롭/인자 → `LogFilterMain.parseFile()` → `LogSource.parseFile()`(ParseFile 스레드): `clearData()` → 줄마다 `parseLog()` → [LOCK] 세대 확인 → `addNext()` → `requestFilter()` |
+| logcat | Run → `LogSource.startProcess()`(AdbProcess 스레드): adb 출력(stderr 포함) → 기록 파일 / WatchFile 스레드: 50ms마다 이어 읽기 → `addNext()` → `notifyAppended()` → `refreshTable(FOLLOW_END)` |
+| 재필터 | 입력 변경 → `FilterEngine.setFind()` 등 + `markChanged()` → 250ms 디바운스 → `requestFilter()` → 재필터 스레드가 새 목록 채움 → 교체 → `onDataChanged(SELECT_LAST)` → EDT에서 `refreshTable()` |
+| 렌더링 | `LogCellRenderer`가 Find/Tag 토큰(`FilterEngine`)과 하이라이트 토큰(`LogTable`)으로 일치 여부 확인 → 없으면 원문, 있으면 이스케이프된 HTML |
+| 북마크 | 더블클릭/Ctrl+F2 → `FilterEngine.bookmarkItem()` / F2·F3 → 표시 북마크 위치 `TreeSet`에서 이전/다음 |
+| 종료 | `LogSource.stopProcess()` → `FilterEngine.stop()` → `saveConfig()` → `AppConfig.saveColors()` → `System.exit(0)` |
 
-`loadFilter()`에서 텍스트필드 값을 바꾸면 DocumentListener가 동작한다. 그 결과 시작할 때 저장돼 있던 필터가 바로 적용된다.
-
-### 4.2 로그 파일 열기
-
-Open(Alt+O), Recent, 드래그&드롭, 실행 인자는 모두 `parseFile(File)`로 들어온다.
-
-```
-parseFile(file)                                   [새 Thread]
- ├ setStatus("Parsing"), clearData()
- ├ while readLine():                              (Encode 콤보에 따라 UTF-8 / 시스템 기본)
- │   logInfo = LogCatParser.parseLog(line)
- │   logInfo.m_strLine = 줄 번호
- │   addLogInfo(logInfo)                          [FILTER_LOCK]
- │     ├ m_arLogInfoAll.add, E/ERROR면 m_hmErrorAll
- │     └ m_bUserFilter면 필터 검사 후 m_arLogInfoFiltered.add
- ├ runFilter()                                    → 필터 스레드 깨움(화면 갱신)
- └ setStatus("Parse complete")
-```
-
-### 4.3 logcat 실시간 수집 (Run 버튼)
-
-이 경로는 스레드 2개가 **파일을 사이에 두고** 동작한다.
-
-```
-startProcess()
- ├ clearData()
- └ m_thProcess [Thread]
-     ├ exec("adb [-s <serial>] " + Cmd콤보)     예: adb logcat -v threadtime
-     ├ stdout → LogFilter_yyyyMMdd_HHmmss.txt   [FILE_LOCK, 줄마다 flush]
-     ├ startFileParse() ──────────────────────┐
-     └ 스트림 종료 시 stopProcess()             │
-                                               ▼
-                          m_thWatchFile [Thread] : 50ms 폴링 루프
-                           ├ 필터 재계산 중(CHANGE/PARSING)이거나 Pause면 skip
-                           ├ [FILE_LOCK] 새 줄 readLine → parseLog → addLogInfo
-                           └ [FILTER_LOCK] model.setData(All 또는 Filtered)
-                                           마지막 행 선택 중이면 자동 스크롤(updateTable)
-```
-
-- **Pause:** `m_bPauseADB = true`. 파일 기록은 계속되고 화면 반영만 멈춘다.
-- **Stop:** `Process.destroy()`를 호출하고 스레드를 interrupt한다.
-- **Clear:** `clearData()`를 호출한다. 이미 읽은 데이터만 지우며, 파일 읽기 위치는 그대로다.
-- **Device OK 버튼:** `adb devices`를 실행해 결과를 목록에 표시한다. 장치를 선택하면 `-s <serial>`이 붙는다.
-
-### 4.4 필터 재계산 (상태 머신)
-
-필터 텍스트 입력, 체크박스, 레벨, 인디케이터 체크가 바뀌면 아래 순서로 처리된다.
-
-```
-[EDT] DocumentListener / ItemListener / notiEvent
-   ├ LogTable.setFilterXxx(문자열)         (체크박스가 꺼져 있으면 "")
-   ├ m_nChangedFilter = STATUS_CHANGE      → 진행 중인 필터 루프는 break
-   └ runFilter()
-        ├ checkUseFilter()                 → m_bUserFilter 결정
-        ├ STATUS_PARSING이면 100ms sleep 반복 (EDT에서 대기)
-        └ FILTER_LOCK.notify()
-
-[필터 스레드] startFilterParse
-   loop:
-     m_nChangedFilter = READY; FILTER_LOCK.wait()
-     m_nChangedFilter = PARSING
-     Filtered 리스트/맵 clear
-     if !m_bUserFilter → model = All, 끝
-     for 전체 로그:
-        STATUS_CHANGE면 break  (새 요청이 들어오면 중단)
-        북마크만/에러만 체크 시 → 해당 라인만
-        그 외 → LogLV && Pid && Tid && ShowTag && !RemoveTag && Find && !Remove
-     완료 시 model = Filtered, 마지막 행으로 이동, "Complete"
-```
-
-**필터 판정 규칙:** `check*Filter()`가 담당한다.
-- 필터 문자열은 `|`로 나눈 OR 조건이다.
-- 대소문자를 무시하는 부분 일치(`contains`)로 판정한다.
-- 대상 필드는 Find/Remove가 Message, Show/Remove Tag가 Tag, Pid가 Pid, Tid가 Thread이다.
-- 레벨 필터는 `LogInfo.LOG_LV_*` 비트 마스크(`m_nFilterLogLV`)로 판정한다.
-
-### 4.5 화면 렌더링
-
-`LogTable.LogCellRenderer.getTableCellRendererComponent()`는 **셀을 그릴 때마다** 실행된다.
-
-1. Message/Tag 컬럼이면 `remakeData()`가 실행된다.
-   - 공백을 `&nbsp;`(U+00A0)로 바꾼다.
-   - Highlight 토큰을 `<span style="background-color:#색">`으로 감싼다. 색은 `LogColor.COLOR_HIGHLIGHT` 배열을 순환한다.
-   - Find(Message) 또는 ShowTag(Tag) 토큰을 `<font color=#FF0000>`으로 감싼다.
-   - 하나라도 바뀌면 전체를 `<html><nobr>…</nobr></html>`로 감싼다.
-2. 글꼴 크기를 적용하고, 글자색은 `LogInfo.m_TextColor`(파싱할 때 레벨별로 결정)를 쓴다.
-3. 배경색은 북마크면 `COLOR_BOOKMARK`(선택 상태면 `COLOR_BOOKMARK2`), 아니면 흰색이다.
-
-### 4.6 북마크 / 인디케이터
-
-- **토글:** 더블클릭 또는 Ctrl+F2 → `LogFilterMain.bookmarkItem()`이 `m_bMarked`와 북마크 맵을 갱신하고 인디케이터를 repaint한다.
-- **이동:** F2/F3 → `LogTable.gotoPreBookmark()/gotoNextBookmark()`가 표시 리스트를 선형 탐색한다. 끝에 닿으면 처음부터 다시 찾는다.
-- **메모:** Mark 컬럼을 표시하면 셀을 편집할 수 있다. `setValueAt()` → `setBookmark()`.
-- **IndicatorPanel:**
-  - 북마크(파랑)와 에러(빨강) 위치를 패널 높이 비율로 그리고, 현재 화면 범위도 표시한다.
-  - 클릭이나 드래그하면 그 비율 위치로 이동한다.
-  - 상단 체크박스 2개는 "북마크만 보기 / 에러만 보기"이며, `notiEvent` → 필터 재계산으로 이어진다.
-
-### 4.7 기타 입력 처리
-
-| 입력 | 처리 위치 | 동작 |
-|---|---|---|
-| Ctrl+C | `LogTable.actionPerformed` | 선택 행의 보이는 컬럼(Line 제외)을 복사. Tag는 최대 길이, Pid/Tid는 8자 패딩 |
-| 우클릭 | `LogTable` mouseClicked | 클릭한 셀 값 하나만 복사 |
-| Alt+좌클릭(Tag) | 〃 | Show tag 필터에 추가/제거 → `EVENT_CHANGE_FILTER_SHOW_TAG` |
-| Alt+우클릭(Tag) | 〃 | Remove tag 필터에 추가 |
-| Ctrl+F | `processKeyBinding` | Find 입력창으로 포커스 이동 |
-| Home / End | 〃 | 첫 행 / 마지막 행 |
-| 헤더 더블클릭 | `ColumnHeaderListener` | 보이는 행 기준으로 컬럼 폭 자동 맞춤 |
-| Goto 입력 | CaretListener | 해당 줄로 이동(화면 중앙) |
-| Ctrl+Z / Ctrl+Y | `installUndoRedo` | 필터/하이라이트 입력창 실행 취소/다시 실행 |
-
-### 4.8 종료
-
-창 닫기 → `exit()` 순서로 처리된다.
-1. 프로세스를 destroy하고 스레드 3개를 interrupt한다.
-2. `saveFilter()`로 `LogFilter.ini`에 필터 문자열, 폰트, 창 크기/상태, 컬럼 폭을 저장한다.
-3. `saveColor()`로 `LogFilterColor.ini`를 저장한다.
-4. `System.exit(0)`
-
-### 4.9 스레드 모델 요약
-
-| 스레드 | 생성 위치 | 수명 | 하는 일 |
-|---|---|---|---|
-| EDT | Swing | 앱 전체 | UI 이벤트, 렌더링, `runFilter()` 호출(대기 포함) |
-| 필터 스레드 `m_thFilterParse` | 생성자 | 앱 전체 | wait/notify로 필터 재계산 |
-| 파일 파싱 스레드 | `parseFile()` | 파일 1개 | 파일 전체 읽기 |
-| 프로세스 스레드 `m_thProcess` | Run | Stop까지 | adb stdout → 파일 기록 |
-| 파일 감시 스레드 `m_thWatchFile` | Run | Stop까지 | 기록 파일 tail → 파싱 → 화면 반영 |
+**스레드:** EDT, `FilterEngine`(재필터), `ParseFile`, `AdbProcess`, `WatchFile`, `AdbDevices`. 백그라운드 스레드는 Swing을 직접 건드리지 않는다.
 
 ---
 
 ## 5. 클래스별 상세
 
-### LogFilterMain
-- **UI 빌더:** `getOptionPanel`, `getCmdPanel`, `getFilterPanel`, `getCheckPanel`, `getHighlightPanel`, `getOptionMenu`, `getBookmarkPanel`, `getStatusPanel`, `getTabPanel`
-- **입력:** `parseFile`, `startProcess`, `startFileParse`, `stopProcess`, `pauseProcess`, `setDeviceList`, `getProcessCmd`
-- **필터:** `startFilterParse`, `runFilter`, `checkUseFilter`, `addLogInfo`, `checkLogLVFilter`, `checkPidFilter`, `checkTidFilter`, `checkFindFilter`, `checkRemoveFilter`, `checkShowTagFilter`, `checkRemoveTagFilter`, `useFilter`, `setLogLV`
-- **설정:** `loadFilter/saveFilter`, `loadColor/saveColor`, `loadCmd`
-- **이벤트:** `notiEvent`(INotiEvent 구현), `m_alButtonListener`, `m_dlFilterListener`, `m_itemListener`
-- **편집 보조:** `installUndoRedo`(적용됨), `installInputHistory`(**정의만 되어 있고 호출되지 않음**)
+클래스별 필드/메서드 UML 박스와 클래스 관계도는 [HTML 버전](SOURCE_STRUCTURE.html) 5장에 있다.
 
-### LogTable
-- `JTable`을 상속하고 `FocusListener`와 `ActionListener`(Ctrl+C 복사)를 구현한다.
-- 필터 문자열 7종을 보관한다(Find, Remove, ShowTag, RemoveTag, Pid, Tid, Highlight).
-- `LogCellRenderer`(내부 클래스)가 HTML로 하이라이트를 처리한다.
-- 그 밖에 컬럼 표시/숨김(`showColumn`, `hideColumn`, `m_arbShow`), 북마크 이동, `showRow`(스크롤), `packColumn`(폭 자동 맞춤)을 담당한다.
-
-### LogCatParser (implements ILogParser)
-형식은 줄의 고정된 위치에 있는 문자로 판별한다.
-
-| 형식 | 판별 조건 | 예 |
-|---|---|---|
-| time | 19~20번째 문자가 `D/`, `V/` 등 | `04-17 09:01:18.910 D/LightsService(  139): msg` |
-| threadtime | 31~32번째 문자가 `D `, `V ` 등 | `04-20 12:06:02.125   146   179 D BatteryService: msg` |
-| kernel | 1번째 문자가 `0`~`7` | `<4>[19553.494855] msg` |
-| 기타 | 위에 해당 없음 | 줄 전체를 Message로 사용 |
-
-- `getColor()`: 레벨에 따라 글자색을 정한다. `F/E/W/I/D`와 커널 레벨 `0`~`7`을 처리한다.
-- `getLogLV()`: 비트 레벨을 반환하지만 **아무 데서도 호출되지 않는다**.
-
-### IndicatorPanel
-- `paintComponent`에서 북마크/에러 맵 전체를 순회하며 막대를 그리고, 화면 범위 표시(page indicator)도 그린다.
-- 마우스 클릭/드래그로 이동하고, 휠 이벤트는 테이블 스크롤로 넘긴다.
-
-### LogInfo / LogFilterTableModel
-- **LogInfo:** 문자열 필드 9개와 `Color`, `m_bMarked`를 가진다. `getData(col)`로 컬럼 값을 돌려준다.
-- **LogFilterTableModel:** 컬럼 9개(Line, Date, Time, LogLV, Pid, Thread, Tag, Bookmark, Message)를 정의한다. 폭은 static 배열이며, `setColumnWidth()`는 **기본값 이상인 폭만** 받아들인다.
-
-### RecentFileMenu
-- Hugues Johnson이 작성한 GPL v2 코드다.
-- 최근 파일 10개를 `user.dir/RecentFile.ini`에 저장한다.
-- 메뉴에 추가하는 곳은 `openFileBrowser()` 하나뿐이다. 드래그&드롭과 실행 인자로 연 파일은 Recent에 추가되지 않는다.
-
-### LogColor / T / ILogParser / INotiEvent
-- **LogColor:** 색상을 담는 static 필드만 있다.
-- **T:** 호출 위치(파일:메서드:줄)를 붙여 `System.out`에 출력한다. `misEnabled = true`로 항상 켜져 있다.
-- **INotiEvent:** 이벤트 0~3을 사용하고, 4~5(`FIND_WORD`, `REMOVE_WORD`)는 정의만 되어 있다.
+- **LogFilterMain:** 화면 구성(`get*Panel`), 이벤트 연결, Listener 구현(`onDataChanged`·`onStatus`·`onTitle`·`onProcessStopped`·`onDevices`), `refreshTable()`·`runOnEdt()`, 설정 반영(`applyConfig`/`saveConfig`), 동작 위임.
+- **FilterEngine:** `addNext()`, `clearData()`, `bookmarkItem()`, `getView()`, `accept()`/`addIfAccepted()`, `checkUseFilter()`, `markChanged()`/`requestFilter()`, `start()`/`stop()`. 내부 `Listener` 인터페이스, `View` 클래스.
+- **LogSource:** `parseFile()`, `startProcess()`, `startFileParse()`, `stopProcess()`, `setPause()`, `listDevices()`. 내부 `Listener` 인터페이스.
+- **AppConfig:** `load()`/`save()`, `loadCmds()`, `loadColors()`/`saveColors()`, `intOf`/`hexOf`(키별 기본값).
+- **LogTable:** 하이라이트 보관, `setFilterEngine()`, Alt+클릭 → `FilterEngine.setShowTag/RemoveTag`, `gotoBookmark()`(TreeSet), `LogCellRenderer`(조기 반환, 이스케이프, Font/Color 재사용).
+- **LogFilterTableModel:** `setData()`/`syncRowCount()`(EDT 전용), `getData()`. **IndicatorPanel:** `Map` 값 순회로 그리기, 재필터 중 생략.
+- **LogCatParser / LogInfo / FilterToken / RecentFileMenu / LogColor / INotiEvent / T:** 역할은 이전과 같다. `T`는 `log()` 하나로 정리(S7).
 
 ---
-
 ## 6. 설정 파일 (`KLogFilter/` 작업 디렉터리 기준)
 
 | 파일 | 읽기/쓰기 | 주요 키 |
@@ -383,24 +197,26 @@ startProcess()
 | P7 ✅ | ★★ | 테이블 갱신 | 행이 추가될 때마다 `fireTableRowsUpdated(0, 전체)`와 `validate`, `repaint` | `fireTableRowsInserted(old, new-1)`로 증분 통지 |
 | P8 ✅ | ★ | Color 객체 | 줄마다 `getColor()`가 `new Color()`를 생성 | 레벨별 Color 인스턴스 캐시(메모리와 GC 절감) |
 | P9 | ★ | 인디케이터 | 스크롤할 때마다 북마크/에러 맵 전체를 순회해 다시 그림 | 픽셀 단위로 모은 결과나 BufferedImage를 캐시하고 데이터가 바뀔 때만 다시 그림 |
-| P10 | ★ | `runFilter()` | EDT에서 `Thread.sleep(100)` 바쁜 대기 | 대기 제거(상태 플래그와 notify만으로 충분) |
+| P10 ✅ | ★ | `runFilter()` | EDT에서 `Thread.sleep(100)` 바쁜 대기 | 대기 제거(상태 플래그와 notify만으로 충분) |
 | P11 | ★ | `T` 로그 | 호출마다 `new Exception()`(스택 수집)과 `SimpleDateFormat` 생성, 항상 켜져 있음 | 릴리스에서는 비활성화하거나 `misEnabled`를 먼저 검사(이미 검사 중이므로 기본값을 false로) |
 
 ### 8.2 구조 / 코드 품질
 
 | # | 대상 | 개선안 |
 |---|---|---|
-| S1 | `LogFilterMain`(2,236줄) | 역할별로 분리: `MainFrame`(UI), `LogSource`(파일/adb 입력), `FilterEngine`(필터 스레드와 판정), `AppConfig`(ini 로드/저장) |
+| S1 ✅ | `LogFilterMain`(2,236줄) | 역할별로 분리: `MainFrame`(UI), `LogSource`(파일/adb 입력), `FilterEngine`(필터 스레드와 판정), `AppConfig`(ini 로드/저장) |
 | S2 | 중복된 필터 판정 | `addLogInfo()`와 필터 스레드에 같은 판정 로직이 복사돼 있다 → `boolean accept(LogInfo)` 하나로 통합 |
 | S3 | `check*Filter()` 6개 | 공통 헬퍼 `matchAny(String field, String[] tokens)`로 통합 |
 | S4 ✅ | DocumentListener | `changedUpdate`, `insertUpdate`, `removeUpdate`의 본문이 똑같다 → `onFilterTextChanged(DocumentEvent)` 하나로 |
-| S5 | 필터 상태 위치 | 필터 문자열을 `LogTable`(뷰)에서 `FilterEngine`(모델)으로 이동 |
-| S6 | `gotoNext/PreBookmark` | 표시 리스트를 선형 탐색 → 정렬된 북마크 index 목록에서 이진 탐색 |
-| S7 | `T.java` | 거의 같은 메서드 8개 → `log(level, msg)` 하나로 |
+| S5 ✅ | 필터 상태 위치 | 필터 문자열을 `LogTable`(뷰)에서 `FilterEngine`(모델)으로 이동 |
+| S6 ✅ | `gotoNext/PreBookmark` | 표시 리스트를 선형 탐색 → 정렬된 북마크 index 목록에서 이진 탐색 |
+| S7 ✅ | `T.java` | 거의 같은 메서드 8개 → `log(level, msg)` 하나로 |
 | S8 ✅ | Swing 스레드 | 백그라운드 결과는 `SwingUtilities.invokeLater`나 `SwingWorker`로 EDT에 반영 (B4 해결) |
 | S9 ✅ | 설정 로드 | `getProperty(key, default)`로 키마다 기본값 지정 (B7 해결), try-with-resources는 JDK 7 이상 |
 
-### 8.3 정리 가능한 죽은 코드
+### 8.3 정리 가능한 죽은 코드 ✅ (2026-10-06 삭제 완료)
+
+아래 항목은 모두 삭제했다. `installInputHistory()`만 6단계(기능 보완)에서 연결하려고 남겼다.
 
 | 항목 | 위치 |
 |---|---|
@@ -430,6 +246,6 @@ startProcess()
    | 셀 렌더링 5만 회, 필터 없음 | 214 ms | 6.5 ms | 33배 |
    | 셀 렌더링 5만 회, 하이라이트+Find | 234 ms | 154 ms | −34% |
 3. ✅ **완료(2026-10-06) — 안정성:** B4/B5/B8 + S8(EDT 반영, 목록 교체 방식 clearData, 모델 행 수 고정, ConcurrentHashMap), B6(adb devices 백그라운드), B7/S9(설정 키별 기본값), B11(스트림 닫기), P7. 재필터 요청 유실 경합, 파일 연속 열기 시 이전 파싱 혼입, Stop 직후 Run 시 새 프로세스 중단 문제도 수정. 스트레스 테스트(파싱·실시간 추가·필터 변경·Clear·스크롤 동시 실행): 수정 전 20초 동안 예외 17건 → 수정 후 60초 동안 0건.
-4. **구조 개선:** 죽은 코드 제거 → S2/S3/S4 중복 제거 → S1 클래스 분리
+4. ✅ **완료(2026-10-06) — 구조 개선:** 미사용 클래스 7개·주석 코드 삭제, S1(`LogFilterMain` 2,235 → 1,330줄, `FilterEngine`·`LogSource`·`AppConfig` 분리), S5, S6, S7, P10. 단위 테스트·실제 창 기능 테스트 8항목·스트레스 테스트 60초 예외 0건.
 5. **저장소 정리:** 소스 인코딩을 UTF-8로 통일하고 Eclipse 설정(`encoding/<project>`)도 맞춘 뒤, 로컬 변경분(1.1)을 GitHub에 커밋
 6. **기능 보완(선택):** `installInputHistory` 연결, 드래그&드롭과 실행 인자로 연 파일도 Recent에 추가, 파서 포맷 확장(B13)

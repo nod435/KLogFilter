@@ -13,8 +13,6 @@ public class LogCatParser implements ILogParser
 {
     final String TOKEN_KERNEL= "<>[]";
     final String TOKEN_SPACE = " ";
-    final String TOKEN_SLASH = "/";
-    final String TOKEN       = "/()";
     final String TOKEN_PID   = "/() ";
     final String TOKEN_REST    = "";    // 구분자 없음 → nextToken()이 남은 문자열 전체를 반환
     
@@ -58,24 +56,6 @@ public class LogCatParser implements ILogParser
             return Color.BLACK;
     }
 
-    public int getLogLV(LogInfo logInfo)
-    {
-        if(logInfo.m_strLogLV == null) return LogInfo.LOG_LV_VERBOSE;
-        
-        if(logInfo.m_strLogLV.equals("FATAL") || logInfo.m_strLogLV.equals("F"))
-            return LogInfo.LOG_LV_FATAL;
-        if(logInfo.m_strLogLV.equals("ERROR") || logInfo.m_strLogLV.equals("E"))
-            return LogInfo.LOG_LV_ERROR;
-        else if(logInfo.m_strLogLV.equals("WARN") || logInfo.m_strLogLV.equals("W"))
-            return LogInfo.LOG_LV_WARN;
-        else if(logInfo.m_strLogLV.equals("INFO") || logInfo.m_strLogLV.equals("I"))
-            return LogInfo.LOG_LV_INFO;
-        else if(logInfo.m_strLogLV.equals("DEBUG") || logInfo.m_strLogLV.equals("D"))
-            return LogInfo.LOG_LV_DEBUG;
-        else
-            return LogInfo.LOG_LV_VERBOSE;
-    }
-    
 //04-17 09:01:18.910 D/LightsService(  139): BKL : 106
     public boolean isNormal(String strText)
     {

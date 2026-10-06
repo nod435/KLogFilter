@@ -15,6 +15,7 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.TreeSet;
 
 import javax.swing.JComponent;
 import javax.swing.JTable;
@@ -33,22 +34,10 @@ public class LogTable extends JTable implements FocusListener, ActionListener
     private static final long             serialVersionUID = 1L;
 
     LogFilterMain                         m_LogFilterMain;
-    ILogParser                            m_iLogParser;
-    String                                m_strHighlight;
-    String                                m_strPidShow;
-    String                                m_strTidShow;
-    String                                m_strTagShow;
-    String                                m_strTagRemove;
-    String                                m_strFilterRemove;
-    String                                m_strFilterFind;
-    // 위 필터 문자열을 '|'로 나눠 소문자로 바꿔 둔 토큰 (필터가 바뀔 때만 갱신, 필터 스레드에서 읽음)
+    FilterEngine                          m_engine;             // 필터 조건(Find/Tag 토큰)과 북마크 위치
+    // 하이라이트는 필터가 아니라 표시 설정이므로 테이블이 가진다. (문자열과 소문자 토큰)
+    String                                m_strHighlight     = "";
     volatile String[]                     m_arHighlightToken = FilterToken.EMPTY;
-    volatile String[]                     m_arPidShowToken   = FilterToken.EMPTY;
-    volatile String[]                     m_arTidShowToken   = FilterToken.EMPTY;
-    volatile String[]                     m_arTagShowToken   = FilterToken.EMPTY;
-    volatile String[]                     m_arTagRemoveToken = FilterToken.EMPTY;
-    volatile String[]                     m_arRemoveToken    = FilterToken.EMPTY;
-    volatile String[]                     m_arFindToken      = FilterToken.EMPTY;
     float                                 m_fFontSize;
     boolean                               m_bAltPressed;
     int                                   m_nTagLength;
@@ -58,17 +47,15 @@ public class LogTable extends JTable implements FocusListener, ActionListener
     {
         super(tablemodel);
         m_LogFilterMain = filterMain;
-        m_strHighlight       = "";
-        m_strPidShow         = "";
-        m_strTidShow         = "";
-        m_strTagShow         = "";
-        m_strTagRemove       = "";
-        m_strFilterRemove    = "";
-        m_strFilterFind      = "";
-        m_nTagLength         = 0;
-        m_arbShow            = new boolean[LogFilterTableModel.COMUMN_MAX];
+        m_nTagLength    = 0;
+        m_arbShow       = new boolean[LogFilterTableModel.COMUMN_MAX];
         init();
         setColumnWidth();
+    }
+
+    void setFilterEngine(FilterEngine engine)
+    {
+        m_engine = engine;
     }
 
     public void changeSelection( int rowIndex, int columnIndex, boolean toggle, boolean extend )
@@ -76,7 +63,6 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         if(rowIndex < 0 ) rowIndex = 0;
         if(rowIndex > getRowCount() - 1) rowIndex = getRowCount() - 1;
         super.changeSelection(rowIndex, columnIndex, toggle, extend);
-//        if(getAutoscrolls())
         showRow(rowIndex);
     }
 
@@ -85,7 +71,6 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         if(rowIndex < 0 ) rowIndex = 0;
         if(rowIndex > getRowCount() - 1) rowIndex = getRowCount() - 1;
         super.changeSelection(rowIndex, columnIndex, toggle, extend);
-//        if(getAutoscrolls())
         if(bMove)
             showRow(rowIndex);
     }
@@ -96,14 +81,10 @@ public class LogTable extends JTable implements FocusListener, ActionListener
 
         addFocusListener( this );
         setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
-//        setTableHeader(createTableHeader());
-//        getTableHeader().setReorderingAllowed(false);
         m_fFontSize = 12;
         setOpaque(false);
         setAutoscrolls(false);
-//        setRequestFocusEnabled(false);
 
-//        setGridColor(TABLE_GRID_COLOR);
         setIntercellSpacing(new Dimension(0, 0));
         // turn off grid painting as we'll handle this manually in order to paint
         // grid lines over the entire viewport.
@@ -120,6 +101,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             {
                 Point p = e.getPoint();
                 int row = rowAtPoint( p );
+                if(row < 0) return;
                 if ( SwingUtilities.isLeftMouseButton( e ) )
                 {
                     if (e.getClickCount() == 2){
@@ -129,16 +111,18 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                      }
                     else if(m_bAltPressed)
                     {
+                        // Alt+좌클릭(Tag): Show tag 필터에 추가/제거
                         int colum = columnAtPoint(p);
-                        if(colum == LogFilterTableModel.COMUMN_TAG)
+                        if(colum == LogFilterTableModel.COMUMN_TAG && m_engine != null)
                         {
-                            LogInfo logInfo = ((LogFilterTableModel)getModel()).getRow(row);
-                            if(m_strTagShow.contains("|" + (String)logInfo.getData(colum)))
-                                SetFilterShowTag(m_strTagShow.replace("|" + (String)logInfo.getData(colum), ""));
-                            else if(m_strTagShow.contains((String)logInfo.getData(colum)))
-                                SetFilterShowTag(m_strTagShow.replace((String)logInfo.getData(colum), ""));
+                            String strTag     = (String)((LogFilterTableModel)getModel()).getRow(row).getData(colum);
+                            String strShowTag = m_engine.getShowTag();
+                            if(strShowTag.contains("|" + strTag))
+                                m_engine.setShowTag(strShowTag.replace("|" + strTag, ""));
+                            else if(strShowTag.contains(strTag))
+                                m_engine.setShowTag(strShowTag.replace(strTag, ""));
                             else
-                                SetFilterShowTag(m_strTagShow + "|" + (String)logInfo.getData(colum));
+                                m_engine.setShowTag(strShowTag + "|" + strTag);
                             m_LogFilterMain.notiEvent(new INotiEvent.EventParam(INotiEvent.EVENT_CHANGE_FILTER_SHOW_TAG));
                         }
                     }
@@ -146,23 +130,21 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                 else if ( SwingUtilities.isRightMouseButton( e ))
                 {
                     int colum = columnAtPoint(p);
-                    T.d("m_bAltPressed = " + m_bAltPressed);
                     if(m_bAltPressed)
                     {
-                        if(colum == LogFilterTableModel.COMUMN_TAG)
+                        // Alt+우클릭(Tag): Remove tag 필터에 추가
+                        if(colum == LogFilterTableModel.COMUMN_TAG && m_engine != null)
                         {
-                            T.d();
-                            LogInfo logInfo = ((LogFilterTableModel)getModel()).getRow(row);
-                            SetFilterRemoveTag(m_strTagRemove + "|" + (String)logInfo.getData(colum));
+                            String strTag = (String)((LogFilterTableModel)getModel()).getRow(row).getData(colum);
+                            m_engine.setRemoveTag(m_engine.getRemoveTag() + "|" + strTag);
                             m_LogFilterMain.notiEvent(new INotiEvent.EventParam(INotiEvent.EVENT_CHANGE_FILTER_REMOVE_TAG));
                         }
                     }
                     else
                     {
-                        T.d();
+                        // 우클릭: 클릭한 셀 값만 복사
                         LogInfo logInfo = ((LogFilterTableModel)getModel()).getRow(row);
                         StringSelection data = new StringSelection((String)logInfo.getData(colum));
-                        getToolkit();
                         Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
                         clipboard.setContents(data, data);
                     }
@@ -187,116 +169,62 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             return false;
     }
 
-    String GetFilterFind()
-    {
-        return m_strFilterFind;
-    }
-
-    String GetFilterRemove()
-    {
-        return m_strFilterRemove;
-    }
-
-    String GetFilterShowPid()
-    {
-        return m_strPidShow;
-    }
-
-    String GetFilterShowTid()
-    {
-        return m_strTidShow;
-    }
-
-    String GetFilterShowTag()
-    {
-        return m_strTagShow;
-    }
-
     String GetHighlight()
     {
         return m_strHighlight;
     }
 
-    String GetFilterRemoveTag()
+    void SetHighlight(String strHighlight)
     {
-        return m_strTagRemove;
+        m_arHighlightToken = FilterToken.split(strHighlight);
+        m_strHighlight     = FilterEngine.nz(strHighlight);
     }
+
+    String[] GetHighlightTokens() { return m_arHighlightToken; }
+    String[] GetFindTokens()      { return m_engine != null ? m_engine.getFindTokens()    : FilterToken.EMPTY; }
+    String[] GetTagShowTokens()   { return m_engine != null ? m_engine.getShowTagTokens() : FilterToken.EMPTY; }
 
     void gotoNextBookmark()
     {
-        int nSeletectRow = getSelectedRow();
+        gotoBookmark(true);
+    }
+
+    void gotoPreBookmark()
+    {
+        gotoBookmark(false);
+    }
+
+    // F2/F3: 표시 중인 목록의 북마크 위치를 정렬해 두고 현재 행의 이전/다음을 찾는다.
+    // (모든 행을 훑지 않음) 끝에 닿으면 반대쪽 끝에서 다시 찾는다.
+    void gotoBookmark(boolean bNext)
+    {
+        if(m_engine == null) return;
+
+        int nRowCount = getRowCount();
+        TreeSet<Integer> setPos = new TreeSet<Integer>();
+        for(Integer nPos : m_engine.getView().hmBookmark.values())
+            if(nPos < nRowCount)
+                setPos.add(nPos);
+        if(setPos.isEmpty()) return;
+
+        int nSelected = getSelectedRow();
+        Integer nTarget = bNext ? setPos.higher(nSelected) : setPos.lower(nSelected < 0 ? nRowCount : nSelected);
+        if(nTarget == null)
+            nTarget = bNext ? setPos.first() : setPos.last();
+        if(nTarget == nSelected) return;
+
         Rectangle parent = getVisibleRect();
-
-        LogInfo logInfo;
-        for(int nIndex = nSeletectRow + 1; nIndex < getRowCount(); nIndex++)
-        {
-            logInfo = ((LogFilterTableModel)getModel()).getRow(nIndex);
-            if(logInfo.m_bMarked)
-            {
-                changeSelection(nIndex, 0, false, false);
-                int nVisible = nIndex;
-                if(!isInnerRect(parent, getCellRect(nIndex, 0, true)))
-                    nVisible = nIndex + getVisibleRowCount() / 2;
-                showRow(nVisible);
-                return;
-            }
-        }
-
-        for(int nIndex = 0; nIndex < nSeletectRow; nIndex++)
-        {
-            logInfo = ((LogFilterTableModel)getModel()).getRow(nIndex);
-            if(logInfo.m_bMarked)
-            {
-                changeSelection(nIndex, 0, false, false);
-                int nVisible = nIndex;
-                if(!isInnerRect(parent, getCellRect(nIndex, 0, true)))
-                    nVisible = nIndex - getVisibleRowCount() / 2;
-                showRow(nVisible);
-                return;
-            }
-        }
+        changeSelection(nTarget, 0, false, false);
+        int nVisible = nTarget;
+        if(!isInnerRect(parent, getCellRect(nTarget, 0, true)))
+            nVisible = nTarget + (nTarget > nSelected ? 1 : -1) * getVisibleRowCount() / 2;   // 진행 방향으로 여유를 두고 보이게
+        showRow(nVisible);
     }
 
     int getVisibleRowCount()
     {
         return getVisibleRect().height/getRowHeight();
     }
-
-    void gotoPreBookmark()
-    {
-        int nSeletectRow = getSelectedRow();
-        Rectangle parent = getVisibleRect();
-
-        LogInfo logInfo;
-        for(int nIndex = nSeletectRow - 1; nIndex >= 0; nIndex--)
-        {
-            logInfo = ((LogFilterTableModel)getModel()).getRow(nIndex);
-            if(logInfo.m_bMarked)
-            {
-                changeSelection(nIndex, 0, false, false);
-                int nVisible = nIndex;
-                if(!isInnerRect(parent, getCellRect(nIndex, 0, true)))
-                    nVisible = nIndex - getVisibleRowCount() / 2;
-                showRow(nVisible);
-                return;
-            }
-        }
-
-        for(int nIndex = getRowCount() - 1; nIndex > nSeletectRow; nIndex--)
-        {
-            logInfo = ((LogFilterTableModel)getModel()).getRow(nIndex);
-            if(logInfo.m_bMarked)
-            {
-                changeSelection(nIndex, 0, false, false);
-                int nVisible = nIndex;
-                if(!isInnerRect(parent, getCellRect(nIndex, 0, true)))
-                    nVisible = nIndex + getVisibleRowCount() / 2;
-                showRow(nVisible);
-                return;
-            }
-        }
-    }
-
     public void hideColumn(int nColumn)
     {
         getColumnModel().getColumn(nColumn).setWidth(0);
@@ -309,7 +237,6 @@ public class LogTable extends JTable implements FocusListener, ActionListener
     protected boolean processKeyBinding(KeyStroke ks, KeyEvent e, int condition, boolean pressed)
     {
         m_bAltPressed = e.isAltDown();
-//        if(e.getID() == KeyEvent.KEY_RELEASED)
         {
             switch(e.getKeyCode())
             {
@@ -345,12 +272,6 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                         return true;
                     }
                     break;
-//                case KeyEvent.VK_O:
-//                    if(e.getID() == KeyEvent.KEY_RELEASED)
-//                    {
-//                        m_LogFilterMain.openFileBrowser();
-//                        return true;
-//                    }
             }
         }
         return super.processKeyBinding(ks, e, condition, pressed);
@@ -367,9 +288,6 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             renderer = getTableHeader().getDefaultRenderer();
         }
         Component comp;
-//        Component comp = renderer.getTableCellRendererComponent(
-//            this, col.getHeaderValue(), false, false, 0, 0);
-//        width = comp.getPreferredSize().width;
 
         JViewport viewport = (JViewport)m_LogFilterMain.m_scrollVBar.getViewport();
         Rectangle viewRect = viewport.getViewRect();
@@ -428,67 +346,11 @@ public class LogTable extends JTable implements FocusListener, ActionListener
 //        showColumn(LogFilterTableModel.COMUMN_THREAD, false);
     }
 
-    // 필터 문자열을 바꿀 때 토큰 배열도 함께 갱신한다. (토큰을 먼저 만들고 문자열을 나중에 넣어,
-    // 다른 스레드가 문자열 길이로 필터 사용 여부를 볼 때 토큰이 비어 있는 순간이 없도록 함)
-    void setFilterFind(String strFind)
-    {
-        m_arFindToken = FilterToken.split(strFind);
-        m_strFilterFind = strFind;
-    }
-
-    void SetFilterRemove(String strRemove)
-    {
-        m_arRemoveToken = FilterToken.split(strRemove);
-        m_strFilterRemove = strRemove;
-    }
-
-    void SetFilterShowTag(String strShowTag)
-    {
-        m_arTagShowToken = FilterToken.split(strShowTag);
-        m_strTagShow = strShowTag;
-    }
-
-    void SetFilterShowPid(String strShowPid)
-    {
-        m_arPidShowToken = FilterToken.split(strShowPid);
-        m_strPidShow = strShowPid;
-    }
-
-    void SetFilterShowTid(String strShowTid)
-    {
-        m_arTidShowToken = FilterToken.split(strShowTid);
-        m_strTidShow = strShowTid;
-    }
-
-    void SetHighlight(String strHighlight)
-    {
-        m_arHighlightToken = FilterToken.split(strHighlight);
-        m_strHighlight = strHighlight;
-    }
-
-    void SetFilterRemoveTag(String strRemoveTag)
-    {
-        m_arTagRemoveToken = FilterToken.split(strRemoveTag);
-        m_strTagRemove = strRemoveTag;
-    }
-
-    String[] GetFindTokens()      { return m_arFindToken; }
-    String[] GetRemoveTokens()    { return m_arRemoveToken; }
-    String[] GetTagShowTokens()   { return m_arTagShowToken; }
-    String[] GetTagRemoveTokens() { return m_arTagRemoveToken; }
-    String[] GetPidShowTokens()   { return m_arPidShowToken; }
-    String[] GetTidShowTokens()   { return m_arTidShowToken; }
-    String[] GetHighlightTokens() { return m_arHighlightToken; }
 
     public void setFontSize(int nFontSize)
     {
         m_fFontSize = nFontSize;
         setRowHeight(nFontSize + 4);
-    }
-
-    public void setLogParser(ILogParser iLogParser)
-    {
-        m_iLogParser = iLogParser;
     }
 
     public void setValueAt(Object aValue, int row, int column)
@@ -757,16 +619,10 @@ public class LogTable extends JTable implements FocusListener, ActionListener
     @Override
     public void actionPerformed( ActionEvent arg0 )
     {
-        Clipboard system = Toolkit.getDefaultToolkit().getSystemClipboard();;
+        Clipboard system;
         StringBuffer sbf = new StringBuffer();
         int numrows = getSelectedRowCount();
         int[] rowsselected = getSelectedRows();
-//        if ( !( ( numrows - 1 == rowsselected[rowsselected.length - 1] - rowsselected[0] && numrows == rowsselected.length )
-//                && ( numcols - 1 == colsselected[colsselected.length - 1] - colsselected[0] && numcols == colsselected.length ) ) )
-//        {
-//            JOptionPane.showMessageDialog( null, "Invalid Copy Selection", "Invalid Copy Selection", JOptionPane.ERROR_MESSAGE );
-//            return;
-//        }
 
         for ( int i = 0; i < numrows; i++ )
         {

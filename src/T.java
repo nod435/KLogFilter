@@ -19,138 +19,49 @@ import java.util.Date;
 
 public class T
 {
-//	private final static String PREFIX = "LogFilter";
 	private final static String POSTFIX = "[iookill]";
-	private static Boolean misEnabled = true;
+	private static volatile boolean misEnabled = true;
+
+	// SimpleDateFormat은 스레드에 안전하지 않으므로 스레드마다 하나씩 쓴다.
+	private static final ThreadLocal<SimpleDateFormat> DATE_FORMAT = new ThreadLocal<SimpleDateFormat>()
+	{
+		protected SimpleDateFormat initialValue()
+		{
+			return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+		}
+	};
 
 	public static void enable( Boolean isEnable )
 	{
 		misEnabled = isEnable;
 	}
 
-    public static void e()
-    {
-        if ( misEnabled )
-        {
-            Exception e = new Exception();
-            StackTraceElement callerElement = e.getStackTrace()[1];
-            System.out.println( getCurrentTime() + 
-                   POSTFIX + "[" +
-                   callerElement.getFileName() + ":" +
-                   callerElement.getMethodName() + ":" + 
-                   callerElement.getLineNumber() + "]");
-        }
-    }
+	public static void e()               { log(null); }
+	public static void e( Object strMsg ) { log(strMsg); }
+	public static void w()               { log(null); }
+	public static void w( Object strMsg ) { log(strMsg); }
+	public static void i()               { log(null); }
+	public static void i( Object strMsg ) { log(strMsg); }
+	public static void d()               { log(null); }
+	public static void d( Object strMsg ) { log(strMsg); }
 
-    public static void e( Object strMsg )
-    {
-        if ( misEnabled )
-        {
-            Exception e = new Exception();
-            StackTraceElement callerElement = e.getStackTrace()[1];
-            System.out.println( getCurrentTime() + 
-                   POSTFIX + "[" +
-                   callerElement.getFileName() + ":" +
-                   callerElement.getMethodName() + ":" + 
-                   callerElement.getLineNumber() + "]" +
-                   strMsg );
-        }
-    }
-
-    public static void w()
-    {
-        if ( misEnabled )
-        {
-            Exception e = new Exception();
-            StackTraceElement callerElement = e.getStackTrace()[1];
-            System.out.println( getCurrentTime() + 
-                   POSTFIX + "[" +
-                   callerElement.getFileName() + ":" +
-                   callerElement.getMethodName() + ":" + 
-                   callerElement.getLineNumber() + "]");
-        }
-    }
-
-	public static void w( Object strMsg )
+	// "시각[iookill][파일:메서드:줄]메시지" 형식으로 출력한다. 호출 위치는 스택에서 두 단계 위(T.x()를 부른 곳).
+	private static void log( Object strMsg )
 	{
-		if ( misEnabled )
-		{
-			Exception e = new Exception();
-			StackTraceElement callerElement = e.getStackTrace()[1];
-            System.out.println( getCurrentTime() + 
-				   POSTFIX + "[" +
-				   callerElement.getFileName() + ":" +
-				   callerElement.getMethodName() + ":" + 
-				   callerElement.getLineNumber() + "]" +
-				   strMsg );
-		}
+		if ( !misEnabled )
+			return;
+
+		StackTraceElement callerElement = new Exception().getStackTrace()[2];
+		System.out.println( getCurrentTime() +
+				POSTFIX + "[" +
+				callerElement.getFileName() + ":" +
+				callerElement.getMethodName() + ":" +
+				callerElement.getLineNumber() + "]" +
+				(strMsg == null ? "" : strMsg) );
 	}
 
-	public static void i()
+	public static String getCurrentTime()
 	{
-		if ( misEnabled )
-		{
-			Exception e = new Exception();
-			StackTraceElement callerElement = e.getStackTrace()[1];
-            System.out.println( getCurrentTime() + 
-				   POSTFIX + "[" +
-				   callerElement.getFileName() + ":" +
-				   callerElement.getMethodName() + ":" + 
-				   callerElement.getLineNumber() + "]");
-		}
+		return DATE_FORMAT.get().format(new Date());
 	}
-
-    public static void i( Object strMsg )
-    {
-        if ( misEnabled )
-        {
-            Exception e = new Exception();
-            StackTraceElement callerElement = e.getStackTrace()[1];
-            System.out.println( getCurrentTime() + 
-                   POSTFIX + "[" +
-                   callerElement.getFileName() + ":" +
-                   callerElement.getMethodName() + ":" + 
-                   callerElement.getLineNumber() + "]" +
-                   strMsg );
-        }
-    }
-
-    public static void d()
-	{
-		if ( misEnabled )
-		{
-			Exception e = new Exception();
-			StackTraceElement callerElement = e.getStackTrace()[1];
-            System.out.println( getCurrentTime() + 
-				   POSTFIX + "[" +
-				   callerElement.getFileName() + ":" +
-				   callerElement.getMethodName() + ":" + 
-				   callerElement.getLineNumber() + "]");
-		}
-	}
-
-    public static void d( Object strMsg )
-    {
-        if ( misEnabled )
-        {
-            Exception e = new Exception();
-            StackTraceElement callerElement = e.getStackTrace()[1];
-            System.out.println( getCurrentTime() + 
-                   POSTFIX + "[" +
-                   callerElement.getFileName() + ":" +
-                   callerElement.getMethodName() + ":" + 
-                   callerElement.getLineNumber() + "]" +
-                   strMsg );
-        }
-    }
-    
-    public static String getCurrentTime()
-    {
-        long time = System.currentTimeMillis(); 
-
-        SimpleDateFormat dayTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-
-        return dayTime.format(new Date(time));
-
-    }
 }

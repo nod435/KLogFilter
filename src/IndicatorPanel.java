@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.Map;
 
 import javax.swing.JCheckBox;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JViewport;
 import javax.swing.border.EmptyBorder;
@@ -36,9 +35,7 @@ public class IndicatorPanel extends JPanel
     ArrayList<LogInfo>        m_arLogInfo;
     Map<Integer, Integer>     m_hmBookmark;
     Map<Integer, Integer>     m_hmError;
-    Graphics                  m_g;
     LogFilterMain             m_LogFilterMain;
-    public boolean            m_bDrawFull;
     
 
     public IndicatorPanel(LogFilterMain logFilterMain)
@@ -46,7 +43,6 @@ public class IndicatorPanel extends JPanel
         super();
         m_LogFilterMain = logFilterMain;
         m_chBookmark = new JCheckBox();
-//        m_chBookmark.setBackground( new Color( 555555 ) );
         m_chBookmark.addItemListener(m_itemListener);
         m_chBookmark.setBorder( new EmptyBorder( 0, 0, 0, 0 ) );
 
@@ -56,7 +52,6 @@ public class IndicatorPanel extends JPanel
 
         m_rcBookmark = new Rectangle();
         m_rcError = new Rectangle();
-        m_bDrawFull = true;
         add(m_chBookmark);
         add(m_chError);
 
@@ -99,26 +94,15 @@ public class IndicatorPanel extends JPanel
         });
     }
     
-    public void testMsg(String strMsg)
-    {
-        JOptionPane.showMessageDialog(this, strMsg);
-    }
-
     public void paintComponent(Graphics g)
     {
         super.paintComponent(g);
-        m_g = g;
         m_rcBookmark.setBounds(INDICATRO_BOOK_X_POS, INDICATRO_Y_POS, INDICATRO_WIDTH, getHeight() - INDICATRO_Y_POS - INDICATRO_Y_GAP);
         m_rcError.setBounds(INDICATRO_ERROR_X_POS, INDICATRO_Y_POS, INDICATRO_WIDTH, getHeight() - INDICATRO_Y_POS - INDICATRO_Y_GAP);
-        if(m_bDrawFull)
-        {
-            drawIndicator(m_g);
-        }
-        drawBookmark(m_g);
-        drawError(m_g);
-        drawPageIndicator(m_g);
-        
-        m_bDrawFull = true;
+        drawIndicator(g);
+        drawBookmark(g);
+        drawError(g);
+        drawPageIndicator(g);
     }
     
     void drawIndicator(Graphics g)
@@ -138,7 +122,7 @@ public class IndicatorPanel extends JPanel
             //북마크 indicator를 그린다.
             for( Integer nPos : m_hmBookmark.values())
             {
-                if(m_LogFilterMain.m_nChangedFilter == LogFilterMain.STATUS_CHANGE || m_LogFilterMain.m_nChangedFilter == LogFilterMain.STATUS_PARSING)
+                if(m_LogFilterMain.m_engine.isBusy())
                     break;
                 int nY1 = (int)(INDICATRO_Y_POS + nPos * fRate);
                 int nY2 = (int)(nY1 + HEIGHT);
@@ -154,7 +138,7 @@ public class IndicatorPanel extends JPanel
             //에러 indicator를 그린다.
             for( Integer nPos : m_hmError.values())
             {
-                if(m_LogFilterMain.m_nChangedFilter == LogFilterMain.STATUS_CHANGE || m_LogFilterMain.m_nChangedFilter == LogFilterMain.STATUS_PARSING)
+                if(m_LogFilterMain.m_engine.isBusy())
                     break;
                 int nY1 = (int)(INDICATRO_Y_POS + nPos * fRate);
                 int nY2 = (int)(nY1 + HEIGHT);
