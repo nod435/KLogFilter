@@ -24,6 +24,11 @@ public class FilteredList implements LogList
         return m_rows.get(nRow);
     }
 
+    public String rawLine(int nRow)
+    {
+        return m_store.rawLine(m_rows.get(nRow));
+    }
+
     // 쓰는 쪽은 FilterEngine 스레드 하나
     void add(int nIndex)
     {

@@ -322,6 +322,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.13 : 오른쪽 클릭 → 그 줄의 로그 전체 보기 (줄바꿈, 로그 전체/셀 값 복사)");
         addDesc("Version 1.12 : Highlight 입력창 6개, 입력창마다 색상(6가지) 선택");
         addDesc("   - 색상은 LogFilterColor.ini의 INI_HIGILIGHT_0~5 (0xRRGGBB)");
         addDesc("Version 1.11 : adb 출력을 바로 읽어 표시 (실시간 표시 지연·디스크 사용 감소)");
@@ -361,7 +362,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         addDesc("");
         addDesc("[Copy]");
         addDesc("Ctrl+c : row copy");
-        addDesc("right click : cloumn copy");
+        addDesc("right click : 로그 전체 보기 (로그 전체 복사 / 셀 값 복사)");
     }
 
     // ---- 화면 반영 (항상 EDT에서 실행) ----

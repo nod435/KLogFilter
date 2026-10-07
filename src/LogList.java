@@ -11,4 +11,7 @@ public interface LogList
 
     // nRow번째 줄의 원본 위치 (전체 목록이면 nRow 그대로)
     int lineIndexOf(int nRow);
+
+    // nRow번째 줄의 원본 문자열 (파일에 있는 그대로)
+    String rawLine(int nRow);
 }

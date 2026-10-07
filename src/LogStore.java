@@ -55,6 +55,11 @@ public abstract class LogStore implements LogList
         return nRow;
     }
 
+    public String rawLine(int nIndex)
+    {
+        return readLine(nIndex);
+    }
+
     public LogInfo get(int nIndex)
     {
         LogInfo logInfo;

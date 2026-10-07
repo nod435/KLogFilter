@@ -18,7 +18,13 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.TreeSet;
 
+import javax.swing.BorderFactory;
 import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.JTable;
 import javax.swing.JViewport;
 import javax.swing.KeyStroke;
@@ -142,16 +148,82 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                     }
                     else
                     {
-                        // 우클릭: 클릭한 셀 값만 복사
-                        LogInfo logInfo = ((LogFilterTableModel)getModel()).getRow(row);
-                        StringSelection data = new StringSelection((String)logInfo.getData(colum));
-                        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-                        clipboard.setContents(data, data);
+                        // 우클릭: 그 줄의 로그 전체(원본 그대로)를 커서 위치에 보여준다. 복사 메뉴 포함.
+                        changeSelection(row, colum, false, false, false);
+                        showFullLog(row, colum, p);
                     }
                 }
             }
         });
         getTableHeader().addMouseListener(new ColumnHeaderListener());
+    }
+
+    static final int FULL_LOG_MAX_WIDTH  = 900;    // 로그 전체 창의 최대 폭
+    static final int FULL_LOG_MAX_HEIGHT = 400;    // 이보다 길면 스크롤
+
+    // 우클릭한 줄의 로그 전체를 줄바꿈해서 보여주는 팝업 (원본 줄, 줄 번호, 복사 메뉴)
+    void showFullLog(int nRow, int nColumn, Point point)
+    {
+        LogFilterTableModel model = (LogFilterTableModel)getModel();
+        LogList list = model.getData();
+        if(list == null || nRow >= model.getRowCount()) return;
+        LogInfo logInfo   = model.getRow(nRow);
+        final String strLine = list.rawLine(nRow);
+        final String strCell = (String)logInfo.getData(nColumn);
+
+        JTextArea taLine = new JTextArea(strLine);
+        taLine.setEditable(false);
+        taLine.setLineWrap(true);
+        taLine.setWrapStyleWord(true);
+        taLine.setFont(getFont().deriveFont(m_fFontSize));
+        taLine.setForeground(logInfo.m_TextColor);
+        taLine.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+        taLine.setCaretPosition(0);
+
+        // 줄바꿈한 높이를 구해 창 크기를 정한다. (짧으면 글자 폭에 맞춤)
+        int nTextWidth = taLine.getFontMetrics(taLine.getFont()).stringWidth(strLine.replace("\t", "    ")) + 16;
+        int nWidth     = Math.max(240, Math.min(Math.min(FULL_LOG_MAX_WIDTH, getVisibleRect().width - 20), nTextWidth));
+        taLine.setSize(nWidth, Short.MAX_VALUE);
+        int nHeight    = Math.min(FULL_LOG_MAX_HEIGHT, taLine.getPreferredSize().height);
+        JScrollPane spLine = new JScrollPane(taLine, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        spLine.setBorder(BorderFactory.createEmptyBorder());
+        spLine.setPreferredSize(new Dimension(nWidth + (nHeight < taLine.getPreferredSize().height ? 18 : 0), nHeight));
+
+        final JPopupMenu popup = new JPopupMenu();
+        JLabel jlTitle = new JLabel(" Line " + logInfo.m_nLine);
+        jlTitle.setFont(jlTitle.getFont().deriveFont(Font.BOLD));
+        popup.add(jlTitle);
+        popup.add(spLine);
+        popup.addSeparator();
+        JMenuItem miCopyLine = new JMenuItem("로그 전체 복사");
+        miCopyLine.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e) { copyToClipboard(strLine); }
+        });
+        JMenuItem miCopyCell = new JMenuItem("셀 값 복사 : " + abbreviate(strCell, 40));
+        miCopyCell.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e) { copyToClipboard(strCell); }
+        });
+        popup.add(miCopyLine);
+        popup.add(miCopyCell);
+        m_popupFullLog = popup;
+        popup.show(this, point.x, point.y);
+    }
+
+    JPopupMenu m_popupFullLog;     // 마지막으로 띄운 로그 전체 팝업 (테스트용)
+
+    static String abbreviate(String strText, int nMax)
+    {
+        if(strText == null) return "";
+        return strText.length() <= nMax ? strText : strText.substring(0, nMax) + "…";
+    }
+
+    static void copyToClipboard(String strText)
+    {
+        StringSelection data = new StringSelection(strText == null ? "" : strText);
+        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+        clipboard.setContents(data, data);
     }
 
     public boolean isCellEditable(int row, int column)
