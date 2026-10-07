@@ -1,8 +1,8 @@
 # KLogFilter 소스 구조 및 동작 흐름
 
-> 작성일: 2026-10-02 · 생성: 2026-10-07 19:01:59 (파일 이름의 `20261007190159`) · 대상 버전: LogFilter 1.10 (큰버전.중간버전.빌드날짜) · 기준 소스: [github.com/nod435/KLogFilter](https://github.com/nod435/KLogFilter) `fd5e19f` + 로컬 변경분(1.1절) (현재 23개 파일, 약 4,850줄 / 원본 18개, 약 4,400줄)
+> 작성일: 2026-10-02 · 생성: 2026-10-07 19:11:22 (파일 이름의 `20261007191122`) · 대상 버전: LogFilter 1.10 (큰버전.중간버전.빌드날짜) · 기준 소스: [github.com/nod435/KLogFilter](https://github.com/nod435/KLogFilter) `fd5e19f` + 로컬 변경분(1.1절) (현재 23개 파일, 약 4,850줄 / 원본 18개, 약 4,400줄)
 >
-> 시퀀스 다이어그램(4장), 클래스 관계도와 클래스별 UML 구조(5.1·5.2절)는 HTML 버전에만 있다: [SOURCE_STRUCTURE_20261007190159.html](SOURCE_STRUCTURE_20261007190159.html)
+> 시퀀스 다이어그램(4장), 클래스 관계도와 클래스별 UML 구조(5.1·5.2절)는 HTML 버전에만 있다: [SOURCE_STRUCTURE_20261007191122.html](SOURCE_STRUCTURE_20261007191122.html)
 
 ---
 
@@ -41,7 +41,7 @@ java -cp bin LogFilterMain [로그파일]
 | 버그 수정 | `LogFilterMain` · `LogCatParser` · `LogTable` · `T` | 2026-10-04: B1(`==` → `equals`), B2(메시지의 `'` 보존), B3·B9(HTML 이스케이프, 대소문자 무시 하이라이트), B10(날짜 포맷), 안내 문구의 ini 키 이름(`INI_HIGILIGHT_n`) | 적용됨 |
 | 기능 추가 | `LogFilterMain.java` | `installUndoRedo()`: 필터 입력창 6개와 Highlight 입력창에 Ctrl+Z / Ctrl+Y | 적용됨 |
 | 기능 추가 | `LogFilterMain.java` | `installInputHistory()`: 입력창별 최근 입력 10개, ↑/↓로 불러오기 | **호출 안 됨** |
-| UI 변경 | `LogFilterMain.java` | Highlight 입력창을 FlowLayout 패널에 넣고 폭 300px로 고정 | 적용됨 |
+| 스크롤 끊김 | `IndicatorPanel`·`FileLogStore`·`LogStore`·`LogTable`·`FilterEngine` | 2026-10-07: 인디케이터 픽셀 캐시(P9), 화면용 주변 32KB 한 번에 읽기, HTML 한 번만 해석, 병렬 작업 우선순위 낮춤 (9장 8) | 적용됨 |
 | import 추가 | `LogFilterMain.java` | 위 기능용 `InputEvent`, `AbstractAction`, `UndoManager` 등 8개 | — |
 | 인코딩 | 전체 `.java` | GitHub는 **MS949**, 로컬은 **UTF-8**(+ CRLF → LF). 한글이 있는 `LogFilterMain`, `IndicatorPanel`, `ClassTaster`만 실제 내용이 다름 | — |
 | 프로젝트 설정 | `.project` | VS Code Java 확장이 리소스 필터(`node_modules\|.git\|…`) 추가 | — |
@@ -134,7 +134,7 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 
 ## 4. 동작 흐름
 
-시퀀스 다이어그램은 [HTML 버전](SOURCE_STRUCTURE_20261007190159.html) 4장에 있다. 요약:
+시퀀스 다이어그램은 [HTML 버전](SOURCE_STRUCTURE_20261007191122.html) 4장에 있다. 요약:
 
 | 흐름 | 순서 |
 |---|---|
@@ -153,7 +153,7 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 
 ## 5. 클래스별 상세
 
-클래스별 필드/메서드 UML 박스와 클래스 관계도는 [HTML 버전](SOURCE_STRUCTURE_20261007190159.html) 5장에 있다.
+클래스별 필드/메서드 UML 박스와 클래스 관계도는 [HTML 버전](SOURCE_STRUCTURE_20261007191122.html) 5장에 있다.
 
 - **LogFilterMain:** 화면 구성(`get*Panel`), 이벤트 연결, Listener 구현(`onDataChanged`·`onStatus`·`onTitle`·`onProcessStopped`·`onDevices`), `refreshTable()`·`runOnEdt()`, 설정 반영(`applyConfig`/`saveConfig`), 동작 위임.
 - **FilterEngine:** `setStore()`, `clearData()`(같은 파일의 이후 부분만 보는 새 목록), `bookmarkItem()`, `getView()`(LOCK 없음), `accept()`, `checkUseFilter()`, `markChanged()`/`requestFilter()`(전체), `requestAnalysis()`/`notifyIndexed()`/`notifyAppended()`(증분), `process()`/`processParallel()`, `start()`/`stop()`. 내부 `Listener` 인터페이스, `View` 클래스.
@@ -220,7 +220,7 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 | P6 | ★★ | 실시간 수집 | adb → 파일 기록(줄마다 flush) → 50ms 폴링으로 다시 읽기(디스크 I/O 2배) | stdout을 바로 파싱하고 파일 기록은 버퍼링(주기적 flush) |
 | P7 ✅ | ★★ | 테이블 갱신 | 행이 추가될 때마다 `fireTableRowsUpdated(0, 전체)`와 `validate`, `repaint` | `fireTableRowsInserted(old, new-1)`로 증분 통지 |
 | P8 ✅ | ★ | Color 객체 | 줄마다 `getColor()`가 `new Color()`를 생성 | 레벨별 Color 인스턴스 캐시(메모리와 GC 절감) |
-| P9 | ★ | 인디케이터 | 스크롤할 때마다 북마크/에러 맵 전체를 순회해 다시 그림 | 픽셀 단위로 모은 결과나 BufferedImage를 캐시하고 데이터가 바뀔 때만 다시 그림 |
+| P9 ✅ | ★ | 인디케이터 | 스크롤할 때마다 북마크/에러 맵 전체를 순회해 다시 그림 | 픽셀 단위로 모은 결과를 캐시하고 데이터가 바뀔 때만 다시 계산 (2026-10-07 적용) |
 | P10 ✅ | ★ | `runFilter()` | EDT에서 `Thread.sleep(100)` 바쁜 대기 | 대기 제거(상태 플래그와 notify만으로 충분) |
 | P11 | ★ | `T` 로그 | 호출마다 `new Exception()`(스택 수집)과 `SimpleDateFormat` 생성, 항상 켜져 있음 | 릴리스에서는 비활성화하거나 `misEnabled`를 먼저 검사(이미 검사 중이므로 기본값을 false로) |
 
@@ -284,3 +284,10 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
    | 힙 사용량 | 2,489 MB | 77 MB | — | 160 MB |
 
    테스트: 단위 테스트(경계 조건, 증분 판정 = 전체 재판정 30만 줄), 실제 창 기능 테스트, 실시간 adb 수집(6초에 20만 줄), 스트레스 테스트 60초 예외 0건.
+8. ✅ **완료(2026-10-07) — 스크롤 끊김 개선:** EDT 감시(40ms 넘는 이벤트의 스택 수집)로 원인 확인. ① 인디케이터가 스크롤마다 에러 4만여 개를 전부 그림 → 픽셀 배열 캐시(P9) ② 보이는 줄마다 디스크를 따로 읽음 → 주변 32KB·최대 256줄을 한 번에 읽어 캐시 ③ HTML 셀을 글꼴·글자색 변경 때문에 최대 3번 해석 → 한 번만 ④ 병렬 작업이 EDT를 밀어냄 → 작업 스레드 우선순위 낮춤. 1GB 파일:
+
+   | 스크롤 | 이전 | 이후 |
+   |---|---:|---:|
+   | 휠 (로딩·분석 중) | p95 119 ms · 최대 335 ms | p95 42 ms · 최대 92 ms |
+   | 휠 (Ready 후) | 평균 18 ms · 최대 39 ms | 평균 3.1 ms · 최대 9 ms |
+   | 휠 (Find 필터) | p95 51 ms · 최대 108 ms | p95 28 ms · 최대 41 ms |

@@ -104,51 +104,62 @@ public class IndicatorPanel extends JPanel
         drawPageIndicator(g);
     }
     
+    // 픽셀 줄마다 표시할지 미리 계산해 둔 결과. 스크롤할 때는 이것만 그리고, 데이터나 높이가 바뀔 때만 다시 계산한다.
+    // (에러가 수만 개면 스크롤할 때마다 전부 그리느라 화면이 멈췄음)
+    static class Marks
+    {
+        Map<Integer, Integer> map;
+        int  nMapSize = -1, nTotal = -1, nHeight = -1;
+        boolean[] arPixel = new boolean[0];
+
+        boolean[] get(Map<Integer, Integer> hm, int nTotalCount, int nH)
+        {
+            int nSize = hm.size();
+            if(hm == map && nSize == nMapSize && nTotalCount == nTotal && nH == nHeight)
+                return arPixel;
+            boolean[] ar = new boolean[Math.max(0, nH)];
+            if(nH > 0 && nTotalCount > 0)
+            {
+                // 한 줄이 1픽셀보다 크면 그 높이만큼 칠한다 (원래 그리기와 같음)
+                float fRate = (float)nH / (float)nTotalCount;
+                int nRowH = nH > nTotalCount ? nH / nTotalCount + 1 : 1;
+                for(Integer nPos : hm.values())
+                {
+                    int nY1 = (int)(nPos * fRate);
+                    for(int y = Math.max(0, nY1); y < nY1 + nRowH && y < nH; y++)
+                        ar[y] = true;
+                }
+            }
+            map = hm; nMapSize = nSize; nTotal = nTotalCount; nHeight = nH; arPixel = ar;
+            return ar;
+        }
+    }
+    final Marks m_marksBookmark = new Marks();
+    final Marks m_marksError    = new Marks();
+
+    // 이어진 픽셀은 사각형 하나로 그린다.
+    static void fillRuns(Graphics g, boolean[] ar, int nX, int nY, int nWidth)
+    {
+        for(int y = 0; y < ar.length; )
+        {
+            if(!ar[y]) { y++; continue; }
+            int nStart = y;
+            while(y < ar.length && ar[y]) y++;
+            g.fillRect(nX, nY + nStart, nWidth, y - nStart);
+        }
+    }
+
     void drawIndicator(Graphics g)
     {
         if(m_arLogInfo == null) return;
 
         int TOTAL_COUNT = m_arLogInfo.size();
+        if(TOTAL_COUNT <= 0) return;
 
-        if(TOTAL_COUNT > 0)
-        {
-            int HEIGHT      = 1;
-            int MIN_HEIGHT  = 1;
-            float fRate = (float)m_rcBookmark.height / (float)TOTAL_COUNT;
-            if(m_rcBookmark.height > TOTAL_COUNT)
-                HEIGHT = m_rcBookmark.height / TOTAL_COUNT + 1;
-
-            //북마크 indicator를 그린다.
-            for( Integer nPos : m_hmBookmark.values())
-            {
-                if(m_LogFilterMain.m_engine.isBusy())
-                    break;
-                int nY1 = (int)(INDICATRO_Y_POS + nPos * fRate);
-                int nY2 = (int)(nY1 + HEIGHT);
-                if(nY2 - nY1 <= 0)
-                    nY2 = nY1 + MIN_HEIGHT;
-                if(nY2 > m_rcBookmark.y + m_rcBookmark.height)
-                    nY2 = m_rcBookmark.y + m_rcBookmark.height;
-                g.setColor(Color.BLUE);
-                g.fillRect(m_rcBookmark.x, nY1, m_rcBookmark.width, nY2 - nY1);
-            }
-
-
-            //에러 indicator를 그린다.
-            for( Integer nPos : m_hmError.values())
-            {
-                if(m_LogFilterMain.m_engine.isBusy())
-                    break;
-                int nY1 = (int)(INDICATRO_Y_POS + nPos * fRate);
-                int nY2 = (int)(nY1 + HEIGHT);
-                if(nY2 - nY1 <= 0)
-                    nY2 = nY1 + MIN_HEIGHT;
-                if(nY2 > m_rcError.y + m_rcError.height)
-                    nY2 = m_rcError.y + m_rcError.height;
-                g.setColor(Color.RED);
-                g.fillRect(m_rcError.x, nY1, m_rcError.width, nY2 - nY1);
-            }
-        }
+        g.setColor(Color.BLUE);
+        fillRuns(g, m_marksBookmark.get(m_hmBookmark, TOTAL_COUNT, m_rcBookmark.height), m_rcBookmark.x, INDICATRO_Y_POS, m_rcBookmark.width);
+        g.setColor(Color.RED);
+        fillRuns(g, m_marksError.get(m_hmError, TOTAL_COUNT, m_rcError.height), m_rcError.x, INDICATRO_Y_POS, m_rcError.width);
     }
 
     void drawBookmark(Graphics g)

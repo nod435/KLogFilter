@@ -191,6 +191,58 @@ public class FileLogStore extends LogStore
         }
     }
 
+    static final int NEAR_BYTES = 32 << 10;    // 화면용으로 한 번에 읽는 범위
+    static final int NEAR_LINES = 256;
+
+    // 화면에서 캐시에 없는 줄을 볼 때: 앞뒤 줄을 한 번에 읽어 캐시에 넣는다.
+    // 줄마다 따로 읽으면 한 화면에 수십 번 디스크를 기다리게 된다(로딩·분석이 큰 블록을 읽는 중이면 더 길어짐).
+    protected LogInfo load(int nIndex)
+    {
+        int  nSize   = size();
+        long nOffset = m_offsets.get(nIndex);
+        int  nLength = m_lengths.get(nIndex);
+        if(nLength >= NEAR_BYTES)
+            return super.load(nIndex);
+
+        // 스크롤은 보통 아래로 가므로 뒤쪽을 더 많이 읽는다.
+        int nFrom = nIndex, nTo = nIndex + 1;
+        while(nFrom > 0 && nIndex - nFrom < NEAR_LINES / 4
+              && nOffset + nLength - m_offsets.get(nFrom - 1) <= NEAR_BYTES / 4)
+            nFrom--;
+        long nStart = m_offsets.get(nFrom);
+        while(nTo < nSize && nTo - nFrom < NEAR_LINES
+              && m_offsets.get(nTo) + m_lengths.get(nTo) - nStart <= NEAR_BYTES)
+            nTo++;
+        int nSpan = (int)(m_offsets.get(nTo - 1) + m_lengths.get(nTo - 1) - nStart);
+
+        byte[] buf = new byte[nSpan];
+        int nRead;
+        try
+        {
+            nRead = readAt(nStart, buf, nSpan);
+        }
+        catch(IOException e)
+        {
+            if(!m_bClosed) T.e(e);
+            return super.load(nIndex);
+        }
+
+        LogInfo result = null;
+        for(int i = nFrom; i < nTo; i++)
+        {
+            int nPos = (int)(m_offsets.get(i) - nStart);
+            int nLen = Math.max(0, Math.min(m_lengths.get(i), nRead - nPos));
+            LogInfo logInfo = i == nIndex ? null : m_hmCache.get(i);
+            if(logInfo == null)
+            {
+                logInfo = parse(i, new String(buf, nPos, nLen, m_charset));
+                m_hmCache.put(i, logInfo);
+            }
+            if(i == nIndex) result = logInfo;
+        }
+        return result;
+    }
+
     // 큰 블록 단위로 순차로 읽어 해석한다. (분석·필터용, 캐시에 넣지 않음)
     void forEach(int nFrom, int nTo, Visitor visitor)
     {

@@ -1,5 +1,6 @@
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Point;
@@ -78,7 +79,8 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         registerKeyboardAction(this,"Copy",copy,JComponent.WHEN_FOCUSED);
 
         addFocusListener( this );
-        setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        // 남는 폭은 마지막 열(Msg)이 차지한다. 열 폭 합이 화면보다 넓으면 가로 스크롤 (getScrollableTracksViewportWidth)
+        setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
         m_fFontSize = 12;
         setOpaque(false);
         setAutoscrolls(false);
@@ -309,6 +311,13 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         col.setPreferredWidth(width);
     }
 
+    // 열 폭 합이 화면보다 좁으면 화면 폭에 맞춰(남는 공간은 Msg 열로), 넓으면 원래 폭대로 두고 가로 스크롤한다.
+    public boolean getScrollableTracksViewportWidth()
+    {
+        Container parent = getParent();
+        return parent instanceof JViewport && getPreferredSize().width < parent.getWidth();
+    }
+
     public float getFontSize()
     {
         return m_fFontSize;
@@ -375,8 +384,10 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         {
             if(value != null)
                 value = remakeData(column, (String)value);
+            // HTML 문자열이 들어간 상태에서 글꼴·글자색을 바꾸면 Swing이 HTML을 다시 해석한다.
+            // 그래서 빈 문자열로 색·글꼴을 먼저 정하고, 문자열은 마지막에 한 번만 넣는다. (스크롤 끊김 원인)
             Component c = super.getTableCellRendererComponent(table,
-                                                              value,
+                                                              "",
                                                               isSelected,
                                                               hasFocus,
                                                               row,
@@ -393,6 +404,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                 c.setBackground(bookmarkColor(LogColor.COLOR_BOOKMARK));
             else
                 c.setBackground(Color.WHITE);
+            setValue(value);
 
             return c;
         }

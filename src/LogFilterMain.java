@@ -922,21 +922,21 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_chkEnableHighlight.setSelected(true);
 
         m_tfHighlight   = new JTextField();
-        m_tfHighlight.setPreferredSize(new Dimension(300, 25));
         installUndoRedo(m_tfHighlight);
         installInputHistory(m_tfHighlight);
 
+        // [체크박스][Highlight : ][입력창 → 패널 오른쪽 끝까지]
         JPanel jpMain = new JPanel(new BorderLayout());
         jpMain.setBorder(BorderFactory.createTitledBorder("Highlight"));
 
-        JPanel jpLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        JPanel jpLeft = new JPanel(new BorderLayout());
         JLabel jlHighlight = new JLabel();
         jlHighlight.setText("Highlight : ");
-        jpLeft.add(jlHighlight);
-        jpLeft.add(m_tfHighlight);
+        jpLeft.add(m_chkEnableHighlight, BorderLayout.WEST);
+        jpLeft.add(jlHighlight, BorderLayout.CENTER);
 
         jpMain.add(jpLeft, BorderLayout.WEST);
-        jpMain.add(m_chkEnableHighlight, BorderLayout.EAST);
+        jpMain.add(m_tfHighlight, BorderLayout.CENTER);
 
         return jpMain;
     }
@@ -963,7 +963,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         JPanel jpMain = new JPanel(new BorderLayout());
 
         JPanel jpLogFilter = new JPanel();
-        jpLogFilter.setLayout(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        jpLogFilter.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
         jpLogFilter.setBorder(BorderFactory.createTitledBorder("Log filter"));
         m_chkVerbose.setText("Verbose");
         m_chkVerbose.setSelected(true);

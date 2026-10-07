@@ -25,7 +25,7 @@ public abstract class LogStore implements LogList
     // 모든 줄을 다 읽었는지 (파일 열기: 색인 완료 후 true, 실시간 수집: 계속 false, 메모리 목록: true)
     volatile boolean               m_bComplete;
 
-    private final LinkedHashMap<Integer, LogInfo> m_hmCache = new LinkedHashMap<Integer, LogInfo>(256, 0.75f, true)
+    protected final LinkedHashMap<Integer, LogInfo> m_hmCache = new LinkedHashMap<Integer, LogInfo>(256, 0.75f, true)
     {
         private static final long serialVersionUID = 1L;
         protected boolean removeEldestEntry(Map.Entry<Integer, LogInfo> eldest)
@@ -62,12 +62,17 @@ public abstract class LogStore implements LogList
         {
             logInfo = m_hmCache.get(nIndex);
             if(logInfo == null)
-            {
-                logInfo = parse(nIndex, readLine(nIndex));
-                m_hmCache.put(nIndex, logInfo);
-            }
+                logInfo = load(nIndex);
         }
         applyState(nIndex, logInfo);
+        return logInfo;
+    }
+
+    // 캐시에 없는 줄을 읽어 캐시에 넣는다(m_hmCache 락 안에서 호출). 하위 클래스는 주변 줄까지 한 번에 읽을 수 있다.
+    protected LogInfo load(int nIndex)
+    {
+        LogInfo logInfo = parse(nIndex, readLine(nIndex));
+        m_hmCache.put(nIndex, logInfo);
         return logInfo;
     }
 

@@ -475,6 +475,8 @@ public class FilterEngine
         {
             Thread th = new Thread(runnable, "FilterWorker-" + m_nCount.incrementAndGet());
             th.setDaemon(true);
+            // 코어를 거의 다 쓰므로, 화면(EDT)이 밀리지 않도록 우선순위를 낮춘다.
+            th.setPriority(Thread.NORM_PRIORITY - 2);
             return th;
         }
     });

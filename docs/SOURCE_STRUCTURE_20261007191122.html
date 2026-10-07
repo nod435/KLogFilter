@@ -244,7 +244,7 @@ figure.cls svg{max-width:100%;height:auto}
 <main>
 <header class="doc">
   <h1>KLogFilter 소스 구조 및 동작 흐름</h1>
-  <div class="meta">작성일 2026-10-02 · 생성 2026-10-07 19:01:59 · 대상 버전 LogFilter 1.10 (큰버전.중간버전.빌드날짜) · 기준 소스 <a href="https://github.com/nod435/KLogFilter">github.com/nod435/KLogFilter</a> <code>fd5e19f</code> + 로컬 변경분(<a href="#s1-diff">1.1</a>)</div>
+  <div class="meta">작성일 2026-10-02 · 생성 2026-10-07 19:11:22 · 대상 버전 LogFilter 1.10 (큰버전.중간버전.빌드날짜) · 기준 소스 <a href="https://github.com/nod435/KLogFilter">github.com/nod435/KLogFilter</a> <code>fd5e19f</code> + 로컬 변경분(<a href="#s1-diff">1.1</a>)</div>
   <p class="lead">Android <code>logcat</code> 로그를 보면서 필터링하는 Java Swing 데스크톱 툴의 클래스 구성, 실행 흐름, 문제점과 최적화 방향을 정리한 문서입니다. 동작 흐름은 시퀀스 다이어그램으로 표현했습니다.</p>
   <div class="chips">
     <span class="chip"><b>16</b> 파일 <small>(원본 18)</small></span>
@@ -292,7 +292,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tbody>
 <tr><td class="nw">기능 추가</td><td class="nw"><code>LogFilterMain.java</code></td><td><code>installUndoRedo()</code>: 필터 입력창 6개와 Highlight 입력창에 <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> 실행 취소/다시 실행</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">기능 추가</td><td class="nw"><code>LogFilterMain.java</code></td><td><code>installInputHistory()</code>: 입력창별 최근 입력 10개, <kbd>↑</kbd>/<kbd>↓</kbd>로 불러오기</td><td><span class="badge b-org">호출 안 됨</span></td></tr>
-<tr><td class="nw">UI 변경</td><td class="nw"><code>LogFilterMain.java</code></td><td>Highlight 입력창을 FlowLayout 패널 안에 넣고 폭을 300px로 고정(원본은 남은 폭 전체 사용)</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">스크롤 끊김</td><td class="nw"><code>IndicatorPanel</code> · <code>FileLogStore</code> · <code>LogStore</code> · <code>LogTable</code> · <code>FilterEngine</code></td><td>2026-10-07: 인디케이터를 픽셀 단위로 미리 계산(P9), 화면에서 읽는 줄은 주변 32KB를 한 번에 읽어 캐시, 렌더러가 HTML을 한 번만 해석, 병렬 작업 스레드 우선순위 낮춤 (9장 8단계)</td><td><span class="badge b-use">적용됨</span></td></tr><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">버그 수정</td><td class="nw"><code>LogFilterMain</code> · <code>LogCatParser</code> · <code>LogTable</code> · <code>T</code></td><td>2026-10-04: B1(<code>==</code> → <code>equals</code>), B2(메시지의 <code>'</code> 보존), B3·B9(HTML 이스케이프, 대소문자 무시 하이라이트), B10(날짜 포맷), 안내 문구의 ini 키 이름(<code>INI_HIGILIGHT_n</code>)</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">대용량 파일</td><td class="nw"><code>LogStore</code> · <code>FileLogStore</code> · <code>MemoryLogStore</code> · <code>FilteredList</code> · <code>LogList</code> · <code>IntList</code> · <code>LongList</code>(신규) · <code>FilterEngine</code> · <code>LogSource</code> · <code>LogTable</code> · <code>LogFilterTableModel</code> · <code>IndicatorPanel</code></td><td>2026-10-06 (버전 1.10): 줄 내용 대신 파일 안의 위치만 색인하고 화면에 보이는 줄만 읽어 해석(LRU 캐시), 읽는 즉시 화면에 표시(부분 로딩), 에러 위치 계산·필터 판정을 증분·병렬로 처리. 440MB 파일: 55.6초·힙 2.4GB → 첫 화면 0.07초·Ready 2.3초·힙 77MB (9장 7단계)</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">장치 연결</td><td class="nw"><code>LogSource</code> · <code>LogFilterMain</code></td><td>2026-10-06: 장치 목록에 상태 표시(<code>LogSource.Device</code>), 연결된 장치 하나면 자동 선택, offline·unauthorized·여러 장치 미선택 시 Run 전에 이유 표시, adb가 장치를 기다리거나 5초간 출력이 없으면 경고, adb 오류 종료 시 종료 코드와 메시지 표시. offline 장치에 <code>adb logcat</code>을 실행하면 오류 없이 멈춰 화면이 비어 있던 문제 해결</td><td><span class="badge b-use">적용됨</span></td></tr>
@@ -559,9 +559,9 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <h4>LogTable · LogFilterTableModel · IndicatorPanel</h4>
 <ul>
   <li><b>LogTable:</b> 하이라이트(표시 설정)만 직접 가지고, Find/Tag 토큰은 <code>FilterEngine</code>에서 읽습니다. Alt+클릭 태그 추가/제거도 <code>FilterEngine</code>에 반영합니다. F2/F3은 표시 중인 북마크 위치를 정렬 집합(<code>TreeSet</code>)에서 찾습니다(S6).</li>
-  <li><b>LogCellRenderer:</b> 일치하는 토큰이 없으면 원문을 그대로 쓰고, 있을 때만 HTML(이스케이프 포함)을 만듭니다. Font/Color는 값이 바뀔 때만 새로 만듭니다.</li>
+  <li><b>LogCellRenderer:</b> 일치하는 토큰이 없으면 원문을 그대로 쓰고, 있을 때만 HTML(이스케이프 포함)을 만듭니다. Font/Color는 값이 바뀔 때만 새로 만듭니다. 글꼴·색을 먼저 정하고 문자열을 마지막에 넣어, HTML이 셀마다 한 번만 해석되게 합니다(글꼴·글자색이 바뀌면 Swing이 HTML을 다시 해석함).</li>
   <li><b>LogFilterTableModel:</b> <code>FilterEngine</code>의 목록을 참조로 들고, EDT에서 <code>syncRowCount()</code>로 알린 행 수까지만 보여줍니다.</li>
-  <li><b>IndicatorPanel:</b> 북마크(파랑)·에러(빨강) 위치와 화면 범위를 그리고, 클릭/드래그로 이동합니다. 재필터 중에는 막대 그리기를 건너뜁니다.</li>
+  <li><b>IndicatorPanel:</b> 북마크(파랑)·에러(빨강) 위치와 화면 범위를 그리고, 클릭/드래그로 이동합니다. 막대는 픽셀 줄마다 표시 여부를 미리 계산한 배열(<code>Marks</code>)로 그리고, 목록·맵 크기·높이가 바뀔 때만 다시 계산합니다. 스크롤할 때는 이어진 픽셀을 사각형 하나로 그리므로 에러 수와 상관없이 빠릅니다.</li>
 </ul>
 
 <h4>LogCatParser · LogInfo · FilterToken · 기타</h4>
@@ -635,7 +635,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td>P6</td><td class="stars">★★</td><td class="nw">실시간 수집</td><td>adb → 파일 기록(줄마다 flush) → 50ms 폴링으로 다시 읽기(디스크 I/O 2배)</td><td>stdout을 바로 파싱하고 파일 기록은 버퍼링(주기적 flush)</td></tr>
 <tr><td>P7 <span class="badge b-use">✔ 완료</span></td><td class="stars">★★</td><td class="nw">테이블 갱신</td><td>행이 추가될 때마다 <code>fireTableRowsUpdated(0, 전체)</code>, <code>validate</code>, <code>repaint</code></td><td><code>fireTableRowsInserted(old, new-1)</code>로 증분 통지</td></tr>
 <tr><td>P8 <span class="badge b-use">✔ 완료</span></td><td class="stars">★</td><td class="nw">Color 객체</td><td>줄마다 <code>getColor()</code>가 <code>new Color()</code> 생성</td><td>레벨별 Color 인스턴스 캐시</td></tr>
-<tr><td>P9</td><td class="stars">★</td><td class="nw">인디케이터</td><td>스크롤할 때마다 북마크/에러 맵 전체를 순회해 다시 그림</td><td>픽셀 단위 결과나 BufferedImage를 캐시하고 데이터가 바뀔 때만 다시 그림</td></tr>
+<tr><td>P9 <span class="badge b-use">✔ 완료</span></td><td class="stars">★</td><td class="nw">인디케이터</td><td>스크롤할 때마다 북마크/에러 맵 전체를 순회해 다시 그림</td><td>픽셀 단위 결과나 BufferedImage를 캐시하고 데이터가 바뀔 때만 다시 그림 → 2026-10-07 픽셀 배열 캐시로 적용</td></tr>
 <tr><td>P10 <span class="badge b-use">✔ 완료</span></td><td class="stars">★</td><td class="nw"><code>runFilter()</code></td><td>EDT에서 <code>Thread.sleep(100)</code> 바쁜 대기</td><td>대기 제거(상태 플래그와 notify만으로 충분)</td></tr>
 <tr><td>P11</td><td class="stars">★</td><td class="nw"><code>T</code> 로그</td><td>호출마다 <code>new Exception()</code>(스택 수집)과 <code>SimpleDateFormat</code> 생성, 항상 켜져 있음</td><td>릴리스에서는 기본값을 비활성화</td></tr>
 </tbody></table></div>
@@ -707,6 +707,14 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
         <tr><td>힙 사용량</td><td class="num">2,489 MB</td><td class="num">77 MB</td><td class="num">—</td><td class="num">160 MB</td></tr>
       </tbody></table></div>
     검증: 단위 테스트(빈 줄·CRLF·미완성 줄·4MB보다 긴 줄·로컬 인코딩, 증분 판정 = 전체 재판정 30만 줄), 실제 창 기능 테스트, 실시간 adb 수집(6초에 20만 줄), 스트레스 테스트 60초 예외 0건.</li>
+  <li><span class="badge b-use">✔ 완료 2026-10-07</span> <b>스크롤 끊김 개선:</b> EDT 감시(40ms 넘는 이벤트의 스택 수집)로 원인을 찾았습니다. ① 인디케이터가 스크롤마다 에러 4만여 개를 전부 그림(P9) → 픽셀 배열 캐시 ② 화면에 보이는 줄마다 디스크를 따로 읽음(로딩 중에는 큰 블록 읽기 뒤에서 대기) → 주변 32KB·최대 256줄을 한 번에 읽어 캐시 ③ HTML 셀을 글꼴·글자색 변경 때문에 최대 3번 해석 → 한 번만 ④ 병렬 작업이 코어를 다 써서 EDT가 밀림 → 작업 스레드 우선순위 낮춤. 1GB 파일 측정:
+    <div class="tbl"><table>
+      <thead><tr><th>스크롤</th><th>이전</th><th>이후</th></tr></thead>
+      <tbody>
+        <tr><td>휠 (로딩·분석 중)</td><td class="num">p95 119 ms · 최대 335 ms</td><td class="num">p95 42 ms · 최대 92 ms</td></tr>
+        <tr><td>휠 (Ready 후)</td><td class="num">평균 18 ms · 최대 39 ms</td><td class="num">평균 3.1 ms · 최대 9 ms</td></tr>
+        <tr><td>휠 (Find 필터, 하이라이트)</td><td class="num">p95 51 ms · 최대 108 ms</td><td class="num">p95 28 ms · 최대 41 ms</td></tr>
+      </tbody></table></div></li>
 </ol>
 </main>
 </div>
@@ -1490,7 +1498,8 @@ const UML = [
     ['+','IndicatorPanel(LogFilterMain)'],
     ['+','setData(LogList, Map, Map) : void','','EDT 전용'],
     ['+','paintComponent(Graphics) : void'],
-    ['~','drawIndicator · drawBookmark · drawError · drawPageIndicator(Graphics)','','재필터 중(isBusy)이면 생략']
+    ['~','drawIndicator · drawBookmark · drawError · drawPageIndicator(Graphics)','','픽셀 캐시(Marks)로 그림'],
+    ['~','fillRuns(Graphics, boolean[], int, int, int)','sl','이어진 픽셀 = 사각형 하나']
   ]
 },
 { name:'LogInfo', rel:'', file:'LogInfo.java · 95줄',
