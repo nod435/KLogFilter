@@ -17,5 +17,8 @@ public class LogColor
     public static int   COLOR_6         = COLOR_INFO;
     public static int   COLOR_7         = COLOR_DEBUG;
     public static int   COLOR_8         = COLOR_ERROR;
-    public static String[] COLOR_HIGHLIGHT;
+    // 하이라이트 색상 6개 ("RRGGBB"). 하이라이트 입력창마다 이 중 하나를 골라 쓴다. (LogFilterColor.ini의 INI_HIGILIGHT_0~5)
+    public static final int      HIGHLIGHT_COUNT   = 6;
+    public static final String[] DEFAULT_HIGHLIGHT = { "FFFF00", "90EE90", "FFB6C1", "FFC864", "ADC8FF", "D8B4FF" };   // 노랑, 연두, 분홍, 주황, 하늘, 보라
+    public static String[] COLOR_HIGHLIGHT = DEFAULT_HIGHLIGHT.clone();
 }

@@ -37,8 +37,8 @@ public class LogTable extends JTable implements FocusListener, ActionListener
     LogFilterMain                         m_LogFilterMain;
     FilterEngine                          m_engine;             // 필터 조건(Find/Tag 토큰)과 북마크 위치
     // 하이라이트는 필터가 아니라 표시 설정이므로 테이블이 가진다. (문자열과 소문자 토큰)
-    String                                m_strHighlight     = "";
-    volatile String[]                     m_arHighlightToken = FilterToken.EMPTY;
+    // 하이라이트 입력창 6개: 입력창마다 토큰과 색상 번호(LogColor.COLOR_HIGHLIGHT의 위치). 끈 입력창은 토큰이 비어 있다.
+    volatile Highlight[]                  m_arHighlight      = Highlight.emptySet();
     float                                 m_fFontSize;
     boolean                               m_bAltPressed;
     boolean[]                             m_arbShow;
@@ -169,18 +169,38 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             return false;
     }
 
-    String GetHighlight()
+    // 하이라이트 입력창 하나의 상태 (바꿀 때는 새 객체로 교체: 렌더러가 읽는 중에도 안전)
+    static final class Highlight
     {
-        return m_strHighlight;
+        final String   m_strText;
+        final String[] m_arToken;
+        final int      m_nColor;
+
+        Highlight(String strText, int nColor)
+        {
+            m_strText = FilterEngine.nz(strText);
+            m_arToken = FilterToken.split(m_strText);
+            m_nColor  = nColor;
+        }
+
+        static Highlight[] emptySet()
+        {
+            Highlight[] ar = new Highlight[LogColor.HIGHLIGHT_COUNT];
+            for(int i = 0; i < ar.length; i++)
+                ar[i] = new Highlight("", i);
+            return ar;
+        }
     }
 
-    void SetHighlight(String strHighlight)
+    // nIndex번 하이라이트 입력창의 문자열(끄면 "")과 색상 번호를 정한다. EDT에서 호출.
+    void SetHighlight(int nIndex, String strHighlight, int nColor)
     {
-        m_arHighlightToken = FilterToken.split(strHighlight);
-        m_strHighlight     = FilterEngine.nz(strHighlight);
+        Highlight[] ar = m_arHighlight.clone();
+        ar[nIndex] = new Highlight(strHighlight, nColor);
+        m_arHighlight = ar;
     }
 
-    String[] GetHighlightTokens() { return m_arHighlightToken; }
+    Highlight[] GetHighlights() { return m_arHighlight; }
     String[] GetFindTokens()      { return m_engine != null ? m_engine.getFindTokens()    : FilterToken.EMPTY; }
     String[] GetTagShowTokens()   { return m_engine != null ? m_engine.getShowTagTokens() : FilterToken.EMPTY; }
 
@@ -436,7 +456,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             return m_colorBookmark;
         }
 
-        // LogColor.COLOR_HIGHLIGHT("FFFF" 형식) → "#FFFF" 배열. 원본 배열이 바뀔 때만 다시 만든다.
+        // LogColor.COLOR_HIGHLIGHT("RRGGBB" 형식) → "#RRGGBB" 배열. 원본 배열이 바뀔 때만 다시 만든다.
         String[] highlightColors()
         {
             String[] arSrc = LogColor.COLOR_HIGHLIGHT;
@@ -466,10 +486,13 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             if(nIndex != LogFilterTableModel.COMUMN_MESSAGE && nIndex != LogFilterTableModel.COMUMN_TAG) return strText;
 
             String[] arFindToken      = nIndex == LogFilterTableModel.COMUMN_MESSAGE ? GetFindTokens() : GetTagShowTokens();
-            String[] arHighlightToken = GetHighlightTokens();
+            Highlight[] arHighlight   = GetHighlights();
 
             // 하이라이트/Find 토큰이 하나도 일치하지 않으면 배열·HTML을 만들지 않고 바로 반환
-            if(!FilterToken.matchAny(strText, arHighlightToken) && !FilterToken.matchAny(strText, arFindToken))
+            boolean bAny = FilterToken.matchAny(strText, arFindToken);
+            for(int i = 0; !bAny && i < arHighlight.length; i++)
+                bAny = FilterToken.matchAny(strText, arHighlight[i].m_arToken);
+            if(!bAny)
                 return plainText(strText);
 
             // 1) 원문에서 일치 구간을 글자 단위로 표시 (대소문자 무시)
@@ -477,7 +500,11 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             boolean[] arFind      = new boolean[strText.length()];
             String strLower = strText.toLowerCase();
             m_bChanged = false;
-            markMatch(strLower, arHighlightToken, highlightColors(), arBackground, null);
+            // 입력창 순서대로 칠한다(겹치면 뒤 입력창 색상). 입력창마다 고른 색상 하나를 쓴다.
+            String[] arColor = highlightColors();
+            for(Highlight highlight : arHighlight)
+                if(highlight.m_arToken.length > 0)
+                    markMatch(strLower, highlight.m_arToken, new String[]{ arColor[highlight.m_nColor % arColor.length] }, arBackground, null);
             markMatch(strLower, arFindToken, null, null, arFind);
 
             if(!m_bChanged)

@@ -26,7 +26,10 @@ public class AppConfig
     static final String INI_WORD_REMOVE     = "WORD_REMOVE";
     static final String INI_TAG_SHOW        = "TAG_SHOW";
     static final String INI_TAG_REMOVE      = "TAG_REMOVE";
-    static final String INI_HIGHLIGHT       = "HIGHLIGHT";
+    static final String INI_HIGHLIGHT       = "HIGHLIGHT";            // 이전 버전(하이라이트 1개). 읽기만 함
+    static final String INI_HIGHLIGHT_      = "HIGHLIGHT_";           // 하이라이트 입력창 n의 문자열
+    static final String INI_HIGHLIGHT_COLOR_= "HIGHLIGHT_COLOR_";     // 입력창 n이 쓰는 색상 번호 (0~5)
+    static final String INI_HIGHLIGHT_ON_   = "HIGHLIGHT_ON_";        // 입력창 n 사용 여부
     static final String INI_PID_SHOW        = "PID_SHOW";
     static final String INI_TID_SHOW        = "TID_SHOW";
     static final String INI_COLOR_0         = "INI_COLOR_0";
@@ -62,7 +65,18 @@ public class AppConfig
     String strRemoveTag = "";
     String strShowPid   = "";
     String strShowTid   = "";
-    String strHighlight = "";
+    // 하이라이트 입력창 6개: 문자열, 색상 번호, 사용 여부 (기본: n번 입력창은 n번 색상, 사용)
+    String[]  arHighlight      = new String[LogColor.HIGHLIGHT_COUNT];
+    int[]     arHighlightColor = new int[LogColor.HIGHLIGHT_COUNT];
+    boolean[] arHighlightOn    = new boolean[LogColor.HIGHLIGHT_COUNT];
+    {
+        for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
+        {
+            arHighlight[nIndex]      = "";
+            arHighlightColor[nIndex] = nIndex;
+            arHighlightOn[nIndex]    = true;
+        }
+    }
     int    nWinWidth    = DEFAULT_WIDTH;
     int    nWinHeight   = DEFAULT_HEIGHT;
     int    nWindowState = JFrame.NORMAL;
@@ -81,7 +95,15 @@ public class AppConfig
         config.strRemoveTag = p.getProperty(INI_TAG_REMOVE, "");
         config.strShowPid   = p.getProperty(INI_PID_SHOW, "");
         config.strShowTid   = p.getProperty(INI_TID_SHOW, "");
-        config.strHighlight = p.getProperty(INI_HIGHLIGHT, "");
+        for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
+        {
+            // 이전 버전 설정(HIGHLIGHT 하나)은 첫 번째 입력창으로 옮긴다.
+            String strDefault = nIndex == 0 ? p.getProperty(INI_HIGHLIGHT, "") : "";
+            config.arHighlight[nIndex]      = p.getProperty(INI_HIGHLIGHT_ + nIndex, strDefault);
+            int nColor = intOf(p, INI_HIGHLIGHT_COLOR_ + nIndex, nIndex);
+            config.arHighlightColor[nIndex] = nColor >= 0 && nColor < LogColor.HIGHLIGHT_COUNT ? nColor : nIndex;
+            config.arHighlightOn[nIndex]    = !"false".equalsIgnoreCase(p.getProperty(INI_HIGHLIGHT_ON_ + nIndex, "true").trim());
+        }
         config.nWinWidth    = Math.max(MIN_WIDTH,  intOf(p, INI_WIDTH,  DEFAULT_WIDTH));
         config.nWinHeight   = Math.max(MIN_HEIGHT, intOf(p, INI_HEIGHT, DEFAULT_HEIGHT));
         config.nWindowState = intOf(p, INI_WINDOW_STATE, JFrame.NORMAL);
@@ -103,7 +125,12 @@ public class AppConfig
         p.setProperty(INI_TAG_REMOVE,   strRemoveTag);
         p.setProperty(INI_PID_SHOW,     strShowPid);
         p.setProperty(INI_TID_SHOW,     strShowTid);
-        p.setProperty(INI_HIGHLIGHT,    strHighlight);
+        for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
+        {
+            p.setProperty(INI_HIGHLIGHT_ + nIndex,       arHighlight[nIndex] == null ? "" : arHighlight[nIndex]);
+            p.setProperty(INI_HIGHLIGHT_COLOR_ + nIndex, "" + arHighlightColor[nIndex]);
+            p.setProperty(INI_HIGHLIGHT_ON_ + nIndex,    "" + arHighlightOn[nIndex]);
+        }
         p.setProperty(INI_WIDTH,        "" + nWinWidth);
         p.setProperty(INI_HEIGHT,       "" + nWinHeight);
         p.setProperty(INI_WINDOW_STATE, "" + nWindowState);
@@ -147,20 +174,21 @@ public class AppConfig
         LogColor.COLOR_DEBUG = LogColor.COLOR_7 = hexOf(p, INI_COLOR_7, LogColor.COLOR_7);
         LogColor.COLOR_FATAL = LogColor.COLOR_8 = hexOf(p, INI_COLOR_8, LogColor.COLOR_8);
 
-        // 하이라이트 색상: 개수만큼 읽되, 빠졌거나 잘못된 값은 건너뛴다.
-        ArrayList<String> arHighlight = new ArrayList<String>();
-        int nCount = intOf(p, INI_HIGILIGHT_COUNT, 0);
-        for(int nIndex = 0; nIndex < nCount; nIndex++)
-        {
-            String strValue = p.getProperty(INI_HIGILIGHT_ + nIndex);
-            if(strValue == null) continue;
-            strValue = strValue.trim().replace("0x", "").replace("0X", "");
-            if(strValue.matches("[0-9a-fA-F]{1,6}"))
-                arHighlight.add(strValue);
-        }
-        if(arHighlight.isEmpty())
-            arHighlight.add("ffff");
-        LogColor.COLOR_HIGHLIGHT = arHighlight.toArray(new String[arHighlight.size()]);
+        // 하이라이트 색상 6개: 빠졌거나 잘못된 값은 기본 색상을 쓴다.
+        String[] arHighlight = new String[LogColor.HIGHLIGHT_COUNT];
+        for(int nIndex = 0; nIndex < arHighlight.length; nIndex++)
+            arHighlight[nIndex] = highlightOf(p.getProperty(INI_HIGILIGHT_ + nIndex), LogColor.DEFAULT_HIGHLIGHT[nIndex]);
+        LogColor.COLOR_HIGHLIGHT = arHighlight;
+    }
+
+    // "0xFFFF" 같은 값 → "00FFFF". 잘못된 값이면 기본값.
+    static String highlightOf(String strValue, String strDefault)
+    {
+        if(strValue == null) return strDefault;
+        strValue = strValue.trim().replace("0x", "").replace("0X", "");
+        if(!strValue.matches("[0-9a-fA-F]{1,6}")) return strDefault;
+        while(strValue.length() < 6) strValue = "0" + strValue;
+        return strValue.toUpperCase();
     }
 
     // LogColor → LogFilterColor.ini
@@ -178,12 +206,9 @@ public class AppConfig
         p.setProperty(INI_COLOR_7, "0x" + Integer.toHexString(LogColor.COLOR_7).toUpperCase());
         p.setProperty(INI_COLOR_8, "0x" + Integer.toHexString(LogColor.COLOR_8).toUpperCase());
 
-        if(LogColor.COLOR_HIGHLIGHT != null)
-        {
-            p.setProperty(INI_HIGILIGHT_COUNT, "" + LogColor.COLOR_HIGHLIGHT.length);
-            for(int nIndex = 0; nIndex < LogColor.COLOR_HIGHLIGHT.length; nIndex++)
-                p.setProperty(INI_HIGILIGHT_ + nIndex, "0x" + LogColor.COLOR_HIGHLIGHT[nIndex].toUpperCase());
-        }
+        p.setProperty(INI_HIGILIGHT_COUNT, "" + LogColor.COLOR_HIGHLIGHT.length);
+        for(int nIndex = 0; nIndex < LogColor.COLOR_HIGHLIGHT.length; nIndex++)
+            p.setProperty(INI_HIGILIGHT_ + nIndex, "0x" + LogColor.COLOR_HIGHLIGHT[nIndex].toUpperCase());
 
         storeProperties(p, INI_FILE_COLOR);
     }

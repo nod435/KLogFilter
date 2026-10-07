@@ -1,4 +1,6 @@
 import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Graphics;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
@@ -32,7 +34,9 @@ import java.util.List;
 
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -96,7 +100,11 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     LogFilterTableModel       m_tmLogTableModel;
 
     //Word Filter, tag filter
-    JTextField                m_tfHighlight;
+    // 하이라이트 입력창 6개와 각각의 사용 체크박스·색상 선택
+    final JTextField[]        m_arTfHighlight      = new JTextField[LogColor.HIGHLIGHT_COUNT];
+    final JCheckBox[]         m_arChkHighlight     = new JCheckBox[LogColor.HIGHLIGHT_COUNT];
+    @SuppressWarnings("unchecked")
+    final JComboBox<Integer>[] m_arCbHighlightColor = new JComboBox[LogColor.HIGHLIGHT_COUNT];
     JTextField                m_tfFindWord;
     JTextField                m_tfRemoveWord;
     JTextField                m_tfShowTag;
@@ -118,7 +126,6 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     JCheckBox                 m_chkEnableRemoveTag;
     JCheckBox                 m_chkEnableShowPid;
     JCheckBox                 m_chkEnableShowTid;
-    JCheckBox                 m_chkEnableHighlight;
 
     //Log filter
     JCheckBox                 m_chkVerbose;
@@ -261,7 +268,13 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tfRemoveTag.setText(config.strRemoveTag);
         m_tfShowPid.setText(config.strShowPid);
         m_tfShowTid.setText(config.strShowTid);
-        m_tfHighlight.setText(config.strHighlight);
+        for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
+        {
+            m_arTfHighlight[nIndex].setText(config.arHighlight[nIndex]);
+            m_arCbHighlightColor[nIndex].setSelectedIndex(config.arHighlightColor[nIndex]);
+            m_arChkHighlight[nIndex].setSelected(config.arHighlightOn[nIndex]);
+            updateHighlight(nIndex);
+        }
         for(int nIndex = 0; nIndex < LogFilterTableModel.COMUMN_MAX; nIndex++)
             LogFilterTableModel.setColumnWidth(nIndex, config.arColumnWidth[nIndex]);
     }
@@ -282,7 +295,12 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.strRemoveTag = m_tfRemoveTag.getText();
         m_config.strShowPid   = m_tfShowPid.getText();
         m_config.strShowTid   = m_tfShowTid.getText();
-        m_config.strHighlight = m_tfHighlight.getText();
+        for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
+        {
+            m_config.arHighlight[nIndex]      = m_arTfHighlight[nIndex].getText();
+            m_config.arHighlightColor[nIndex] = m_arCbHighlightColor[nIndex].getSelectedIndex();
+            m_config.arHighlightOn[nIndex]    = m_arChkHighlight[nIndex].isSelected();
+        }
         for(int nIndex = 0; nIndex < LogFilterTableModel.COMUMN_MAX; nIndex++)
             m_config.arColumnWidth[nIndex] = m_tbLogTable.getColumnWidth(nIndex);
         m_config.save();
@@ -304,6 +322,10 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.12 : Highlight 입력창 6개, 입력창마다 색상(6가지) 선택");
+        addDesc("   - 색상은 LogFilterColor.ini의 INI_HIGILIGHT_0~5 (0xRRGGBB)");
+        addDesc("Version 1.11 : adb 출력을 바로 읽어 표시 (실시간 표시 지연·디스크 사용 감소)");
+        addDesc("Version 1.10 : 대용량 파일 지원 (읽는 즉시 표시, 메모리 사용 감소), 스크롤 끊김 개선");
         addDesc("Version 1.9 : 필터 입력 히스토리(↑/↓), Ctrl+Z/Y 되돌리기, 드래그&드롭·실행 인자로 연 파일 Recent 추가");
         addDesc("   - logcat 형식 확장: year, uid, brief, process, tag, dmesg");
         addDesc("   - 대용량 로그 성능 개선, 버그·안정성 수정");
@@ -628,7 +650,16 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     }
     void addChangeListener()
     {
-        m_tfHighlight.getDocument().addDocumentListener(m_dlFilterListener);
+        for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
+        {
+            final int nSlot = nIndex;
+            m_arTfHighlight[nIndex].getDocument().addDocumentListener(m_dlFilterListener);
+            m_arChkHighlight[nIndex].addItemListener(m_itemListener);
+            m_arCbHighlightColor[nIndex].addActionListener(new ActionListener()
+            {
+                public void actionPerformed(ActionEvent e) { updateHighlight(nSlot); }
+            });
+        }
         m_tfFindWord.getDocument().addDocumentListener(m_dlFilterListener);
         m_tfRemoveWord.getDocument().addDocumentListener(m_dlFilterListener);
         m_tfShowTag.getDocument().addDocumentListener(m_dlFilterListener);
@@ -642,7 +673,6 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_chkEnableShowTid.addItemListener(m_itemListener);
         m_chkEnableShowTag.addItemListener(m_itemListener);
         m_chkEnableRemoveTag.addItemListener(m_itemListener);
-        m_chkEnableHighlight.addItemListener(m_itemListener);
 
         m_chkVerbose.addItemListener(m_itemListener);
         m_chkDebug.addItemListener(m_itemListener);
@@ -932,29 +962,89 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         }
     }
 
+    // 하이라이트 입력창 6개: 한 줄마다 [사용 체크박스][색상 선택][입력창 → 패널 오른쪽 끝까지]
     Component getHighlightPanel()
     {
-        m_chkEnableHighlight   = new JCheckBox();
-        m_chkEnableHighlight.setSelected(true);
-
-        m_tfHighlight   = new JTextField();
-        installUndoRedo(m_tfHighlight);
-        installInputHistory(m_tfHighlight);
-
-        // [체크박스][Highlight : ][입력창 → 패널 오른쪽 끝까지]
-        JPanel jpMain = new JPanel(new BorderLayout());
+        JPanel jpMain = new JPanel(new GridLayout(LogColor.HIGHLIGHT_COUNT, 1, 0, 2));
         jpMain.setBorder(BorderFactory.createTitledBorder("Highlight"));
 
-        JPanel jpLeft = new JPanel(new BorderLayout());
-        JLabel jlHighlight = new JLabel();
-        jlHighlight.setText("Highlight : ");
-        jpLeft.add(m_chkEnableHighlight, BorderLayout.WEST);
-        jpLeft.add(jlHighlight, BorderLayout.CENTER);
+        for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
+        {
+            m_arChkHighlight[nIndex] = new JCheckBox();
+            m_arChkHighlight[nIndex].setSelected(true);
+            m_arChkHighlight[nIndex].setToolTipText("하이라이트 " + (nIndex + 1) + " 사용");
 
-        jpMain.add(jpLeft, BorderLayout.WEST);
-        jpMain.add(m_tfHighlight, BorderLayout.CENTER);
+            m_arCbHighlightColor[nIndex] = createHighlightColorCombo(nIndex);
 
+            m_arTfHighlight[nIndex] = new JTextField();
+            m_arTfHighlight[nIndex].setToolTipText("하이라이트할 단어 (여러 개는 | 로 구분, 대소문자 무시)");
+            installUndoRedo(m_arTfHighlight[nIndex]);
+            installInputHistory(m_arTfHighlight[nIndex]);
+
+            JPanel jpLeft = new JPanel(new BorderLayout());
+            jpLeft.add(m_arChkHighlight[nIndex], BorderLayout.WEST);
+            jpLeft.add(m_arCbHighlightColor[nIndex], BorderLayout.CENTER);
+
+            JPanel jpRow = new JPanel(new BorderLayout(2, 0));
+            jpRow.add(jpLeft, BorderLayout.WEST);
+            jpRow.add(m_arTfHighlight[nIndex], BorderLayout.CENTER);
+            jpMain.add(jpRow);
+        }
         return jpMain;
+    }
+
+    // 하이라이트 색상 6개 중 하나를 고르는 콤보 (색상 견본 + 번호)
+    JComboBox<Integer> createHighlightColorCombo(int nDefault)
+    {
+        Integer[] arItem = new Integer[LogColor.HIGHLIGHT_COUNT];
+        for(int i = 0; i < arItem.length; i++)
+            arItem[i] = i;
+        JComboBox<Integer> combo = new JComboBox<Integer>(arItem);
+        combo.setSelectedIndex(nDefault);
+        combo.setToolTipText("하이라이트 색상 (LogFilterColor.ini의 INI_HIGILIGHT_0~5)");
+        combo.setRenderer(new DefaultListCellRenderer()
+        {
+            private static final long serialVersionUID = 1L;
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus)
+            {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                final int nColor = value == null ? 0 : (Integer)value;
+                setText(String.valueOf(nColor + 1));
+                setIcon(new Icon()
+                {
+                    public int getIconWidth()  { return 22; }
+                    public int getIconHeight() { return 12; }
+                    public void paintIcon(Component c, Graphics g, int x, int y)
+                    {
+                        g.setColor(new Color(Integer.parseInt(LogColor.COLOR_HIGHLIGHT[nColor], 16)));
+                        g.fillRect(x, y, 22, 12);
+                        g.setColor(Color.GRAY);
+                        g.drawRect(x, y, 21, 11);
+                    }
+                });
+                return this;
+            }
+        });
+        return combo;
+    }
+
+    // nIndex번 하이라이트 입력창의 현재 상태를 테이블에 반영한다. (재필터 없이 다시 그리기만)
+    void updateHighlight(int nIndex)
+    {
+        String strText = m_arChkHighlight[nIndex].isSelected() ? m_arTfHighlight[nIndex].getText() : "";
+        m_tbLogTable.SetHighlight(nIndex, strText, m_arCbHighlightColor[nIndex].getSelectedIndex());
+        m_tbLogTable.repaint();
+    }
+
+    // 하이라이트 입력창·체크박스·색상 콤보가 몇 번째 것인지 (아니면 -1)
+    int highlightIndexOf(Object source)
+    {
+        for(int i = 0; i < LogColor.HIGHLIGHT_COUNT; i++)
+        {
+            if(source == m_arChkHighlight[i] || source == m_arCbHighlightColor[i] || source == m_arTfHighlight[i].getDocument())
+                return i;
+        }
+        return -1;
     }
 
     Component getCheckPanel()
@@ -1034,7 +1124,6 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpShowColumn.add(m_chkClmMessage);
 
         jpMain.add(jpShowColumn, BorderLayout.CENTER);
-        jpMain.add(getHighlightPanel(), BorderLayout.SOUTH);
         return jpMain;
     }
 
@@ -1044,7 +1133,11 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
         optionFilter.add(getCmdPanel(), BorderLayout.WEST);
         optionFilter.add(getCheckPanel(), BorderLayout.EAST);
-        optionFilter.add(getFilterPanel(), BorderLayout.CENTER);
+        // 가운데: 왼쪽 Word/Tag filter, 오른쪽 Highlight (둘 다 6줄이라 높이가 맞음)
+        JPanel jpCenter = new JPanel(new GridLayout(1, 2));
+        jpCenter.add(getFilterPanel());
+        jpCenter.add(getHighlightPanel());
+        optionFilter.add(jpCenter, BorderLayout.CENTER);
 
         return optionFilter;
     }
@@ -1209,11 +1302,11 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     // 필터 사용 체크박스: 끄면 그 필터 문자열을 비운 것과 같다.
     void useFilter(JCheckBox checkBox)
     {
-        if(checkBox.equals(m_chkEnableHighlight))
+        int nHighlight = highlightIndexOf(checkBox);
+        if(nHighlight >= 0)
         {
             // 하이라이트는 표시만 바뀌므로 재필터 없이 다시 그린다.
-            m_tbLogTable.SetHighlight(checkBox.isSelected() ? m_tfHighlight.getText() : "");
-            m_tbLogTable.repaint();
+            updateHighlight(nHighlight);
             return;
         }
         if(checkBox.equals(m_chkEnableFind))
@@ -1351,13 +1444,10 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             String strText = doc.getText(0, doc.getLength());
 
             // 하이라이트는 표시만 바뀌므로 재필터 없이 다시 그린다.
-            if(doc.equals(m_tfHighlight.getDocument()))
+            int nHighlight = highlightIndexOf(doc);
+            if(nHighlight >= 0)
             {
-                if(m_chkEnableHighlight.isSelected())
-                {
-                    m_tbLogTable.SetHighlight(strText);
-                    m_tbLogTable.repaint();
-                }
+                updateHighlight(nHighlight);
                 return;
             }
 
@@ -1430,7 +1520,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                     || check.equals(m_chkEnableShowTid)
                     || check.equals(m_chkEnableShowTag)
                     || check.equals(m_chkEnableRemoveTag)
-                    || check.equals(m_chkEnableHighlight))
+                    || highlightIndexOf(check) >= 0)
                 useFilter(check);
         }
     };
