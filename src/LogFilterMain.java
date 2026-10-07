@@ -238,6 +238,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
         setDnDListener();
         addChangeListener();
+        installSearchKeys();
         m_engine.start();
 
         setVisible(true);
@@ -322,6 +323,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.14 : 메시지 검색 (Ctrl+F, F3 다음 / Shift+F3 이전), 북마크 이동은 F2 / Shift+F2");
         addDesc("Version 1.13 : 오른쪽 클릭 → 그 줄의 로그 전체 보기 (줄바꿈, 로그 전체/셀 값 복사)");
         addDesc("Version 1.12 : Highlight 입력창 6개, 입력창마다 색상(6가지) 선택");
         addDesc("   - 색상은 LogFilterColor.ini의 INI_HIGILIGHT_0~5 (0xRRGGBB)");
@@ -357,8 +359,10 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         addDesc("");
         addDesc("[Bookmark]");
         addDesc("Ctrl+F2/double click: bookmark toggle");
-        addDesc("F2 : pre bookmark");
-        addDesc("F3 : next bookmark");
+        addDesc("F2 : next bookmark, Shift+F2 : pre bookmark");
+        addDesc("");
+        addDesc("[Search] (필터와 별개로 메시지에서 찾기)");
+        addDesc("Ctrl+F : 검색창으로, Enter/F3 : 다음, Shift+Enter/Shift+F3 : 이전");
         addDesc("");
         addDesc("[Copy]");
         addDesc("Ctrl+c : row copy");
@@ -1231,7 +1235,165 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         optionWest.add(m_btnStop);
 
         optionMenu.add(optionWest, BorderLayout.WEST);
+        optionMenu.add(getSearchPanel(), BorderLayout.CENTER);
         return optionMenu;
+    }
+
+    // ---- 메시지 검색 (필터와 별개: 지금 보이는 목록에서 다음/이전 일치 행으로 이동) ----
+
+    JTextField m_tfSearch;
+    JButton    m_btnSearchPrev;
+    JButton    m_btnSearchNext;
+    LogSearch  m_search;            // 진행 중인 검색 (새 검색을 시작하면 이전 것은 중단)
+
+    // [Search : ][입력창 → 오른쪽 끝까지][▲][▼]
+    Component getSearchPanel()
+    {
+        m_tfSearch = new JTextField();
+        m_tfSearch.setToolTipText("메시지 검색 (여러 개는 | 로 구분, 대소문자 무시) — Enter/F3: 다음, Shift+Enter/Shift+F3: 이전, Ctrl+F: 여기로");
+        installUndoRedo(m_tfSearch);
+        installInputHistory(m_tfSearch);
+        // Enter: 히스토리에 저장하고 다음 찾기, Shift+Enter: 이전 찾기
+        final javax.swing.Action commit = m_tfSearch.getActionMap().get("HistoryCommit");
+        m_tfSearch.getActionMap().put("HistoryCommit", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e)
+            {
+                commit.actionPerformed(e);
+                search(true);
+            }
+        });
+        m_tfSearch.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK), "SearchPrev");
+        m_tfSearch.getActionMap().put("SearchPrev", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e) { search(false); }
+        });
+
+        m_btnSearchPrev = new JButton("▲");
+        m_btnSearchPrev.setMargin(new Insets(0, 4, 0, 4));
+        m_btnSearchPrev.setToolTipText("이전 찾기 (Shift+F3)");
+        m_btnSearchPrev.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e) { search(false); }
+        });
+        m_btnSearchNext = new JButton("▼");
+        m_btnSearchNext.setMargin(new Insets(0, 4, 0, 4));
+        m_btnSearchNext.setToolTipText("다음 찾기 (F3)");
+        m_btnSearchNext.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e) { search(true); }
+        });
+
+        JPanel jpButtons = new JPanel(new GridLayout(1, 2, 2, 0));
+        jpButtons.add(m_btnSearchPrev);
+        jpButtons.add(m_btnSearchNext);
+
+        JPanel jpSearch = new JPanel(new BorderLayout(4, 0));
+        jpSearch.setBorder(BorderFactory.createEmptyBorder(5, 6, 5, 4));
+        jpSearch.add(new JLabel("Search : "), BorderLayout.WEST);
+        jpSearch.add(m_tfSearch, BorderLayout.CENTER);
+        jpSearch.add(jpButtons, BorderLayout.EAST);
+        return jpSearch;
+    }
+
+    // 창 어디서든 Ctrl+F(검색창으로), F3(다음), Shift+F3(이전)
+    void installSearchKeys()
+    {
+        javax.swing.InputMap  im = getRootPane().getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW);
+        javax.swing.ActionMap am = getRootPane().getActionMap();
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK), "SearchFocus");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0), "SearchNext");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, InputEvent.SHIFT_DOWN_MASK), "SearchPrevKey");
+        am.put("SearchFocus", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e) { setFindFocus(); }
+        });
+        am.put("SearchNext", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e) { search(true); }
+        });
+        am.put("SearchPrevKey", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e) { search(false); }
+        });
+    }
+
+    static final long SEARCH_PROGRESS_MS = 200;
+
+    /**
+     * 지금 보이는 목록에서 검색어가 Message에 들어 있는 다음(bForward) / 이전 행을 찾아 선택한다.
+     * 선택된 행 다음부터 찾고, 끝에 닿으면 처음부터(이전 찾기는 끝부터) 이어서 찾는다. 백그라운드에서 찾는다.
+     */
+    void search(final boolean bForward)
+    {
+        final String strText = m_tfSearch.getText();
+        final String[] arToken = FilterToken.split(strText);
+        if(arToken.length == 0)
+        {
+            setStatus("검색어를 입력하세요 (Ctrl+F)");
+            m_tfSearch.requestFocusInWindow();
+            return;
+        }
+        LogSearch old = m_search;
+        if(old != null) old.cancel();
+        final LogSearch search = new LogSearch();
+        m_search = search;
+
+        final LogList list   = m_tmLogTableModel.getData();
+        final int     nRows  = m_tmLogTableModel.getRowCount();
+        final int     nStart = m_tbLogTable.getSelectedRow();
+        if(list == null || nRows == 0)
+        {
+            setStatus("'" + strText + "' : 찾을 줄이 없습니다");
+            return;
+        }
+        Thread th = new Thread(new Runnable()
+        {
+            long m_nLastProgress = System.currentTimeMillis();
+
+            public void run()
+            {
+                final LogSearch.Result result = search.find(list, nRows, arToken, nStart, bForward, new LogSearch.Progress()
+                {
+                    public void onProgress(int nDone, int nTotal)
+                    {
+                        long nNow = System.currentTimeMillis();
+                        if(nNow - m_nLastProgress >= SEARCH_PROGRESS_MS && m_search == search)
+                        {
+                            m_nLastProgress = nNow;
+                            setStatus(String.format("'%s' 검색 중 %d%%", strText, (int)((long)nDone * 100 / Math.max(1, nTotal))));
+                        }
+                    }
+                });
+                runOnEdt(new Runnable()
+                {
+                    public void run()
+                    {
+                        // 그 사이 새 검색을 시작했거나 목록이 바뀌었으면 결과를 버린다.
+                        if(search.isCancelled() || m_search != search || m_tmLogTableModel.getData() != list)
+                            return;
+                        m_search = null;
+                        if(result == null)
+                        {
+                            setStatus("'" + strText + "' : 찾을 수 없습니다");
+                            return;
+                        }
+                        int nRow = result.m_nRow;
+                        m_tbLogTable.changeSelection(nRow, 0, false, false, false);
+                        m_tbLogTable.showRow(nRow, true);
+                        String strWrap = !result.m_bWrapped ? "" : bForward ? " (끝까지 찾아서 처음부터 다시 찾음)" : " (처음까지 찾아서 끝부터 다시 찾음)";
+                        setStatus(String.format("'%s' : Line %d (%,d / %,d행)%s", strText, list.get(nRow).m_nLine, nRow + 1, nRows, strWrap));
+                    }
+                });
+            }
+        }, "LogSearch");
+        th.setDaemon(true);
+        th.start();
     }
 
     Component getOptionPanel()
@@ -1260,9 +1422,11 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_scrollVBar = new JScrollPane(m_tbLogTable);
         return m_scrollVBar;
     }
+    // Ctrl+F: 메시지 검색창으로 (입력된 검색어는 전체 선택해 바로 바꿔 칠 수 있게)
     public void setFindFocus()
     {
-        m_tfFindWord.requestFocus();
+        m_tfSearch.requestFocus();
+        m_tfSearch.selectAll();
     }
 
     void setDnDListener()

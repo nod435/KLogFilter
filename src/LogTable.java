@@ -350,12 +350,19 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                         }
                         repaint();
                     }
+                    // F2: 다음 북마크, Shift+F2: 이전 북마크 (F3은 메시지 검색에 씀)
                     else if(!e.isControlDown() && e.getID() == KeyEvent.KEY_PRESSED)
-                        gotoPreBookmark();
+                    {
+                        if(e.isShiftDown())
+                            gotoPreBookmark();
+                        else
+                            gotoNextBookmark();
+                    }
                     return true;
                 case KeyEvent.VK_F3:
+                    // F3: 다음 찾기, Shift+F3: 이전 찾기 (메시지 검색)
                     if(e.getID() == KeyEvent.KEY_PRESSED)
-                        gotoNextBookmark();
+                        m_LogFilterMain.search(!e.isShiftDown());
                     return true;
                 case KeyEvent.VK_F:
                     if(e.getID() == KeyEvent.KEY_PRESSED && ( (e.getModifiers() & InputEvent.CTRL_MASK) == InputEvent.CTRL_MASK))
