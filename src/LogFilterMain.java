@@ -889,16 +889,14 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         JPanel jpFind = new JPanel(new BorderLayout());
         JLabel find = new JLabel();
         find.setText("Find :  ");
-        jpFind.add(find, BorderLayout.WEST);
+        jpFind.add(checkAndLabel(m_chkEnableFind, find), BorderLayout.WEST);
         jpFind.add(m_tfFindWord, BorderLayout.CENTER);
-        jpFind.add(m_chkEnableFind, BorderLayout.EAST);
 
         JPanel jpRemove = new JPanel(new BorderLayout());
         JLabel remove = new JLabel();
         remove.setText("Remove :  ");
-        jpRemove.add(remove, BorderLayout.WEST);
+        jpRemove.add(checkAndLabel(m_chkEnableRemove, remove), BorderLayout.WEST);
         jpRemove.add(m_tfRemoveWord, BorderLayout.CENTER);
-        jpRemove.add(m_chkEnableRemove, BorderLayout.EAST);
 
         jpWordFilter.add(jpFind, BorderLayout.NORTH);
         jpWordFilter.add(jpRemove);
@@ -911,30 +909,26 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         JPanel jpPid = new JPanel(new BorderLayout());
         JLabel pid = new JLabel();
         pid.setText("Pid :  ");
-        jpPid.add(pid, BorderLayout.WEST);
+        jpPid.add(checkAndLabel(m_chkEnableShowPid, pid), BorderLayout.WEST);
         jpPid.add(m_tfShowPid, BorderLayout.CENTER);
-        jpPid.add(m_chkEnableShowPid, BorderLayout.EAST);
 
         JPanel jpTid = new JPanel(new BorderLayout());
         JLabel tid = new JLabel();
         tid.setText("Tid :  ");
-        jpTid.add(tid, BorderLayout.WEST);
+        jpTid.add(checkAndLabel(m_chkEnableShowTid, tid), BorderLayout.WEST);
         jpTid.add(m_tfShowTid, BorderLayout.CENTER);
-        jpTid.add(m_chkEnableShowTid, BorderLayout.EAST);
 
         JPanel jpShow = new JPanel(new BorderLayout());
         JLabel show = new JLabel();
         show.setText("Show :  ");
-        jpShow.add(show, BorderLayout.WEST);
+        jpShow.add(checkAndLabel(m_chkEnableShowTag, show), BorderLayout.WEST);
         jpShow.add(m_tfShowTag, BorderLayout.CENTER);
-        jpShow.add(m_chkEnableShowTag, BorderLayout.EAST);
 
         JPanel jpRemoveTag = new JPanel(new BorderLayout());
         JLabel removeTag = new JLabel();
         removeTag.setText("Remove :  ");
-        jpRemoveTag.add(removeTag, BorderLayout.WEST);
+        jpRemoveTag.add(checkAndLabel(m_chkEnableRemoveTag, removeTag), BorderLayout.WEST);
         jpRemoveTag.add(m_tfRemoveTag, BorderLayout.CENTER);
-        jpRemoveTag.add(m_chkEnableRemoveTag, BorderLayout.EAST);
 
         // 라벨을 모두 가장 긴 라벨 폭으로 맞추고 오른쪽 정렬해, 입력창이 같은 위치에서 시작하게 한다.
         alignLabels(find, remove, pid, tid, show, removeTag);
@@ -947,6 +941,15 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpMain.add(jpTagFilter, BorderLayout.CENTER);
 
         return jpMain;
+    }
+
+    // 필터 한 줄의 왼쪽: [사용 체크박스][라벨]
+    static JPanel checkAndLabel(JCheckBox checkBox, JLabel label)
+    {
+        JPanel jp = new JPanel(new BorderLayout());
+        jp.add(checkBox, BorderLayout.WEST);
+        jp.add(label, BorderLayout.CENTER);
+        return jp;
     }
 
     // 라벨들을 가장 넓은 라벨의 폭으로 맞추고 오른쪽 정렬한다.
