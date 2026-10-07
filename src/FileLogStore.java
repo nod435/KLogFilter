@@ -154,6 +154,26 @@ public class FileLogStore extends LogStore
         return nAdded;
     }
 
+    /**
+     * 실시간 수집: 기록하는 쪽이 이미 아는 줄 위치를 바로 추가한다(파일을 다시 읽어 색인하지 않음).
+     * 줄 내용이 파일에 flush된 뒤에 호출해야 한다. 해석 결과는 캐시에 넣어 화면이 디스크를 읽지 않게 한다.
+     * 쓰는 스레드 하나만 호출한다.
+     */
+    void appendLine(long nOffset, int nLength, String strLine)
+    {
+        if(nOffset < m_nIndexedEnd)
+            return;     // Clear 이전에 기록된 줄
+        int nIndex = m_offsets.size();
+        LogInfo logInfo = parse(nIndex, strLine);
+        synchronized(m_hmCache)
+        {
+            m_hmCache.put(nIndex, logInfo);
+        }
+        m_offsets.add(nOffset);
+        m_lengths.add(nLength);
+        m_nIndexedEnd = nOffset + nLength;
+    }
+
     // buf[nStart, nEnd)를 한 줄로 기록한다. 끝의 '\r'은 빼고, 공백뿐인 줄은 건너뛴다(이전 동작과 같음).
     private int addLine(byte[] buf, long nBase, int nStart, int nEnd)
     {

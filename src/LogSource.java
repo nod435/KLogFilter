@@ -1,10 +1,10 @@
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
+import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -14,8 +14,8 @@ import java.nio.charset.Charset;
 /**
  * 로그 입력.
  * - 파일 열기: parseFile() → 줄 위치를 색인하면서 읽은 만큼 바로 표시(부분 로딩)
- * - adb logcat 실시간 수집: startProcess() → adb 출력을 파일에 기록하고(프로세스 스레드),
- *   그 파일을 전체 목록(FileLogStore)으로 써서 50ms마다 늘어난 부분을 색인한다(파일 감시 스레드).
+ * - adb logcat 실시간 수집: startProcess() → adb 출력을 읽는 스레드가 기록 파일에 쓰면서 쓴 위치를 바로
+ *   목록(FileLogStore)에 추가한다(LiveFeed). 파일을 다시 읽지 않는다.
  * - 장치 목록: listDevices()
  * 화면 처리는 하지 않고 Listener로 알린다. (Listener 메서드는 어느 스레드에서든 호출될 수 있음)
  */
@@ -58,11 +58,9 @@ public class LogSource
     final FilterEngine   m_engine;
     final ILogParser     m_parser;
     final Listener       m_listener;
-    final Object         FILE_LOCK = new Object();      // 기록 파일 쓰기/읽기 동기화
 
     volatile Process     m_process;
     volatile Thread      m_thProcess;
-    volatile Thread      m_thWatchFile;
     volatile boolean     m_bPause;
     String               m_strLogFileName;
 
@@ -145,13 +143,135 @@ public class LogSource
     void setPause(boolean bPause)
     {
         m_bPause = bPause;
+        if(!bPause)
+        {
+            LiveFeed feed = m_feed;
+            if(feed != null) feed.publish();     // 멈춘 동안 쌓인 줄을 바로 보여준다
+        }
     }
+
+    static final Charset ADB_CHARSET     = Charset.forName("UTF-8");   // adb 출력은 장치에서 UTF-8로 온다
+    static final long    LIVE_PUBLISH_MS = 50;      // 출력이 계속 들어오는 동안 화면에 알리는 간격
+    static final int     LIVE_BUFFER     = 64 << 10;
+
+    /**
+     * adb 출력 한 줄씩을 기록 파일에 쓰면서, 쓴 위치를 목록(FileLogStore)에 바로 추가한다.
+     * 파일을 다시 읽어 색인하지 않고(이전: 50ms마다 감시 스레드가 다시 읽음), 해석한 줄은 캐시에 넣어 화면이 디스크를 읽지 않는다.
+     * 줄은 파일에 flush된 뒤에만 목록에 보이게 한다(화면이 아직 기록되지 않은 위치를 읽지 않도록).
+     */
+    class LiveFeed
+    {
+        final File         m_file;
+        final OutputStream m_out;
+        long               m_nWritten;                                  // 파일에 쓴 바이트 수 (AdbProcess 스레드만)
+        final ArrayList<long[]> m_arBatch   = new ArrayList<long[]>();  // 쓰고 아직 flush하지 않은 줄 {위치, 길이}
+        final ArrayList<String> m_arBatchStr = new ArrayList<String>();
+        final ArrayList<long[]> m_arReady   = new ArrayList<long[]>();  // flush했고 화면에 넘길 줄 (Pause 중에는 쌓임)
+        final ArrayList<String> m_arReadyStr = new ArrayList<String>();
+        long               m_nLastFlush = System.currentTimeMillis();
+
+        LiveFeed(File file) throws IOException
+        {
+            m_file = file;
+            m_out  = new BufferedOutputStream(new FileOutputStream(file), LIVE_BUFFER);
+        }
+
+        // AdbProcess 스레드: 한 줄을 파일 버퍼에 쓴다.
+        void write(String strLine) throws IOException
+        {
+            byte[] arByte = strLine.getBytes(ADB_CHARSET);
+            m_out.write(arByte);
+            m_out.write('\r');
+            m_out.write('\n');
+            m_arBatch.add(new long[]{ m_nWritten, arByte.length });
+            m_arBatchStr.add(strLine);
+            m_nWritten += arByte.length + 2;
+        }
+
+        boolean due()
+        {
+            return System.currentTimeMillis() - m_nLastFlush >= LIVE_PUBLISH_MS;
+        }
+
+        // AdbProcess 스레드: 파일에 flush하고 그 줄들을 화면에 넘긴다.
+        void flush() throws IOException
+        {
+            m_nLastFlush = System.currentTimeMillis();
+            if(m_arBatch.isEmpty()) return;
+            m_out.flush();
+            synchronized(this)
+            {
+                m_arReady.addAll(m_arBatch);
+                m_arReadyStr.addAll(m_arBatchStr);
+            }
+            m_arBatch.clear();
+            m_arBatchStr.clear();
+            publish();
+        }
+
+        // flush된 줄을 현재 목록에 추가한다. (Pause 중이면 쌓아 두고, Pause를 풀 때 다시 호출된다)
+        synchronized void publish()
+        {
+            if(m_bPause || m_arReady.isEmpty()) return;
+            // Clear하면 같은 파일의 이후 부분을 보는 새 목록으로 바뀐다. 다른 파일을 열었으면 버린다.
+            LogStore current = m_engine.getStore();
+            if(current instanceof FileLogStore && ((FileLogStore)current).m_file.equals(m_file))
+            {
+                FileLogStore store = (FileLogStore)current;
+                for(int i = 0; i < m_arReady.size(); i++)
+                {
+                    long[] ar = m_arReady.get(i);
+                    store.appendLine(ar[0], (int)ar[1], m_arReadyStr.get(i));
+                }
+                m_engine.notifyAppended();
+            }
+            m_arReady.clear();
+            m_arReadyStr.clear();
+        }
+
+        void close()
+        {
+            try
+            {
+                flush();
+            }
+            catch(IOException e)
+            {
+                T.e(e);
+            }
+            try
+            {
+                m_out.close();
+            }
+            catch(IOException e)
+            {
+                T.e(e);
+            }
+        }
+    }
+
+    volatile LiveFeed    m_feed;
 
     void startProcess(final String strCmd, final boolean bUtf8)
     {
-        m_engine.setStore(new MemoryLogStore(m_parser));
         m_strLogFileName = makeFilename();
-        final String strFile = m_strLogFileName;
+        final File file = new File(m_strLogFileName);
+        final LiveFeed feed;
+        try
+        {
+            feed = new LiveFeed(file);
+        }
+        catch(IOException e)
+        {
+            T.e(e);
+            m_listener.onStatus("기록 파일을 만들 수 없습니다 : " + e.getMessage());
+            m_listener.onProcessStopped();
+            return;
+        }
+        m_feed = feed;
+        // 기록 파일 자체를 목록으로 쓴다(adb 출력은 UTF-8). 줄 위치는 LiveFeed가 바로 추가한다.
+        m_engine.setStore(new FileLogStore(file, ADB_CHARSET, m_parser, 0));
+        m_listener.onTitle(m_strLogFileName);
 
         m_thProcess = new Thread(new Runnable()
         {
@@ -171,37 +291,39 @@ public class LogSource
                     m_listener.onStatus("adb 실행 중 : " + strCmd);
                     startNoOutputWatch(process, nLines);
 
-                    try(BufferedReader stdOut = new BufferedReader(new InputStreamReader(process.getInputStream(), "UTF-8"));
-                        Writer fileOut = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(strFile), "UTF-8")))
+                    try(BufferedReader stdOut = new BufferedReader(new InputStreamReader(process.getInputStream(), ADB_CHARSET), LIVE_BUFFER))
                     {
-                        startFileParse(strFile, bUtf8);
-
-                        String s;
-                        while ((s = stdOut.readLine()) != null)
+                        while(true)
                         {
-                            if(!"".equals(s.trim()))
-                            {
-                                // adb가 장치를 못 찾으면 이 문구만 출력하고 계속 기다린다. 로그로 세지 않고 바로 알린다.
-                                if(s.startsWith("- waiting for device"))
-                                    m_listener.onStatus("장치를 기다리는 중 : 장치가 연결되어 있지 않거나 offline 상태입니다. Stop 후 Device OK로 상태를 확인하세요.");
-                                else
-                                    nLines[0]++;
-                                lastLine[0] = s;
-                                synchronized(FILE_LOCK)
-                                {
-                                    fileOut.write(s);
-                                    fileOut.write("\r\n");
-                                    fileOut.flush();
-                                }
-                            }
+                            // 지금 읽을 출력이 없으면(곧 기다리게 되면) 쓴 줄을 먼저 화면에 넘긴다.
+                            // 출력이 몰려 올 때는 LIVE_PUBLISH_MS마다 묶어서 넘긴다.
+                            if(!stdOut.ready() || feed.due())
+                                feed.flush();
+                            String s = stdOut.readLine();
+                            if(s == null)
+                                break;
+                            if(s.trim().length() == 0)
+                                continue;
+                            // adb가 장치를 못 찾으면 이 문구만 출력하고 계속 기다린다. 로그로 세지 않고 바로 알린다.
+                            if(s.startsWith("- waiting for device"))
+                                m_listener.onStatus("장치를 기다리는 중 : 장치가 연결되어 있지 않거나 offline 상태입니다. Stop 후 Device OK로 상태를 확인하세요.");
+                            else
+                                nLines[0]++;
+                            lastLine[0] = s;
+                            feed.write(s);
                         }
                     }
                 }
                 catch(Exception e)
                 {
-                    T.e("e = " + e);
-                    m_listener.onStatus("adb error : " + e.getMessage());
+                    // Stop하면 프로세스가 끝나 읽기가 실패할 수 있다.
+                    if(m_thProcess == Thread.currentThread())
+                    {
+                        T.e("e = " + e);
+                        m_listener.onStatus("adb error : " + e.getMessage());
+                    }
                 }
+                feed.close();
                 // 그 사이 Stop 후 다시 Run 했다면 새 프로세스를 건드리지 않는다.
                 if(m_thProcess == Thread.currentThread())
                 {
@@ -258,61 +380,18 @@ public class LogSource
             m_listener.onStatus("adb 종료 (" + nLines + "줄)");
     }
 
-    // adb 출력이 기록되는 파일을 전체 목록으로 쓰고, 50ms마다 늘어난 부분을 색인한다.
-    // ('\n'으로 끝난 줄까지만 색인하므로 기록 중인 마지막 줄은 다음에 읽는다)
-    void startFileParse(final String strFile, final boolean bUtf8)
-    {
-        final File file = new File(strFile);
-        m_engine.setStore(new FileLogStore(file, charsetOf(bUtf8), m_parser, 0));
-        m_thWatchFile = new Thread(new Runnable()
-        {
-            public void run()
-            {
-                m_listener.onTitle(strFile);
-                try
-                {
-                    while(true)
-                    {
-                        Thread.sleep(50);
-                        if(m_bPause)
-                            continue;
-                        // Clear하면 같은 파일의 이후 부분을 보는 새 목록으로 바뀐다. 다른 파일을 열었으면 건드리지 않는다.
-                        LogStore current = m_engine.getStore();
-                        if(!(current instanceof FileLogStore) || !((FileLogStore)current).m_file.equals(file))
-                            continue;
-                        FileLogStore store = (FileLogStore)current;
-                        int nAdded = 0, n;
-                        while(!m_bPause && (n = store.indexNext(false)) >= 0)
-                            nAdded += n;
-                        if(nAdded > 0)
-                            m_engine.notifyAppended();
-                    }
-                }
-                catch(InterruptedException e)
-                {
-                    // Stop
-                }
-                catch(Exception e)
-                {
-                    T.e(e);
-                    e.printStackTrace();
-                }
-                System.out.println("End WatchFile thread");
-            }
-        }, "WatchFile");
-        m_thWatchFile.start();
-    }
     void stopProcess()
     {
         Process process   = m_process;
-        Thread  thProcess = m_thProcess, thWatchFile = m_thWatchFile;
+        Thread  thProcess = m_thProcess;
+        LiveFeed feed     = m_feed;
         m_process     = null;
         m_thProcess   = null;
-        m_thWatchFile = null;
+        m_feed        = null;
         m_bPause      = false;
+        if(feed != null) feed.publish();      // Pause 중에 쌓인 줄도 보여준다
         if(process != null) process.destroy();
         if(thProcess != null) thProcess.interrupt();
-        if(thWatchFile != null) thWatchFile.interrupt();
         m_listener.onProcessStopped();
     }
 
