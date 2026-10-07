@@ -906,7 +906,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpRemoveTag.add(m_tfRemoveTag, BorderLayout.CENTER);
         jpRemoveTag.add(m_chkEnableRemoveTag, BorderLayout.EAST);
 
-        // 라벨을 모두 가장 긴 라벨 폭으로 맞추고 오른쪽 정렬해, 입력창이 같은 위치에서 시작하게 한다.
+        // 라벨을 모두 가장 긴 라벨 폭으로 맞추고 왼쪽 정렬해, 입력창이 같은 위치에서 시작하게 한다.
         alignLabels(find, remove, pid, tid, show, removeTag);
 
         jpTagFilter.add(jpPid);
@@ -919,7 +919,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         return jpMain;
     }
 
-    // 라벨들을 가장 넓은 라벨의 폭으로 맞추고 오른쪽 정렬한다.
+    // 라벨들을 가장 넓은 라벨의 폭으로 맞추고 왼쪽 정렬한다.
     static void alignLabels(JLabel... arLabel)
     {
         int nWidth = 0;
@@ -927,7 +927,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             nWidth = Math.max(nWidth, label.getPreferredSize().width);
         for(JLabel label : arLabel)
         {
-            label.setHorizontalAlignment(SwingConstants.RIGHT);
+            label.setHorizontalAlignment(SwingConstants.LEFT);
             label.setPreferredSize(new Dimension(nWidth, label.getPreferredSize().height));
         }
     }
