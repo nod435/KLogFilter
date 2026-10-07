@@ -244,7 +244,7 @@ figure.cls svg{max-width:100%;height:auto}
 <main>
 <header class="doc">
   <h1>KLogFilter 소스 구조 및 동작 흐름</h1>
-  <div class="meta">작성일 2026-10-02 · 생성 2026-10-06 22:11:21 · 대상 버전 LogFilter 1.9 (큰버전.중간버전.빌드날짜) · 기준 소스 <a href="https://github.com/nod435/KLogFilter">github.com/nod435/KLogFilter</a> <code>fd5e19f</code> + 로컬 변경분(<a href="#s1-diff">1.1</a>)</div>
+  <div class="meta">작성일 2026-10-02 · 생성 2026-10-07 19:01:59 · 대상 버전 LogFilter 1.10 (큰버전.중간버전.빌드날짜) · 기준 소스 <a href="https://github.com/nod435/KLogFilter">github.com/nod435/KLogFilter</a> <code>fd5e19f</code> + 로컬 변경분(<a href="#s1-diff">1.1</a>)</div>
   <p class="lead">Android <code>logcat</code> 로그를 보면서 필터링하는 Java Swing 데스크톱 툴의 클래스 구성, 실행 흐름, 문제점과 최적화 방향을 정리한 문서입니다. 동작 흐름은 시퀀스 다이어그램으로 표현했습니다.</p>
   <div class="chips">
     <span class="chip"><b>16</b> 파일 <small>(원본 18)</small></span>
@@ -271,7 +271,7 @@ figure.cls svg{max-width:100%;height:auto}
   <li><b>기능:</b> 워드/태그/PID/TID/레벨 필터, 하이라이트, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사</li>
   <li><b>빌드 환경:</b> Eclipse Java 프로젝트이며 JavaSE-1.8(<code>.classpath</code>, 컴파일러 1.8)입니다. JDK 8(Zulu 1.8.0_382)로 빌드했습니다. 원본은 JavaSE-1.6이었습니다.</li>
   <li><b>패키지:</b> default 패키지만 사용하고, 외부 라이브러리 의존성은 없습니다.</li>
-  <li><b>버전 규칙(2026-10-06~):</b> <code>큰버전.중간버전.날짜</code>. 중간버전은 신규 기능을 추가할 때 1 올리고, 날짜는 버전을 만든(빌드한) 날짜시간 <code>yyyyMMddHHmmss</code>입니다. <code>src/AppVersion.java</code>(MAJOR·MINOR)와 <code>build.bat</code>(날짜)이 담당합니다. 현재 1.9.</li>
+  <li><b>버전 규칙(2026-10-06~):</b> <code>큰버전.중간버전.날짜</code>. 중간버전은 신규 기능을 추가할 때 1 올리고, 날짜는 버전을 만든(빌드한) 날짜시간 <code>yyyyMMddHHmmss</code>입니다. <code>src/AppVersion.java</code>(MAJOR·MINOR)와 <code>build.bat</code>(날짜)이 담당합니다. 현재 1.10(2026-10-07 대용량 파일 지원으로 1.9 → 1.10).</li>
 </ul>
 <pre><code># 배포용 빌드 — dist\KLogFilter.jar (버전 날짜 자동 기록)
 build.bat
@@ -294,7 +294,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td class="nw">기능 추가</td><td class="nw"><code>LogFilterMain.java</code></td><td><code>installInputHistory()</code>: 입력창별 최근 입력 10개, <kbd>↑</kbd>/<kbd>↓</kbd>로 불러오기</td><td><span class="badge b-org">호출 안 됨</span></td></tr>
 <tr><td class="nw">UI 변경</td><td class="nw"><code>LogFilterMain.java</code></td><td>Highlight 입력창을 FlowLayout 패널 안에 넣고 폭을 300px로 고정(원본은 남은 폭 전체 사용)</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">버그 수정</td><td class="nw"><code>LogFilterMain</code> · <code>LogCatParser</code> · <code>LogTable</code> · <code>T</code></td><td>2026-10-04: B1(<code>==</code> → <code>equals</code>), B2(메시지의 <code>'</code> 보존), B3·B9(HTML 이스케이프, 대소문자 무시 하이라이트), B10(날짜 포맷), 안내 문구의 ini 키 이름(<code>INI_HIGILIGHT_n</code>)</td><td><span class="badge b-use">적용됨</span></td></tr>
-<tr><td class="nw">대용량 파일</td><td class="nw"><code>LogStore</code> · <code>FileLogStore</code> · <code>MemoryLogStore</code> · <code>FilteredList</code> · <code>LogList</code> · <code>IntList</code> · <code>LongList</code>(신규) · <code>FilterEngine</code> · <code>LogSource</code> · <code>LogTable</code> · <code>LogFilterTableModel</code> · <code>IndicatorPanel</code></td><td>2026-10-06: 줄 내용 대신 파일 안의 위치만 색인하고 화면에 보이는 줄만 읽어 해석(LRU 캐시), 읽는 즉시 화면에 표시(부분 로딩), 에러 위치 계산·필터 판정을 증분·병렬로 처리. 440MB 파일: 55.6초·힙 2.4GB → 첫 화면 0.07초·Ready 2.3초·힙 77MB (9장 7단계)</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">대용량 파일</td><td class="nw"><code>LogStore</code> · <code>FileLogStore</code> · <code>MemoryLogStore</code> · <code>FilteredList</code> · <code>LogList</code> · <code>IntList</code> · <code>LongList</code>(신규) · <code>FilterEngine</code> · <code>LogSource</code> · <code>LogTable</code> · <code>LogFilterTableModel</code> · <code>IndicatorPanel</code></td><td>2026-10-06 (버전 1.10): 줄 내용 대신 파일 안의 위치만 색인하고 화면에 보이는 줄만 읽어 해석(LRU 캐시), 읽는 즉시 화면에 표시(부분 로딩), 에러 위치 계산·필터 판정을 증분·병렬로 처리. 440MB 파일: 55.6초·힙 2.4GB → 첫 화면 0.07초·Ready 2.3초·힙 77MB (9장 7단계)</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">장치 연결</td><td class="nw"><code>LogSource</code> · <code>LogFilterMain</code></td><td>2026-10-06: 장치 목록에 상태 표시(<code>LogSource.Device</code>), 연결된 장치 하나면 자동 선택, offline·unauthorized·여러 장치 미선택 시 Run 전에 이유 표시, adb가 장치를 기다리거나 5초간 출력이 없으면 경고, adb 오류 종료 시 종료 코드와 메시지 표시. offline 장치에 <code>adb logcat</code>을 실행하면 오류 없이 멈춰 화면이 비어 있던 문제 해결</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">기능 보완</td><td class="nw"><code>LogCatParser</code> · <code>LogFilterMain</code> · <code>LogInfo</code></td><td>2026-10-06: 파서 포맷 확장과 threadtime 빠른 경로(B13), 입력 히스토리 ↑/↓ 연결, 모든 열기 경로에서 Recent 추가</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">구조 개선</td><td class="nw"><code>AppConfig</code> · <code>FilterEngine</code> · <code>LogSource</code>(신규) 외 전체</td><td>2026-10-06: <code>LogFilterMain</code>(2,235줄 → 1,330줄)을 화면 전용으로 분리(S1), 필터 상태를 <code>LogTable</code>에서 <code>FilterEngine</code>으로 이동(S5), 북마크 이동을 정렬 집합 탐색으로(S6), <code>T</code> 정리(S7), EDT 대기 제거(P10), 미사용 클래스 7개와 주석 처리된 코드 삭제</td><td><span class="badge b-use">적용됨</span></td></tr>

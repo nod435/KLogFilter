@@ -11,7 +11,7 @@ import java.util.Properties;
 public class AppVersion
 {
     static final int    MAJOR = 1;
-    static final int    MINOR = 9;
+    static final int    MINOR = 10;
     static final String BUILD = loadBuild();
 
     static String loadBuild()
@@ -34,7 +34,7 @@ public class AppVersion
         return "dev";
     }
 
-    // 예: 1.9.20261006153000
+    // 예: 1.10.20261007090000
     static String full()
     {
         return MAJOR + "." + MINOR + "." + BUILD;

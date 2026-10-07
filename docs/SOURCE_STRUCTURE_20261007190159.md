@@ -1,8 +1,8 @@
 # KLogFilter 소스 구조 및 동작 흐름
 
-> 작성일: 2026-10-02 · 생성: 2026-10-06 22:11:21 (파일 이름의 `20261006221121`) · 대상 버전: LogFilter 1.9 (큰버전.중간버전.빌드날짜) · 기준 소스: [github.com/nod435/KLogFilter](https://github.com/nod435/KLogFilter) `fd5e19f` + 로컬 변경분(1.1절) (현재 23개 파일, 약 4,850줄 / 원본 18개, 약 4,400줄)
+> 작성일: 2026-10-02 · 생성: 2026-10-07 19:01:59 (파일 이름의 `20261007190159`) · 대상 버전: LogFilter 1.10 (큰버전.중간버전.빌드날짜) · 기준 소스: [github.com/nod435/KLogFilter](https://github.com/nod435/KLogFilter) `fd5e19f` + 로컬 변경분(1.1절) (현재 23개 파일, 약 4,850줄 / 원본 18개, 약 4,400줄)
 >
-> 시퀀스 다이어그램(4장), 클래스 관계도와 클래스별 UML 구조(5.1·5.2절)는 HTML 버전에만 있다: [SOURCE_STRUCTURE_20261006221121.html](SOURCE_STRUCTURE_20261006221121.html)
+> 시퀀스 다이어그램(4장), 클래스 관계도와 클래스별 UML 구조(5.1·5.2절)는 HTML 버전에만 있다: [SOURCE_STRUCTURE_20261007190159.html](SOURCE_STRUCTURE_20261007190159.html)
 
 ---
 
@@ -14,7 +14,7 @@ KLogFilter는 Android `logcat` 로그를 보면서 필터링하는 Java Swing �
 - **기능:** 워드/태그/PID/TID/레벨 필터, 하이라이트, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사
 - **빌드 환경:** Eclipse Java 프로젝트, JavaSE-1.8(원본은 1.6). JDK 8로 빌드한다.
 - **패키지:** default 패키지만 사용하고, 외부 라이브러리 의존성은 없다.
-- **버전 규칙(2026-10-06~):** `큰버전.중간버전.날짜`. 중간버전은 신규 기능 추가 때 +1, 날짜는 빌드 날짜시간 `yyyyMMddHHmmss`. `src/AppVersion.java`(MAJOR·MINOR)와 `build.bat`(날짜)이 담당. 현재 1.9.
+- **버전 규칙(2026-10-06~):** `큰버전.중간버전.날짜`. 중간버전은 신규 기능 추가 때 +1, 날짜는 빌드 날짜시간 `yyyyMMddHHmmss`. `src/AppVersion.java`(MAJOR·MINOR)와 `build.bat`(날짜)이 담당. 현재 1.10(2026-10-07 대용량 파일 지원으로 1.9 → 1.10).
 
 ```powershell
 # 빌드 — 로컬 소스(UTF-8)
@@ -31,7 +31,7 @@ java -cp bin LogFilterMain [로그파일]
 
 | 구분 | 파일 | 내용 | 상태 |
 |---|---|---|---|
-| 대용량 파일 | `LogStore`·`FileLogStore`·`MemoryLogStore`·`FilteredList`·`LogList`·`IntList`·`LongList`(신규) · `FilterEngine` · `LogSource` · `LogTable` · `LogFilterTableModel` · `IndicatorPanel` | 2026-10-06: 줄 내용 대신 파일 위치만 색인하고 보이는 줄만 읽어 해석(LRU 캐시), 읽는 즉시 화면 표시(부분 로딩), 분석·필터를 증분·병렬로 처리. 440MB 파일 55.6초·힙 2.4GB → 첫 화면 0.07초·Ready 2.3초·힙 77MB (9장 7) | 적용됨 |
+| 대용량 파일 | `LogStore`·`FileLogStore`·`MemoryLogStore`·`FilteredList`·`LogList`·`IntList`·`LongList`(신규) · `FilterEngine` · `LogSource` · `LogTable` · `LogFilterTableModel` · `IndicatorPanel` | 2026-10-06 (1.10): 줄 내용 대신 파일 위치만 색인하고 보이는 줄만 읽어 해석(LRU 캐시), 읽는 즉시 화면 표시(부분 로딩), 분석·필터를 증분·병렬로 처리. 440MB 파일 55.6초·힙 2.4GB → 첫 화면 0.07초·Ready 2.3초·힙 77MB (9장 7) | 적용됨 |
 | 장치 연결 | `LogSource` · `LogFilterMain` | 2026-10-06: 장치 상태 표시, 하나면 자동 선택, offline·unauthorized·여러 장치 미선택 시 Run 전에 이유 표시, adb 대기·무출력 경고, adb 오류 종료 메시지 | 적용됨 |
 | 기능 보완 | `LogCatParser` · `LogFilterMain` · `LogInfo` | 2026-10-06: 파서 포맷 확장과 threadtime 빠른 경로(B13), 입력 히스토리 ↑/↓, 모든 열기 경로에서 Recent 추가 | 적용됨 |
 | 구조 개선 | `AppConfig`·`FilterEngine`·`LogSource`(신규) 외 전체 | 2026-10-06: `LogFilterMain` 화면 전용 분리(S1), 필터 상태 이동(S5), 북마크 이동 TreeSet(S6), `T` 정리(S7), EDT 대기 제거(P10), 미사용 클래스 7개·주석 코드 삭제 | 적용됨 |
@@ -134,7 +134,7 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 
 ## 4. 동작 흐름
 
-시퀀스 다이어그램은 [HTML 버전](SOURCE_STRUCTURE_20261006221121.html) 4장에 있다. 요약:
+시퀀스 다이어그램은 [HTML 버전](SOURCE_STRUCTURE_20261007190159.html) 4장에 있다. 요약:
 
 | 흐름 | 순서 |
 |---|---|
@@ -153,7 +153,7 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 
 ## 5. 클래스별 상세
 
-클래스별 필드/메서드 UML 박스와 클래스 관계도는 [HTML 버전](SOURCE_STRUCTURE_20261006221121.html) 5장에 있다.
+클래스별 필드/메서드 UML 박스와 클래스 관계도는 [HTML 버전](SOURCE_STRUCTURE_20261007190159.html) 5장에 있다.
 
 - **LogFilterMain:** 화면 구성(`get*Panel`), 이벤트 연결, Listener 구현(`onDataChanged`·`onStatus`·`onTitle`·`onProcessStopped`·`onDevices`), `refreshTable()`·`runOnEdt()`, 설정 반영(`applyConfig`/`saveConfig`), 동작 위임.
 - **FilterEngine:** `setStore()`, `clearData()`(같은 파일의 이후 부분만 보는 새 목록), `bookmarkItem()`, `getView()`(LOCK 없음), `accept()`, `checkUseFilter()`, `markChanged()`/`requestFilter()`(전체), `requestAnalysis()`/`notifyIndexed()`/`notifyAppended()`(증분), `process()`/`processParallel()`, `start()`/`stop()`. 내부 `Listener` 인터페이스, `View` 클래스.
