@@ -244,7 +244,7 @@ figure.cls svg{max-width:100%;height:auto}
 <main>
 <header class="doc">
   <h1>KLogFilter 소스 구조 및 동작 흐름</h1>
-  <div class="meta">작성일 2026-10-02 · 생성 2026-10-07 19:11:22 · 대상 버전 LogFilter 1.10 (큰버전.중간버전.빌드날짜) · 기준 소스 <a href="https://github.com/nod435/KLogFilter">github.com/nod435/KLogFilter</a> <code>fd5e19f</code> + 로컬 변경분(<a href="#s1-diff">1.1</a>)</div>
+  <div class="meta">작성일 2026-10-02 · 생성 2026-10-07 21:22:14 · 대상 버전 LogFilter 1.14 (큰버전.중간버전.빌드날짜) · 기준 소스 <a href="https://github.com/nod435/KLogFilter">github.com/nod435/KLogFilter</a> <code>fd5e19f</code> + 로컬 변경분(<a href="#s1-diff">1.1</a>)</div>
   <p class="lead">Android <code>logcat</code> 로그를 보면서 필터링하는 Java Swing 데스크톱 툴의 클래스 구성, 실행 흐름, 문제점과 최적화 방향을 정리한 문서입니다. 동작 흐름은 시퀀스 다이어그램으로 표현했습니다.</p>
   <div class="chips">
     <span class="chip"><b>16</b> 파일 <small>(원본 18)</small></span>
@@ -268,10 +268,10 @@ figure.cls svg{max-width:100%;height:auto}
 <h2 id="s1"><span class="no">1</span>개요</h2>
 <ul>
   <li><b>입력:</b> 저장된 로그 파일(Open, Recent, 드래그&amp;드롭, 실행 인자)을 읽거나, <code>adb logcat</code> 출력을 실시간으로 받습니다.</li>
-  <li><b>기능:</b> 워드/태그/PID/TID/레벨 필터, 하이라이트, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사</li>
+  <li><b>기능:</b> 워드/태그/PID/TID/레벨 필터, 하이라이트 6개(색상 선택), 메시지 검색(Ctrl+F, F3), 오른쪽 클릭 로그 전체 보기, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사</li>
   <li><b>빌드 환경:</b> Eclipse Java 프로젝트이며 JavaSE-1.8(<code>.classpath</code>, 컴파일러 1.8)입니다. JDK 8(Zulu 1.8.0_382)로 빌드했습니다. 원본은 JavaSE-1.6이었습니다.</li>
   <li><b>패키지:</b> default 패키지만 사용하고, 외부 라이브러리 의존성은 없습니다.</li>
-  <li><b>버전 규칙(2026-10-06~):</b> <code>큰버전.중간버전.날짜</code>. 중간버전은 신규 기능을 추가할 때 1 올리고, 날짜는 버전을 만든(빌드한) 날짜시간 <code>yyyyMMddHHmmss</code>입니다. <code>src/AppVersion.java</code>(MAJOR·MINOR)와 <code>build.bat</code>(날짜)이 담당합니다. 현재 1.10(2026-10-07 대용량 파일 지원으로 1.9 → 1.10).</li>
+  <li><b>버전 규칙(2026-10-06~):</b> <code>큰버전.중간버전.날짜</code>. 중간버전은 신규 기능을 추가할 때 1 올리고, 날짜는 버전을 만든(빌드한) 날짜시간 <code>yyyyMMddHHmmss</code>입니다. <code>src/AppVersion.java</code>(MAJOR·MINOR)와 <code>build.bat</code>(날짜)이 담당합니다. 현재 1.14 (1.10 대용량 파일, 1.11 adb 바로 읽기, 1.12 하이라이트 6개, 1.13 로그 전체 보기, 1.14 메시지 검색).</li>
 </ul>
 <pre><code># 배포용 빌드 — dist\KLogFilter.jar (버전 날짜 자동 기록)
 build.bat
@@ -290,9 +290,14 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <div class="tbl"><table>
 <thead><tr><th>구분</th><th>파일</th><th>내용</th><th>상태</th></tr></thead>
 <tbody>
+<tr><td class="nw">메시지 검색</td><td class="nw"><code>LogSearch</code>(신규) · <code>LogFilterMain</code> · <code>LogTable</code></td><td>2026-10-07 (1.14): 필터와 별개로 보이는 목록의 Message에서 찾기. <kbd>Ctrl</kbd>+<kbd>F</kbd> 검색창, <kbd>Enter</kbd>/<kbd>F3</kbd> 다음, <kbd>Shift</kbd>+<kbd>Enter</kbd>/<kbd>Shift</kbd>+<kbd>F3</kbd> 이전, 끝에서 반대쪽으로 이어서, 백그라운드 검색. 북마크 이동은 <kbd>F2</kbd> 다음 / <kbd>Shift</kbd>+<kbd>F2</kbd> 이전으로 변경</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">로그 전체 보기</td><td class="nw"><code>LogTable</code> · <code>LogList</code> · <code>LogStore</code> · <code>FilteredList</code></td><td>2026-10-07 (1.13): 오른쪽 클릭 → 그 줄의 원본 로그 전체를 줄바꿈해 팝업으로(원래 줄 번호, 로그 전체/셀 값 복사 메뉴). <kbd>Alt</kbd>+오른쪽 클릭은 그대로</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">하이라이트 6개</td><td class="nw"><code>LogFilterMain</code> · <code>LogTable</code> · <code>AppConfig</code> · <code>LogColor</code></td><td>2026-10-07 (1.12): Highlight 입력창 6개(Word/Tag filter 오른쪽), 입력창마다 색상 6개 중 선택, 설정 <code>HIGHLIGHT_n</code>/<code>HIGHLIGHT_COLOR_n</code>/<code>HIGHLIGHT_ON_n</code>(이전 <code>HIGHLIGHT</code>는 1번으로)</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">adb 바로 읽기</td><td class="nw"><code>LogSource</code> · <code>FileLogStore</code></td><td>2026-10-07 (1.11): adb 출력을 기록 파일에 쓰면서 줄 위치를 목록에 바로 추가(<code>LiveFeed</code>), 감시 스레드·<code>startFileParse</code>·<code>FILE_LOCK</code> 제거. 30만 줄 4.18초 → 약 1초, 지연 47ms → 10ms (P6)</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">UI 배치</td><td class="nw"><code>LogFilterMain</code> · <code>LogTable</code></td><td>2026-10-07: Word/Tag filter [체크박스][라벨(같은 폭·오른쪽 정렬)][입력창], 가운데는 Word/Tag filter 3 : Highlight 1, Log filter·Show column은 2줄(폭 절반), Msg 열이 남는 폭 차지</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">기능 추가</td><td class="nw"><code>LogFilterMain.java</code></td><td><code>installUndoRedo()</code>: 필터 입력창 6개와 Highlight 입력창에 <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> 실행 취소/다시 실행</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">기능 추가</td><td class="nw"><code>LogFilterMain.java</code></td><td><code>installInputHistory()</code>: 입력창별 최근 입력 10개, <kbd>↑</kbd>/<kbd>↓</kbd>로 불러오기</td><td><span class="badge b-org">호출 안 됨</span></td></tr>
-<tr><td class="nw">스크롤 끊김</td><td class="nw"><code>IndicatorPanel</code> · <code>FileLogStore</code> · <code>LogStore</code> · <code>LogTable</code> · <code>FilterEngine</code></td><td>2026-10-07: 인디케이터를 픽셀 단위로 미리 계산(P9), 화면에서 읽는 줄은 주변 32KB를 한 번에 읽어 캐시, 렌더러가 HTML을 한 번만 해석, 병렬 작업 스레드 우선순위 낮춤 (9장 8단계)</td><td><span class="badge b-use">적용됨</span></td></tr><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">스크롤 끊김</td><td class="nw"><code>IndicatorPanel</code> · <code>FileLogStore</code> · <code>LogStore</code> · <code>LogTable</code> · <code>FilterEngine</code></td><td>2026-10-07: 인디케이터를 픽셀 단위로 미리 계산(P9), 화면에서 읽는 줄은 주변 32KB를 한 번에 읽어 캐시, 렌더러가 HTML을 한 번만 해석, 병렬 작업 스레드 우선순위 낮춤 (9장 8단계)</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">버그 수정</td><td class="nw"><code>LogFilterMain</code> · <code>LogCatParser</code> · <code>LogTable</code> · <code>T</code></td><td>2026-10-04: B1(<code>==</code> → <code>equals</code>), B2(메시지의 <code>'</code> 보존), B3·B9(HTML 이스케이프, 대소문자 무시 하이라이트), B10(날짜 포맷), 안내 문구의 ini 키 이름(<code>INI_HIGILIGHT_n</code>)</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">대용량 파일</td><td class="nw"><code>LogStore</code> · <code>FileLogStore</code> · <code>MemoryLogStore</code> · <code>FilteredList</code> · <code>LogList</code> · <code>IntList</code> · <code>LongList</code>(신규) · <code>FilterEngine</code> · <code>LogSource</code> · <code>LogTable</code> · <code>LogFilterTableModel</code> · <code>IndicatorPanel</code></td><td>2026-10-06 (버전 1.10): 줄 내용 대신 파일 안의 위치만 색인하고 화면에 보이는 줄만 읽어 해석(LRU 캐시), 읽는 즉시 화면에 표시(부분 로딩), 에러 위치 계산·필터 판정을 증분·병렬로 처리. 440MB 파일: 55.6초·힙 2.4GB → 첫 화면 0.07초·Ready 2.3초·힙 77MB (9장 7단계)</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">장치 연결</td><td class="nw"><code>LogSource</code> · <code>LogFilterMain</code></td><td>2026-10-06: 장치 목록에 상태 표시(<code>LogSource.Device</code>), 연결된 장치 하나면 자동 선택, offline·unauthorized·여러 장치 미선택 시 Run 전에 이유 표시, adb가 장치를 기다리거나 5초간 출력이 없으면 경고, adb 오류 종료 시 종료 코드와 메시지 표시. offline 장치에 <code>adb logcat</code>을 실행하면 오류 없이 멈춰 화면이 비어 있던 문제 해결</td><td><span class="badge b-use">적용됨</span></td></tr>
@@ -315,25 +320,26 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <div class="tbl"><table>
 <thead><tr><th>파일</th><th>줄 수</th><th>역할</th><th>구분</th></tr></thead>
 <tbody>
-<tr><td class="nw"><code>LogFilterMain.java</code></td><td class="num">1431<br><small style="color:var(--muted)">원본 2084</small></td><td>메인 프레임. 화면 구성과 이벤트 연결만 담당하고, 동작은 아래 세 클래스에 위임</td><td><span class="badge b-core">화면</span></td></tr>
-<tr><td class="nw"><code>FilterEngine.java</code></td><td class="num">613</td><td>현재 줄 목록(<code>LogStore</code>)과 필터 결과(<code>FilteredList</code>), 북마크·에러 위치, 필터 조건과 토큰, 분석·재필터 스레드(증분·병렬)</td><td><span class="badge b-core">신규 · 데이터</span></td></tr>
-<tr><td class="nw"><code>LogSource.java</code></td><td class="num">359</td><td>로그 입력: 파일 색인(LoadFile 스레드), adb 실행과 기록 파일 이어 색인, 장치 목록</td><td><span class="badge b-core">신규 · 입력</span></td></tr>
-<tr><td class="nw"><code>LogStore.java</code></td><td class="num">138</td><td>줄 목록 공통 부모(추상). 지연 해석 + LRU 캐시(2만 줄), 북마크(BitSet)·메모, 최대 태그 길이, 다 읽었는지(<code>m_bComplete</code>)</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
-<tr><td class="nw"><code>FileLogStore.java</code></td><td class="num">224</td><td>파일 기반 줄 목록. 줄마다 시작 위치·길이(12바이트)만 기억하고 4MB씩 색인, <code>FileChannel</code> 위치 읽기</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
-<tr><td class="nw"><code>MemoryLogStore.java</code></td><td class="num">44</td><td>메모리 줄 목록(시작 안내 문구, adb 시작 직후 빈 목록)</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
-<tr><td class="nw"><code>FilteredList.java</code></td><td class="num">32</td><td>필터 결과. 통과한 줄 번호(<code>IntList</code>)만 갖고 내용은 <code>LogStore</code>에서 읽음</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
-<tr><td class="nw"><code>LogList.java</code></td><td class="num">14</td><td>화면이 보는 목록 인터페이스(<code>size</code>, <code>get</code>, <code>lineIndexOf</code>)</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
+<tr><td class="nw"><code>LogFilterMain.java</code></td><td class="num">1705<br><small style="color:var(--muted)">원본 2084</small></td><td>메인 프레임. 화면 구성과 이벤트 연결, Highlight 입력창 6개, 메시지 검색 입력·키(Ctrl+F, F3). 동작은 아래 클래스에 위임</td><td><span class="badge b-core">화면</span></td></tr>
+<tr><td class="nw"><code>FilterEngine.java</code></td><td class="num">615</td><td>현재 줄 목록(<code>LogStore</code>)과 필터 결과(<code>FilteredList</code>), 북마크·에러 위치, 필터 조건과 토큰, 분석·재필터 스레드(증분·병렬)</td><td><span class="badge b-core">신규 · 데이터</span></td></tr>
+<tr><td class="nw"><code>LogSource.java</code></td><td class="num">438</td><td>로그 입력: 파일 색인(LoadFile 스레드), adb 실행과 출력 바로 읽기(<code>LiveFeed</code>: 기록 파일에 쓰면서 줄 위치를 목록에 바로 추가), 장치 목록</td><td><span class="badge b-core">신규 · 입력</span></td></tr>
+<tr><td class="nw"><code>LogStore.java</code></td><td class="num">148</td><td>줄 목록 공통 부모(추상). 지연 해석 + LRU 캐시(2만 줄), 북마크(BitSet)·메모, 최대 태그 길이, 다 읽었는지(<code>m_bComplete</code>), 원본 줄(<code>rawLine</code>)</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
+<tr><td class="nw"><code>FileLogStore.java</code></td><td class="num">296</td><td>파일 기반 줄 목록. 줄마다 시작 위치·길이(12바이트)만 기억하고 4MB씩 색인, <code>FileChannel</code> 위치 읽기, 화면용 주변 32KB 읽기, 실시간 수집용 <code>appendLine()</code></td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
+<tr><td class="nw"><code>MemoryLogStore.java</code></td><td class="num">44</td><td>메모리 줄 목록(시작 안내 문구)</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
+<tr><td class="nw"><code>FilteredList.java</code></td><td class="num">37</td><td>필터 결과. 통과한 줄 번호(<code>IntList</code>)만 갖고 내용은 <code>LogStore</code>에서 읽음</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
+<tr><td class="nw"><code>LogList.java</code></td><td class="num">17</td><td>화면이 보는 목록 인터페이스(<code>size</code>, <code>get</code>, <code>lineIndexOf</code>, <code>rawLine</code>)</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
+<tr><td class="nw"><code>LogSearch.java</code></td><td class="num">173</td><td>메시지 검색: 보이는 목록에서 다음/이전 일치 행 찾기(끝에서 반대쪽으로 이어서), 중단 가능, 블록 읽기</td><td><span class="badge b-core">신규 · 검색</span></td></tr>
 <tr><td class="nw"><code>IntList.java</code> · <code>LongList.java</code></td><td class="num">40 · 36</td><td>뒤에만 추가하는 기본형 배열. 쓰는 스레드 하나, 읽는 스레드 여럿</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
-<tr><td class="nw"><code>AppConfig.java</code></td><td class="num">250</td><td>설정 파일(*.ini) 읽기/쓰기와 키별 기본값</td><td><span class="badge b-core">신규 · 설정</span></td></tr>
-<tr><td class="nw"><code>LogTable.java</code></td><td class="num">661</td><td>로그 테이블(JTable). 셀 렌더링(하이라이트), 키/마우스 처리, 복사, 북마크 이동</td><td><span class="badge b-core">화면</span></td></tr>
-<tr><td class="nw"><code>IndicatorPanel.java</code></td><td class="num">221</td><td>좌측 북마크/에러 위치 표시 바, "북마크만/에러만 보기" 체크박스</td><td><span class="badge b-core">화면</span></td></tr>
+<tr><td class="nw"><code>AppConfig.java</code></td><td class="num">275</td><td>설정 파일(*.ini) 읽기/쓰기와 키별 기본값, 하이라이트 6개·색상 6개</td><td><span class="badge b-core">신규 · 설정</span></td></tr>
+<tr><td class="nw"><code>LogTable.java</code></td><td class="num">779</td><td>로그 테이블(JTable). 셀 렌더링(하이라이트 6개·색상별), 키/마우스 처리, 오른쪽 클릭 로그 전체 팝업, 복사, 북마크 이동(F2/Shift+F2), F3 검색</td><td><span class="badge b-core">화면</span></td></tr>
+<tr><td class="nw"><code>IndicatorPanel.java</code></td><td class="num">232</td><td>좌측 북마크/에러 위치 표시 바(픽셀 캐시), "북마크만/에러만 보기" 체크박스</td><td><span class="badge b-core">화면</span></td></tr>
 <tr><td class="nw"><code>LogFilterTableModel.java</code></td><td class="num">76</td><td>테이블 모델(<code>LogList</code> 참조), 컬럼 정의/폭, EDT에서 알린 행 수</td><td><span class="badge b-core">화면</span></td></tr>
 <tr><td class="nw"><code>LogCatParser.java</code></td><td class="num">230</td><td>로그 한 줄을 <code>LogInfo</code>로 파싱(threadtime · time · year · uid · brief · process · tag · kernel/dmesg)</td><td><span class="badge b-use">파싱</span></td></tr>
 <tr><td class="nw"><code>ILogParser.java</code></td><td class="num">15</td><td>파서 인터페이스</td><td><span class="badge b-use">파싱</span></td></tr>
 <tr><td class="nw"><code>LogInfo.java</code></td><td class="num">95</td><td>로그 한 줄 데이터(VO), 레벨 비트 상수, 줄 번호·레벨 int 필드</td><td><span class="badge b-use">데이터</span></td></tr>
 <tr><td class="nw"><code>FilterToken.java</code></td><td class="num">51</td><td>필터 토큰 분리, 대소문자 무시 부분 일치 판정</td><td><span class="badge b-use">유틸</span></td></tr>
 <tr><td class="nw"><code>RecentFileMenu.java</code></td><td class="num">154</td><td>최근 파일 메뉴(<code>RecentFile.ini</code>). 외부 GPL v2 코드</td><td><span class="badge b-use">화면</span></td></tr>
-<tr><td class="nw"><code>LogColor.java</code></td><td class="num">21</td><td>레벨별/하이라이트 색상 전역 static 값</td><td><span class="badge b-use">유틸</span></td></tr>
+<tr><td class="nw"><code>LogColor.java</code></td><td class="num">24</td><td>레벨별 색상과 하이라이트 색상 6개(기본값 포함) 전역 static 값</td><td><span class="badge b-use">유틸</span></td></tr>
 <tr><td class="nw"><code>INotiEvent.java</code></td><td class="num">26</td><td>테이블/인디케이터 → 메인 프레임 이벤트 콜백 인터페이스</td><td><span class="badge b-use">화면</span></td></tr>
 <tr><td class="nw"><code>AppVersion.java</code></td><td class="num">48</td><td>버전 규칙 <code>큰버전.중간버전.날짜(yyyyMMddHHmmss)</code>. 날짜는 <code>build.bat</code>이 넣은 <code>version.properties</code>에서 읽음</td><td><span class="badge b-use">유틸</span></td></tr>
 <tr><td class="nw"><code>T.java</code></td><td class="num">67</td><td>디버그 로그 출력 유틸(<code>System.out</code>)</td><td><span class="badge b-use">유틸</span></td></tr>
@@ -347,7 +353,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
     <div class="h">LogFilterMain <small>JFrame · 화면 구성과 이벤트 연결 · implements INotiEvent, FilterEngine.Listener, LogSource.Listener</small></div>
     <div class="row">
       <div class="cell"><b>FilterEngine</b><span>현재 LogStore · FilteredList · 북마크/에러 맵 · 필터 조건과 토큰 · 분석·재필터 스레드 + FilterWorker 풀 · LOCK</span></div>
-      <div class="cell"><b>LogSource</b><span>파일 색인 · adb 프로세스/기록 파일 감시 스레드 · 장치 목록 · FILE_LOCK</span></div>
+      <div class="cell"><b>LogSource</b><span>파일 색인 · adb 프로세스 + LiveFeed(기록 파일에 쓰며 줄 위치를 바로 추가) · 장치 목록</span></div>
       <div class="cell"><b>AppConfig</b><span>LogFilter.ini · LogFilterColor.ini · LogFilterCmd.ini</span></div>
       <div class="cell"><b>ILogParser → LogCatParser</b><span>한 줄 → LogInfo (+레벨 비트·색상)</span></div>
     </div>
@@ -376,6 +382,8 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
   <li><b>대용량 파일 구조(2026-10-06):</b> 줄 내용을 메모리에 쌓지 않습니다. <code>FileLogStore</code>는 줄마다 파일 안의 시작 위치(<code>LongList</code>)와 길이(<code>IntList</code>)만 기억하고(줄당 12바이트), 화면에 보이는 줄만 <code>FileChannel</code>로 읽어 해석합니다. 해석 결과는 <code>LogStore</code>의 LRU 캐시(2만 줄)에 둡니다. 분석·필터는 4MB 블록 단위로 순차로 읽습니다(<code>forEach</code>).</li>
   <li><b>부분 로딩:</b> LoadFile 스레드가 4MB씩 색인하면서 200ms마다 <code>notifyIndexed()</code>로 알립니다. 색인된 줄은 바로 화면에 보이고, 에러 위치 계산과 필터 판정은 엔진 스레드가 뒤이어 증분으로 처리합니다(<code>m_nAnalyzed</code>, <code>m_nFilteredUpTo</code>). 파일을 다 읽고(<code>m_bComplete</code>) 분석도 끝나면 상태 표시줄에 "Ready"를 띄웁니다.</li>
   <li><b>병렬 처리:</b> 처리할 줄이 13만 개(<code>CHUNK_LINES</code>×2) 이상이면 65,536줄 단위로 나눠 <code>FilterWorker</code> 풀(코어 수 − 1)에서 처리하고 결과를 순서대로 합칩니다. 조건이 바뀌거나 목록이 교체되면 중단합니다. 작업은 인터럽트하지 않습니다(<code>FileChannel</code>은 읽는 중 인터럽트되면 닫힘).</li>
+  <li><b>adb 바로 읽기(1.11):</b> AdbProcess 스레드의 <code>LiveFeed</code>가 adb 출력을 64KB 버퍼로 기록 파일에 쓰고, 쓴 위치·길이를 <code>FileLogStore.appendLine()</code>으로 바로 추가합니다(해석한 줄은 캐시에). 출력이 잠시 멈추거나 50ms마다 flush한 뒤 목록에 넘기므로 화면은 파일에 기록된 줄만 읽습니다. Pause 중에는 쌓아 두었다가 Resume·Stop 때 넘깁니다.</li>
+  <li><b>메시지 검색(1.14):</b> <code>LogSearch</code>가 지금 보이는 목록(전체 또는 필터 결과)에서 찾습니다. 전체 목록은 <code>forEach</code> 블록 읽기, 필터 결과는 원본에서 촘촘하면 블록 읽기·듬성하면 행마다 읽기. 새 검색을 시작하면 이전 검색은 중단됩니다.</li>
   <li><b>남은 결합:</b> <code>LogTable</code>과 <code>IndicatorPanel</code>은 여전히 <code>LogFilterMain</code>의 필드(<code>m_scrollVBar</code>, <code>m_tbLogTable</code>, <code>m_engine</code>)를 직접 참조합니다. <code>LogColor</code>와 <code>LogFilterTableModel.ColWidth</code>는 public static입니다.</li>
 </ul>
 
@@ -393,7 +401,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td class="nw"><code>m_bFilterRequested / m_bAnalyzeRequested</code></td><td class="nw"><code>boolean</code> (LOCK 안)</td><td>전체 재필터 / 증분 분석 요청 플래그. 대기 직전에 온 요청도 잃지 않음</td></tr>
 <tr><td class="nw"><code>m_str* / m_ar*Token</code></td><td class="nw"><code>volatile String / String[]</code></td><td>필터 조건 6종(Find, Remove, Show/Remove Tag, Pid, Tid)과 소문자 토큰</td></tr>
 <tr><td class="nw"><code>LOCK</code></td><td class="nw"><code>Object</code></td><td>목록/맵 변경 동기화 + 재필터 스레드 wait/notify</td></tr>
-<tr><td class="nw"><code>LogSource.FILE_LOCK</code></td><td class="nw"><code>Object</code></td><td>adb 기록 파일 쓰기/읽기 동기화</td></tr>
+
 </tbody></table></div>
 <p><code>LogFilterTableModel</code>은 데이터를 복사하지 않습니다. <code>FilterEngine.getView()</code>가 돌려주는 목록(<code>LogList</code>)을 <b>참조로 바꿔 끼우고</b>, 행 수는 EDT에서 <code>syncRowCount()</code>로 알린 만큼만 보입니다. 셀을 그릴 때 <code>LogList.get(i)</code>가 캐시에 없는 줄만 파일에서 읽어 해석합니다.</p>
 <!-- 4 -->
@@ -427,11 +435,11 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 </ul>
 
 <h3 id="seq-logcat">4.3 logcat 실시간 수집</h3>
-<figure class="seq" data-seq="logcat"><div class="scroll"></div><figcaption>Run → adb 출력이 파일에 기록되고, 감시 스레드가 그 파일을 다시 읽어 화면에 반영</figcaption></figure>
+<figure class="seq" data-seq="logcat"><div class="scroll"></div><figcaption>Run → adb 출력을 읽는 스레드가 기록 파일에 쓰면서 쓴 위치를 목록에 바로 추가 (1.11)</figcaption></figure>
 <ul class="flow-points">
-  <li>프로세스 스레드와 파일 감시 스레드는 <b>파일을 사이에 두고</b> 동시에 동작합니다(<code>par</code> 구간).</li>
+  <li>adb 출력은 AdbProcess 스레드 하나가 읽고, 기록 파일 쓰기와 목록 추가(<code>LiveFeed</code>)까지 합니다. 파일을 다시 읽지 않습니다(이전: 감시 스레드가 50ms마다 다시 읽음).</li>
   <li><b>Pause</b>는 화면 반영만 멈추고 파일 기록은 계속합니다. <b>Clear</b>는 같은 기록 파일의 현재 끝부터 보는 새 목록(<code>FileLogStore.cleared()</code>)으로 바꿉니다.</li>
-  <li>기록 파일도 <code>FileLogStore</code>로 색인합니다. 끝의 '\n' 없는 미완성 줄은 다음 색인 때 읽고, 새 줄은 증분으로 분석·필터 판정합니다(<code>notifyAppended()</code>).</li>
+  <li>줄은 파일에 flush된 뒤에만 목록에 보입니다. 출력이 몰릴 때는 50ms마다 묶어서 넘기고, 새 줄은 증분으로 분석·필터 판정합니다(<code>notifyAppended()</code>).</li>
   <li>장치를 선택하면 명령에 <code>-s &lt;serial&gt;</code>이 붙습니다. adb는 PATH에서 찾습니다.</li>
 </ul>
 
@@ -447,29 +455,38 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <h3 id="seq-render">4.5 셀 렌더링</h3>
 <figure class="seq" data-seq="render"><div class="scroll"></div><figcaption>화면에 보이는 셀마다 LogCellRenderer가 실행됨</figcaption></figure>
 <ul class="flow-points">
-  <li>렌더러는 일치하는 토큰이 없으면 HTML을 만들지 않고 바로 반환합니다(P1). Find/Tag 토큰은 <code>FilterEngine</code>, 하이라이트 토큰은 <code>LogTable</code>에서 읽습니다.</li>
+  <li>렌더러는 일치하는 토큰이 없으면 HTML을 만들지 않고 바로 반환합니다(P1). Find/Tag 토큰은 <code>FilterEngine</code>, 하이라이트 6개(토큰 + 고른 색상)는 <code>LogTable</code>에서 읽습니다. 입력창 순서대로 칠하고 겹치면 뒤 입력창 색상입니다.</li>
   <li>원래는 HTML 이스케이프가 없어서 메시지 안의 <code>&lt;init&gt;</code> 같은 텍스트가 사라졌습니다(B3). 2026-10-04에 일치 구간을 먼저 계산하고 HTML을 한 번에 만드는 방식으로 고쳤습니다.</li>
 </ul>
 
 <h3 id="seq-bookmark">4.6 북마크 · 인디케이터</h3>
-<figure class="seq" data-seq="bookmark"><div class="scroll"></div><figcaption>북마크 토글 · F2/F3 이동 · 인디케이터 클릭 · 북마크만/에러만 보기</figcaption></figure>
+<figure class="seq" data-seq="bookmark"><div class="scroll"></div><figcaption>북마크 토글 · F2(다음)/Shift+F2(이전) 이동 · 인디케이터 클릭 · 북마크만/에러만 보기</figcaption></figure>
 
 <h3 id="seq-copy">4.7 복사 · 태그 단축키</h3>
-<figure class="seq" data-seq="copy"><div class="scroll"></div><figcaption>Ctrl+C · 우클릭 복사 · Alt+클릭으로 태그 필터 추가/제거</figcaption></figure>
+<figure class="seq" data-seq="copy"><div class="scroll"></div><figcaption>Ctrl+C · 오른쪽 클릭 로그 전체 보기 · Alt+클릭으로 태그 필터 추가/제거 · 메시지 검색</figcaption></figure>
 <div class="tbl"><table>
 <thead><tr><th>입력</th><th>처리 위치</th><th>동작</th></tr></thead>
 <tbody>
 <tr><td class="nw"><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td class="nw"><code>LogTable.actionPerformed</code></td><td>선택 행의 보이는 컬럼(Line 제외)을 복사. Tag는 최대 길이, Pid/Tid는 8자 패딩</td></tr>
-<tr><td class="nw">우클릭</td><td class="nw"><code>LogTable</code> mouseClicked</td><td>클릭한 셀 값 하나만 복사</td></tr>
+<tr><td class="nw">오른쪽 클릭</td><td class="nw"><code>LogTable.showFullLog</code></td><td>그 줄을 선택하고 원본 로그 전체를 줄바꿈한 팝업으로 보여줌(원래 줄 번호, "로그 전체 복사"·"셀 값 복사" 메뉴) <span class="badge b-yel">1.13</span></td></tr>
 <tr><td class="nw"><kbd>Alt</kbd>+좌클릭 (Tag)</td><td class="nw">〃</td><td>Show tag 필터에 추가/제거</td></tr>
 <tr><td class="nw"><kbd>Alt</kbd>+우클릭 (Tag)</td><td class="nw">〃</td><td>Remove tag 필터에 추가</td></tr>
-<tr><td class="nw"><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td class="nw"><code>processKeyBinding</code></td><td>Find 입력창으로 포커스 이동</td></tr>
+<tr><td class="nw"><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td class="nw"><code>installSearchKeys</code> · <code>processKeyBinding</code></td><td>메시지 검색창으로 포커스 이동(입력된 검색어 전체 선택) <span class="badge b-yel">1.14</span></td></tr>
+<tr><td class="nw"><kbd>F3</kbd> / <kbd>Shift</kbd>+<kbd>F3</kbd> · <kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td class="nw"><code>LogFilterMain.search</code></td><td>검색어가 Message에 들어 있는 다음/이전 행 선택(끝에서 반대쪽으로 이어서). Enter는 검색창에서 <span class="badge b-yel">1.14</span></td></tr>
+<tr><td class="nw"><kbd>F2</kbd> / <kbd>Shift</kbd>+<kbd>F2</kbd></td><td class="nw"><code>processKeyBinding</code></td><td>다음 / 이전 북마크 (이전에는 F2 이전, F3 다음) <span class="badge b-yel">1.14</span></td></tr>
 <tr><td class="nw"><kbd>Home</kbd> / <kbd>End</kbd></td><td class="nw">〃</td><td>첫 행 / 마지막 행</td></tr>
 <tr><td class="nw">헤더 더블클릭</td><td class="nw"><code>ColumnHeaderListener</code></td><td>보이는 행 기준으로 컬럼 폭 자동 맞춤</td></tr>
 <tr><td class="nw">Goto 입력</td><td class="nw">CaretListener</td><td>해당 줄로 이동(화면 중앙)</td></tr>
 <tr><td class="nw"><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td class="nw"><code>installUndoRedo</code></td><td>필터/하이라이트 입력창 실행 취소/다시 실행 <span class="badge b-yel">로컬 추가</span></td></tr>
 <tr><td class="nw"><kbd>↑</kbd> / <kbd>↓</kbd> · <kbd>Enter</kbd></td><td class="nw"><code>installInputHistory</code></td><td>필터/하이라이트 입력창의 최근 입력 10개 불러오기. Enter나 포커스 이동 때 기록되고, ↓로 맨 앞을 지나면 탐색 전 값으로 돌아갑니다 <span class="badge b-yel">2026-10-06</span></td></tr>
 </tbody></table></div>
+
+<h3 id="seq-search">4.7.1 메시지 검색 (1.14)</h3>
+<figure class="seq" data-seq="search"><div class="scroll"></div><figcaption>Ctrl+F → 검색창 → Enter/F3(다음) · Shift+F3(이전) → LogSearch 스레드 → 찾은 행 선택</figcaption></figure>
+<ul class="flow-points">
+  <li>필터와 별개입니다. 지금 보이는 목록(필터 중이면 필터 결과)에서 선택 행 다음부터 찾고, 끝에 닿으면 반대쪽 끝부터 이어서 찾습니다.</li>
+  <li>1GB(1,000만 줄)를 끝까지 찾아도 약 4.4초, 찾는 동안 화면 응답은 2ms 이내입니다.</li>
+</ul>
 
 <h3 id="seq-exit">4.8 종료</h3>
 <figure class="seq" data-seq="exit"><div class="scroll"></div><figcaption>창 닫기 → 정리 → 설정 저장 → System.exit</figcaption></figure>
@@ -483,8 +500,8 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td class="nw"><code>FilterEngine</code></td><td class="nw"><code>FilterEngine</code></td><td class="nw">앱 전체</td><td>요청 플래그 + wait/notify로 증분 분석·전체 재필터. 목록(<code>FilteredList</code>, 맵)을 쓰는 유일한 스레드</td></tr>
 <tr><td class="nw"><code>FilterWorker-n</code></td><td class="nw"><code>FilterEngine</code></td><td class="nw">앱 전체(데몬)</td><td>코어 수 − 1개. 65,536줄 단위로 해석·판정해 결과만 돌려줌</td></tr>
 <tr><td class="nw"><code>LoadFile</code></td><td class="nw"><code>LogSource</code></td><td class="nw">파일 1개</td><td>4MB씩 줄 위치 색인 → 200ms마다 <code>notifyIndexed()</code> (새 파일을 열면 중단)</td></tr>
-<tr><td class="nw"><code>AdbProcess</code></td><td class="nw"><code>LogSource</code></td><td class="nw">Stop까지</td><td>adb stdout → 기록 파일</td></tr>
-<tr><td class="nw"><code>WatchFile</code></td><td class="nw"><code>LogSource</code></td><td class="nw">Stop까지</td><td>50ms마다 기록 파일 이어 색인 → <code>FilterEngine.notifyAppended()</code></td></tr>
+<tr><td class="nw"><code>AdbProcess</code></td><td class="nw"><code>LogSource</code></td><td class="nw">Stop까지</td><td>adb stdout 읽기 → 기록 파일(64KB 버퍼) → flush 후 <code>FileLogStore.appendLine()</code> → <code>notifyAppended()</code> (<code>LiveFeed</code>)</td></tr>
+<tr><td class="nw"><code>LogSearch</code></td><td class="nw"><code>LogFilterMain</code></td><td class="nw">검색 1회(데몬)</td><td><code>LogSearch.find()</code>로 다음/이전 일치 행 찾기 → EDT에서 선택. 새 검색을 시작하면 이전 것은 중단</td></tr>
 <tr><td class="nw"><code>AdbDevices</code></td><td class="nw"><code>LogSource</code></td><td class="nw">1회</td><td>adb devices 실행 → <code>onDevices()</code></td></tr>
 </tbody></table></div>
 <div class="callout"><p><b>규칙:</b> <code>FilterEngine</code>과 <code>LogSource</code>는 Swing을 직접 쓰지 않고 Listener로 알립니다. <code>LogFilterMain</code>이 <code>runOnEdt()</code>로 EDT에서 화면에 반영합니다. 공유 목록은 <code>clear()</code> 대신 새 객체로 교체하고(<code>setStore()</code>), <code>IntList</code>/<code>LongList</code>는 쓰는 스레드 하나·읽는 스레드 여럿으로 크기를 마지막에 공개하며, 테이블 모델은 EDT에서 알린 행 수(<code>syncRowCount()</code>)까지만 읽으며, 북마크/에러 맵은 <code>ConcurrentHashMap</code>입니다.</p></div>
@@ -537,7 +554,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <h4>LogSource (입력)</h4>
 <ul>
   <li><b>파일:</b> <code>parseFile()</code>이 <code>FileLogStore</code>를 만들어 엔진에 걸고, LoadFile 스레드가 <code>indexNext()</code>로 4MB씩 줄 위치를 색인하며 200ms마다 <code>notifyIndexed()</code>로 알립니다. 새 파일을 열면 현재 목록이 바뀌어 이전 스레드는 멈춥니다.</li>
-  <li><b>adb:</b> <code>startProcess()</code>가 AdbProcess 스레드에서 adb 출력(stderr 포함)을 기록 파일에 쓰고, WatchFile 스레드가 50ms마다 그 파일을 이어 색인해 <code>notifyAppended()</code>로 알립니다. Stop 직후 Run 해도 이전 스레드가 새 프로세스를 건드리지 않습니다.</li>
+  <li><b>adb(1.11):</b> <code>startProcess()</code>가 기록 파일과 그 파일의 <code>FileLogStore</code>를 만들어 엔진에 걸고, AdbProcess 스레드가 adb 출력(stderr 포함)을 한 줄씩 읽어 <code>LiveFeed</code>로 파일에 씁니다. 출력이 잠시 멈추거나 50ms마다 flush한 뒤 쓴 위치를 <code>FileLogStore.appendLine()</code>으로 목록에 바로 추가하고 <code>notifyAppended()</code>로 알립니다. 파일을 다시 읽지 않습니다. Pause 중에는 쌓아 두었다가 Resume·Stop 때 넘깁니다. Stop 직후 Run 해도 이전 스레드가 새 프로세스를 건드리지 않습니다.</li>
   <li><b>장치 목록:</b> <code>listDevices()</code>가 AdbDevices 스레드에서 <code>adb devices</code>를 실행하고 <code>onDevices()</code>로 알립니다.</li>
 </ul>
 
@@ -547,18 +564,29 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
   <li><code>forEach(from, to, visitor)</code>는 분석·필터용입니다. 큰 블록(4MB)으로 순차로 읽어 캐시를 거치지 않고 해석합니다.</li>
   <li><code>FileLogStore.indexNext(bIncludeTail)</code>는 4MB를 읽어 '\n' 위치를 기록합니다. 빈 줄은 건너뛰고 CRLF의 '\r'은 뺍니다. 쓰는 중인 파일(adb 기록)은 '\n'으로 끝난 줄까지만 색인합니다. 4MB보다 긴 줄도 처리하고, 64MB를 넘는 줄은 나눕니다.</li>
   <li>읽기는 <code>FileChannel</code> 위치 읽기라서 여러 스레드가 동시에 읽을 수 있습니다. 채널이 닫혔으면 다시 열어 한 번 더 읽고, <code>close()</code>된(교체된) 목록은 조용히 멈춥니다.</li>
+  <li><code>FileLogStore.appendLine(offset, length, line)</code>(1.11)은 실시간 수집에서 쓴 위치를 바로 추가하고 해석한 줄을 캐시에 넣습니다. Clear 이전에 기록된 줄은 건너뜁니다. <code>rawLine(i)</code>(1.13)은 원본 줄 문자열을 돌려줍니다.</li>
   <li><code>FilteredList</code>는 통과한 줄 번호만 <code>IntList</code>에 담고, 내용은 원래 <code>LogStore</code>에서 읽습니다. 둘 다 <code>LogList</code>를 구현해 테이블 모델과 인디케이터가 같은 방식으로 씁니다.</li>
+</ul>
+
+<h4>LogSearch (메시지 검색, 1.14)</h4>
+<ul>
+  <li><code>find(list, nSize, tokens, nStart, bForward, progress)</code>: 선택 행 다음(이전) 행부터 찾고, 끝에 닿으면 반대쪽 끝부터 <code>nStart</code>까지 이어서 찾습니다. 결과는 행 번호와 반대쪽으로 돌아갔는지(<code>Result</code>).</li>
+  <li>검색어는 필터와 같이 <code>|</code>로 나눈 OR 조건, 대소문자 무시, Message 열 기준입니다(<code>matches()</code>).</li>
+  <li>65,536행 단위로 진행률을 알리고 <code>cancel()</code>로 중단합니다. 전체 목록은 <code>forEach</code> 블록 읽기, 필터 결과는 원본 범위가 행 수의 8배 이하로 촘촘하면 블록 읽기, 아니면 행마다 읽습니다.</li>
+  <li><code>LogFilterMain.search()</code>가 LogSearch 스레드에서 실행하고, EDT에서 행을 선택해 가운데로 보여준 뒤 상태 표시줄에 원래 줄 번호·행 위치를 표시합니다. 그 사이 새 검색을 시작했거나 목록이 바뀌었으면 결과를 버립니다.</li>
 </ul>
 
 <h4>AppConfig (설정)</h4>
 <ul>
   <li>ini 파일 이름과 키 상수, 창 크기 기본값을 모아 둡니다. <code>LogFilter.ini</code> 값은 필드로, 색상은 <code>LogColor</code>에, 명령 목록은 <code>List</code>로 읽습니다.</li>
-  <li>키가 없거나 값이 잘못되면 그 키만 기본값을 씁니다(<code>intOf</code>/<code>hexOf</code>). 스트림은 try-with-resources로 닫습니다.</li>
+  <li>키가 없거나 값이 잘못되면 그 키만 기본값을 씁니다(<code>intOf</code>/<code>hexOf</code>/<code>highlightOf</code>). 스트림은 try-with-resources로 닫습니다.</li>
+  <li>하이라이트(1.12): 입력창 6개의 문자열·색상 번호·사용 여부(<code>HIGHLIGHT_n</code>, <code>HIGHLIGHT_COLOR_n</code>, <code>HIGHLIGHT_ON_n</code>)와 색상 6개(<code>INI_HIGILIGHT_0~5</code>, 없으면 기본 색상). 이전 버전의 <code>HIGHLIGHT</code> 하나는 첫 번째 입력창으로 옮깁니다.</li>
 </ul>
 
 <h4>LogTable · LogFilterTableModel · IndicatorPanel</h4>
 <ul>
-  <li><b>LogTable:</b> 하이라이트(표시 설정)만 직접 가지고, Find/Tag 토큰은 <code>FilterEngine</code>에서 읽습니다. Alt+클릭 태그 추가/제거도 <code>FilterEngine</code>에 반영합니다. F2/F3은 표시 중인 북마크 위치를 정렬 집합(<code>TreeSet</code>)에서 찾습니다(S6).</li>
+  <li><b>LogTable:</b> 하이라이트 6개(<code>Highlight[]</code>: 토큰 + 색상 번호, 바꿀 때 새 배열로 교체)를 가지고, Find/Tag 토큰은 <code>FilterEngine</code>에서 읽습니다. Alt+클릭 태그 추가/제거도 <code>FilterEngine</code>에 반영합니다. F2/Shift+F2는 표시 중인 북마크 위치를 정렬 집합(<code>TreeSet</code>)에서 찾고(S6), F3/Shift+F3은 <code>LogFilterMain.search()</code>를 부릅니다.</li>
+  <li><b>오른쪽 클릭(1.13):</b> <code>showFullLog()</code>가 그 줄을 선택하고 <code>LogList.rawLine()</code>으로 원본 줄을 읽어, 줄바꿈한 <code>JTextArea</code>(폭 최대 900px, 높이 400px 넘으면 스크롤)와 "로그 전체 복사"·"셀 값 복사" 메뉴가 있는 팝업을 띄웁니다.</li>
   <li><b>LogCellRenderer:</b> 일치하는 토큰이 없으면 원문을 그대로 쓰고, 있을 때만 HTML(이스케이프 포함)을 만듭니다. Font/Color는 값이 바뀔 때만 새로 만듭니다. 글꼴·색을 먼저 정하고 문자열을 마지막에 넣어, HTML이 셀마다 한 번만 해석되게 합니다(글꼴·글자색이 바뀌면 Swing이 HTML을 다시 해석함).</li>
   <li><b>LogFilterTableModel:</b> <code>FilterEngine</code>의 목록을 참조로 들고, EDT에서 <code>syncRowCount()</code>로 알린 행 수까지만 보여줍니다.</li>
   <li><b>IndicatorPanel:</b> 북마크(파랑)·에러(빨강) 위치와 화면 범위를 그리고, 클릭/드래그로 이동합니다. 막대는 픽셀 줄마다 표시 여부를 미리 계산한 배열(<code>Marks</code>)로 그리고, 목록·맵 크기·높이가 바뀔 때만 다시 계산합니다. 스크롤할 때는 이어진 픽셀을 사각형 하나로 그리므로 에러 수와 상관없이 빠릅니다.</li>
@@ -632,7 +660,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td>P3 <span class="badge b-use">✔ 완료</span></td><td class="stars">★★</td><td class="nw">레벨 비교</td><td><code>equals("E") || equals("ERROR")</code>를 곳곳에서 반복</td><td>파싱할 때 <code>int m_nLogLV</code> 저장(<code>getLogLV()</code>가 이미 있음), 비트 연산으로 판정</td></tr>
 <tr><td>P4 <span class="badge b-use">✔ 완료</span></td><td class="stars">★★</td><td class="nw">줄 번호</td><td><code>Integer.parseInt(m_strLine)</code> 반복 호출</td><td><code>int m_nLine</code> 필드를 추가하고 표시할 때만 문자열로 변환</td></tr>
 <tr><td>P5 <span class="badge b-use">✔ 완료</span></td><td class="stars">★★</td><td class="nw">입력 즉시 재필터</td><td>키를 누를 때마다 전체 로그 재필터</td><td><code>javax.swing.Timer</code>로 200~300ms 디바운스</td></tr>
-<tr><td>P6</td><td class="stars">★★</td><td class="nw">실시간 수집</td><td>adb → 파일 기록(줄마다 flush) → 50ms 폴링으로 다시 읽기(디스크 I/O 2배)</td><td>stdout을 바로 파싱하고 파일 기록은 버퍼링(주기적 flush)</td></tr>
+<tr><td>P6 <span class="badge b-use">✔ 완료</span></td><td class="stars">★★</td><td class="nw">실시간 수집</td><td>adb → 파일 기록(줄마다 flush) → 50ms 폴링으로 다시 읽기(디스크 I/O 2배)</td><td>stdout을 바로 파싱하고 파일 기록은 버퍼링(주기적 flush)</td></tr>
 <tr><td>P7 <span class="badge b-use">✔ 완료</span></td><td class="stars">★★</td><td class="nw">테이블 갱신</td><td>행이 추가될 때마다 <code>fireTableRowsUpdated(0, 전체)</code>, <code>validate</code>, <code>repaint</code></td><td><code>fireTableRowsInserted(old, new-1)</code>로 증분 통지</td></tr>
 <tr><td>P8 <span class="badge b-use">✔ 완료</span></td><td class="stars">★</td><td class="nw">Color 객체</td><td>줄마다 <code>getColor()</code>가 <code>new Color()</code> 생성</td><td>레벨별 Color 인스턴스 캐시</td></tr>
 <tr><td>P9 <span class="badge b-use">✔ 완료</span></td><td class="stars">★</td><td class="nw">인디케이터</td><td>스크롤할 때마다 북마크/에러 맵 전체를 순회해 다시 그림</td><td>픽셀 단위 결과나 BufferedImage를 캐시하고 데이터가 바뀔 때만 다시 그림 → 2026-10-07 픽셀 배열 캐시로 적용</td></tr>
@@ -715,6 +743,17 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
         <tr><td>휠 (Ready 후)</td><td class="num">평균 18 ms · 최대 39 ms</td><td class="num">평균 3.1 ms · 최대 9 ms</td></tr>
         <tr><td>휠 (Find 필터, 하이라이트)</td><td class="num">p95 51 ms · 최대 108 ms</td><td class="num">p95 28 ms · 최대 41 ms</td></tr>
       </tbody></table></div></li>
+  <li><span class="badge b-use">✔ 완료 2026-10-07</span> <b>2단계 신규 기능 (버전마다 커밋):</b>
+    <div class="tbl"><table>
+      <thead><tr><th>버전</th><th>기능</th><th>내용</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">1.11</td><td class="nw">adb 출력 바로 읽기 (P6)</td><td>기록 파일에 쓰면서 줄 위치를 목록에 바로 추가, 감시 스레드 제거. FakeAdb 측정: 30만 줄 표시 4.18초 → 약 1초, 출력 → 화면 지연 평균 47ms → 10ms</td></tr>
+        <tr><td class="nw">1.12</td><td class="nw">하이라이트 6개</td><td>입력창 6개(Word/Tag filter 오른쪽), 입력창마다 색상 6개 중 선택, 설정 저장·이전 설정 옮기기</td></tr>
+        <tr><td class="nw">1.13</td><td class="nw">로그 전체 보기</td><td>오른쪽 클릭 → 원본 줄 전체를 줄바꿈한 팝업(원래 줄 번호, 로그 전체/셀 값 복사), Alt+오른쪽 클릭은 그대로</td></tr>
+        <tr><td class="nw">1.14</td><td class="nw">메시지 검색</td><td>Ctrl+F 검색창, Enter/F3 다음, Shift+Enter/Shift+F3 이전, 끝에서 반대쪽으로 이어서, 필터 결과 안에서도. 1GB(1,000만 줄) 끝까지 4.4초, 검색 중 화면 응답 2ms 이내. 북마크 이동은 F2 다음 / Shift+F2 이전으로 변경</td></tr>
+      </tbody></table></div>
+    화면 배치도 바꿨습니다: Word/Tag filter [체크박스][라벨][입력창], 가운데 Word/Tag filter 3 : Highlight 1, Log filter·Show column 2줄(폭 절반).
+    <br>테스트: 실시간 수집(처리량·지연·내용·Pause·Clear·Stop), 하이라이트(색상·끄기·저장·이전 설정), 오른쪽 클릭 팝업(원본 줄·필터 중 줄 번호·복사·Alt), 검색(무작위 시작점 전수 비교 280회, 실제 창 키 입력), 기존 단위·기능·스트레스 테스트 모두 통과.</li>
 </ol>
 </main>
 </div>
@@ -803,7 +842,6 @@ logcat: {
     {id:'proc', label:'LogSource', sub:'AdbProcess 스레드', kind:'thread'},
     {id:'adb', label:'adb', sub:'외부 프로세스', kind:'ext'},
     {id:'file', label:'LogFilter_*.txt', sub:'기록 파일', kind:'ext'},
-    {id:'watch', label:'LogSource', sub:'WatchFile 스레드', kind:'thread'},
     {id:'engine', label:'FilterEngine'}
   ],
   s: [
@@ -815,23 +853,22 @@ logcat: {
     {end:1},
     {m:['user','frame','Run']},
     {m:['frame','proc','m_source.startProcess(cmd, UTF-8) → new Thread'], t:'async'},
-    {n:['frame','startProcess(): engine.setStore(new MemoryLogStore)']},
+    {n:['frame','startProcess(): 기록 파일 생성(LiveFeed) + engine.setStore(그 파일의 FileLogStore)']},
     {m:['proc','adb','ProcessBuilder("adb [-s serial] " + Cmd), stderr 합침']},
-    {m:['proc','engine','startFileParse(): setStore(기록 파일의 FileLogStore)']},
-    {m:['proc','watch','new Thread("WatchFile")'], t:'async'},
-    {f:'par', l:'수집 (adb 출력이 끝날 때까지)', o:['proc','engine']},
+    {f:'loop', l:'수집 (adb 출력이 끝날 때까지)', o:['proc','engine']},
     {m:['adb','proc','stdout 한 줄'], t:'ret'},
-    {m:['proc','file','write(줄 + CRLF) + flush  [FILE_LOCK]']},
-    {e:'화면 반영 (50ms 폴링)'},
-    {s:['watch','sleep(50) — Pause면 건너뜀']},
-    {m:['watch','file','indexNext(false): 줄바꿈으로 끝난 줄까지만 색인  [FILE_LOCK]']},
-    {m:['watch','engine','notifyAppended() → requestAnalysis(FOLLOW_END)'], t:'async'},
+    {m:['proc','file','LiveFeed.write(): 파일 버퍼(64KB)에 쓰고 위치·길이 기록']},
+    {f:'opt', l:'읽을 출력이 없거나 50ms 지남', o:['proc','engine']},
+    {m:['proc','file','flush()']},
+    {m:['proc','engine','publish(): FileLogStore.appendLine() (Pause면 쌓아 둠)']},
+    {m:['proc','engine','notifyAppended() → requestAnalysis(FOLLOW_END)'], t:'async'},
+    {end:1},
     {m:['engine','frame','새 줄만 분석·판정 → onDataChanged(FOLLOW_END)']},
     {end:1},
     {m:['user','frame','Stop']},
     {m:['frame','proc','m_source.stopProcess(): destroy, interrupt × 2'], t:'async'},
     {m:['proc','frame','onProcessStopped() → 버튼 상태 복원'], t:'ret'},
-    {n:['frame','Pause: 화면 반영만 중지, 파일 기록은 계속']}
+    {n:['frame','Pause: 화면 반영만 중지, 파일 기록은 계속. Resume하면 쌓인 줄을 바로 넘김']}
   ]
 },
 filter: {
@@ -883,9 +920,9 @@ render: {
     {m:['table','rend','getTableCellRendererComponent()']},
     {f:'alt', l:'Message 또는 Tag 컬럼', o:['rend','engine']},
     {m:['rend','engine','getFindTokens() / getShowTagTokens()']},
-    {s:['rend','하이라이트 토큰(LogTable)과 함께 일치 여부 확인']},
+    {s:['rend','하이라이트 6개(LogTable: 토큰 + 색상 번호)와 함께 일치 여부 확인']},
     {s:['rend','일치 없음 → 원문 그대로 반환 (HTML 생성 안 함)']},
-    {s:['rend','일치 있음 → markMatch() → <span background> / <font red> + 이스케이프']},
+    {s:['rend','일치 있음 → 입력창마다 markMatch(고른 색상) → <span background> / <font red> + 이스케이프']},
     {end:1},
     {m:['rend','model','getRow(row)']},
     {s:['rend','캐시된 Font · 글자색(m_TextColor) · 배경(북마크/선택/흰색)']},
@@ -908,8 +945,8 @@ bookmark: {
     {m:['table','frame','bookmarkItem(row, line, marked)']},
     {m:['frame','engine','bookmarkItem(): [LOCK] 북마크 맵 갱신']},
     {m:['frame','ind','repaint()']},
-    {e:'북마크 이동 (F2 / F3)'},
-    {m:['user','table','F2 (이전) / F3 (다음)']},
+    {e:'북마크 이동 (F2 / Shift+F2)'},
+    {m:['user','table','F2 (다음) / Shift+F2 (이전)']},
     {m:['table','engine','getView().hmBookmark']},
     {s:['table','표시 행 번호를 TreeSet으로 → higher()/lower(), 끝이면 반대쪽 끝']},
     {s:['table','changeSelection(), showRow()']},
@@ -936,9 +973,11 @@ copy: {
     {m:['user','table','Ctrl+C']},
     {s:['table','선택 행 × 보이는 컬럼(Line 제외), Tag/Pid/Tid 패딩']},
     {m:['table','clip','setContents(텍스트)']},
-    {e:'우클릭'},
-    {m:['user','table','셀 우클릭']},
-    {m:['table','clip','클릭한 셀 값만 복사']},
+    {e:'오른쪽 클릭 (1.13)'},
+    {m:['user','table','셀 오른쪽 클릭']},
+    {s:['table','showFullLog(): 행 선택, LogList.rawLine() → 줄바꿈 팝업 (원래 줄 번호)']},
+    {m:['user','table','메뉴: 로그 전체 복사 / 셀 값 복사']},
+    {m:['table','clip','setContents(원본 줄 또는 셀 값)']},
     {e:'Alt+좌클릭 / Alt+우클릭 (Tag 컬럼)'},
     {m:['user','table','Alt + 클릭']},
     {m:['table','engine','setShowTag(추가·제거) / setRemoveTag(추가)']},
@@ -947,11 +986,37 @@ copy: {
     {end:1}
   ]
 },
+search: {
+  p: [
+    {id:'user', label:'사용자', kind:'actor'},
+    {id:'frame', label:'LogFilterMain', sub:'EDT'},
+    {id:'srch', label:'LogSearch', sub:'LogSearch 스레드', kind:'thread'},
+    {id:'list', label:'LogList', sub:'LogStore / FilteredList'},
+    {id:'table', label:'LogTable'}
+  ],
+  s: [
+    {m:['user','frame','Ctrl+F → 검색창 (검색어 전체 선택)']},
+    {m:['user','frame','Enter / F3 (다음), Shift+Enter / Shift+F3 (이전)']},
+    {s:['frame','search(bForward): 이전 검색 cancel(), 선택 행·보이는 행 수 저장']},
+    {m:['frame','srch','new Thread("LogSearch") → find(list, nRows, tokens, 선택 행, 방향)'], t:'async'},
+    {f:'loop', l:'65,536행 단위 (cancel이면 중단, 끝이면 반대쪽 끝부터)', o:['srch','list']},
+    {m:['srch','list','forEach() 블록 읽기 → Message에 검색어(| OR, 대소문자 무시)']},
+    {m:['srch','frame','200ms마다 onStatus("검색 중 x%")'], t:'async'},
+    {end:1},
+    {m:['srch','frame','runOnEdt(결과)'], t:'async'},
+    {f:'alt', l:'찾음', o:['frame','table']},
+    {m:['frame','table','changeSelection(row), showRow(row, 가운데)']},
+    {s:['frame','상태: Line N (행 / 전체) [다시 찾음]']},
+    {e:'못 찾음'},
+    {s:['frame','상태: 찾을 수 없습니다 (선택 유지)']},
+    {end:1}
+  ]
+},
 exit: {
   p: [
     {id:'user', label:'사용자', kind:'actor'},
     {id:'frame', label:'LogFilterMain'},
-    {id:'src', label:'LogSource', sub:'프로세스 · 감시 스레드', kind:'thread'},
+    {id:'src', label:'LogSource', sub:'AdbProcess 스레드', kind:'thread'},
     {id:'engine', label:'FilterEngine', sub:'재필터 스레드', kind:'thread'},
     {id:'cfg', label:'AppConfig', sub:'*.ini', kind:'ext'}
   ],
@@ -1180,20 +1245,21 @@ const CLS_NODES = {
   Table:      {name:'LogTable', c:1, r:1, kind:'core', stereo:'extends JTable', sub:'m_tbLogTable'},
   Ind:        {name:'IndicatorPanel', c:2, r:1, kind:'core', stereo:'extends JPanel', sub:'m_ipIndicator'},
   Engine:     {name:'FilterEngine', c:3, r:1, kind:'core', stereo:'데이터 · 필터 · 분석/재필터 스레드', sub:'m_engine'},
-  Source:     {name:'LogSource', c:4, r:1, kind:'core', stereo:'입력 · 파일/adb 스레드', sub:'m_source'},
+  Source:     {name:'LogSource', c:4, r:1, kind:'core', stereo:'입력 · 파일 색인 / adb LiveFeed', sub:'m_source'},
   EventParam: {name:'EventParam', c:0, r:2, kind:'inner', stereo:'«nested» INotiEvent', sub:'이벤트 ID 전달'},
   Model:      {name:'LogFilterTableModel', c:1, r:2, stereo:'extends AbstractTableModel', sub:'m_tmLogTableModel'},
   Renderer:   {name:'LogCellRenderer', c:2, r:2, kind:'inner', stereo:'«inner» LogTable', sub:'extends DefaultTableCellRenderer'},
   IParser:    {name:'ILogParser', c:4, r:2, kind:'iface', stereo:'«interface»', sub:'m_iLogParser'},
   Info:       {name:'LogInfo', c:1, r:3, sub:'로그 한 줄 (VO)'},
   Token:      {name:'FilterToken', c:2, r:3, kind:'util', stereo:'«utility»', sub:'토큰 분리 · 대소문자 무시 비교'},
-  Color:      {name:'LogColor', c:3, r:3, kind:'util', stereo:'«static»', sub:'레벨 · 하이라이트 색상'},
+  Color:      {name:'LogColor', c:3, r:3, kind:'util', stereo:'«static»', sub:'레벨 · 하이라이트 색상 6개'},
   Parser:     {name:'LogCatParser', c:4, r:3, sub:'threadtime · time · brief · kernel …'},
-  List:       {name:'LogList', c:0, r:4, kind:'iface', stereo:'«interface»', sub:'size · get · lineIndexOf'},
+  List:       {name:'LogList', c:0, r:4, kind:'iface', stereo:'«interface»', sub:'size · get · lineIndexOf · rawLine'},
   Store:      {name:'LogStore', c:1, r:4, kind:'core', abs:true, stereo:'«abstract» 줄 목록', sub:'지연 해석 · LRU 캐시 · 북마크'},
   Filtered:   {name:'FilteredList', c:3, r:4, stereo:'필터 결과', sub:'통과한 줄 번호 (IntList)'},
   FileStore:  {name:'FileLogStore', c:1, r:5, stereo:'파일 위치 색인 (대용량)', sub:'LongList · IntList · FileChannel'},
-  MemStore:   {name:'MemoryLogStore', c:2, r:5, stereo:'안내 문구 · adb 시작 직후', sub:'ArrayList<String>'}
+  MemStore:   {name:'MemoryLogStore', c:2, r:5, stereo:'시작 안내 문구', sub:'ArrayList<String>'},
+  Search:     {name:'LogSearch', c:4, r:0, kind:'core', stereo:'메시지 검색 (1.14)', sub:'m_search · LogSearch 스레드'}
 };
 const CLS_EDGES = [
   {f:'Main', t:'Noti', type:'impl'},
@@ -1203,6 +1269,7 @@ const CLS_EDGES = [
   {f:'Main', t:'Ind', type:'comp', label:'↔ 상호 참조'},
   {f:'Main', t:'Engine', type:'comp', label:'Listener', lp:0.6},
   {f:'Main', t:'Source', type:'comp', label:'Listener', lp:0.78},
+  {f:'Main', t:'Search', type:'comp', label:'search() · Ctrl+F · F3', via:[[2.45,0.5],[3.8,0.5]], lp:0.62},
   {f:'Noti', t:'EventParam', type:'inner'},
   {f:'Table', t:'Model', type:'assoc', label:'getModel()'},
   {f:'Table', t:'Renderer', type:'inner'},
@@ -1222,7 +1289,7 @@ const CLS_EDGES = [
   {f:'Store', t:'Info', type:'dep', label:'«create» parse()', lp:0.5},
   {f:'Engine', t:'Token', type:'dep', label:'split · matchAny', lp:0.33},
   {f:'Renderer', t:'Token', type:'dep'},
-  {f:'Renderer', t:'Color', type:'dep', label:'COLOR_HIGHLIGHT', lp:0.22},
+  {f:'Renderer', t:'Color', type:'dep', label:'COLOR_HIGHLIGHT[6]', lp:0.22},
   {f:'Parser', t:'Color', type:'dep', label:'레벨 색상'},
   {f:'Parser', t:'Info', type:'dep', label:'«create» parseLog()', via:[[4,3.55],[1.25,3.55]], lp:0.5}
 ];
@@ -1232,12 +1299,12 @@ const CLS_EDGES = [
  *        ['§', '그룹 이름'] = 그룹 머리글
  * ------------------------------------------------------------- */
 const UML = [
-{ name:'LogFilterMain', wide:true, rel:'extends JFrame · implements INotiEvent, FilterEngine.Listener, LogSource.Listener', file:'LogFilterMain.java · 1,431줄 (구조 개선 전 2,235줄)',
+{ name:'LogFilterMain', wide:true, rel:'extends JFrame · implements INotiEvent, FilterEngine.Listener, LogSource.Listener', file:'LogFilterMain.java · 1,705줄 (구조 개선 전 2,235줄)',
   fields:[
     ['§','상수'],
-    ['~','LOGFILTER, VERSION : String = "Version 1.8"','s'],
+    ['~','LOGFILTER, VERSION : String = "Version " + AppVersion.full()','s'],
     ['~','COMBO_ANDROID, ADB_CMD_FIRST, ADB_SELECTED_CMD_FIRST : String','s'],
-    ['~','FILTER_DEBOUNCE_MS = 250 : int','s'],
+    ['~','FILTER_DEBOUNCE_MS = 250 : int, SEARCH_PROGRESS_MS = 200 : long','s'],
     ['§','협력 객체 (동작은 여기에 위임)'],
     ['~','m_engine : FilterEngine','l','데이터 · 필터'],
     ['~','m_source : LogSource','l','파일 · adb 입력'],
@@ -1249,8 +1316,10 @@ const UML = [
     ['~','m_scrollVBar : JScrollPane'],
     ['~','m_recentMenu : RecentFileMenu','s'],
     ['§','UI 컴포넌트'],
-    ['~','m_tfFindWord · RemoveWord · ShowTag · RemoveTag · ShowPid · ShowTid · Highlight : JTextField'],
-    ['~','m_chkEnable* ×7 · m_chk레벨 ×6 · m_chkClm* ×9 : JCheckBox'],
+    ['~','m_tfFindWord · RemoveWord · ShowTag · RemoveTag · ShowPid · ShowTid : JTextField'],
+    ['~','m_arTfHighlight[6] : JTextField, m_arChkHighlight[6] : JCheckBox, m_arCbHighlightColor[6] : JComboBox<Integer>','l','하이라이트 6개 (1.12)'],
+    ['~','m_tfSearch : JTextField, m_btnSearchPrev · m_btnSearchNext : JButton','l','메시지 검색 (1.14)'],
+    ['~','m_chkEnable* ×6 · m_chk레벨 ×6 · m_chkClm* ×9 : JCheckBox'],
     ['~','m_comboDeviceCmd · m_comboCmd · m_comboEncode · m_jcFontType : JComboBox'],
     ['~','m_btnRun · Stop · Clear · Device · SetFont : JButton, m_tbtnPause : JToggleButton'],
     ['~','m_lDeviceList : JList, m_tfStatus · m_tfFontSize : JTextField'],
@@ -1258,7 +1327,8 @@ const UML = [
     ['~','m_strSelectedDevice : String'],
     ['~','m_nLastWidth, m_nLastHeight : int','','최대화 아닐 때 창 크기'],
     ['~','m_alButtonListener · m_dlFilterListener · m_itemListener'],
-    ['~','m_tmFilterDebounce : javax.swing.Timer']
+    ['~','m_tmFilterDebounce : javax.swing.Timer'],
+    ['~','m_search : LogSearch','l','진행 중인 검색 (새 검색이면 이전 것 cancel)']
   ],
   methods:[
     ['§','진입 · 생명주기'],
@@ -1268,7 +1338,10 @@ const UML = [
     ['~','applyConfig(AppConfig) · saveConfig() : void','l'],
     ['§','화면 구성'],
     ['~','getOptionPanel · getOptionFilter · getOptionMenu · getCmdPanel : Component'],
-    ['~','getFilterPanel · getCheckPanel · getHighlightPanel · getBookmarkPanel · getStatusPanel · getTabPanel : Component'],
+    ['~','getFilterPanel · getCheckPanel · getHighlightPanel · getSearchPanel · getBookmarkPanel · getStatusPanel · getTabPanel : Component'],
+    ['~','checkAndLabel · checkRow · alignLabels · ratioCell','s','배치 도우미 (체크박스+라벨, 2줄 체크박스, 라벨 폭, 3:1 비율)'],
+    ['~','createHighlightColorCombo(int) · updateHighlight(int) · highlightIndexOf(Object)','l','하이라이트 6개 (1.12)'],
+    ['~','installSearchKeys() · search(boolean bForward) : void','l','Ctrl+F · F3 · Shift+F3 (1.14)'],
     ['~','addChangeListener() · setDnDListener() : void'],
     ['~','installUndoRedo(JTextComponent) : void'],
     ['~','installInputHistory(JTextComponent) : void','l','필터·하이라이트 입력창 ↑/↓'],
@@ -1330,31 +1403,45 @@ const UML = [
     { name:'ChunkResult', rel:'private static class', fields:[['~','errors · accepted · flags : IntList','','청크 하나의 결과 (flags: 북마크·에러 비트)'],['~','nEnd · nReached : int','','중단되면 nReached < nEnd']], methods:[]}
   ]
 },
-{ name:'LogSource', rel:'2026-10-06 추가 (S1)', file:'LogSource.java · 359줄',
+{ name:'LogSource', rel:'2026-10-06 추가 (S1) · 1.11 adb 바로 읽기', file:'LogSource.java · 438줄',
   fields:[
     ['~','DEVICES_CMD = "adb devices" : String','s'],
     ['~','m_engine : FilterEngine, m_parser : ILogParser, m_listener : Listener'],
-    ['~','FILE_LOCK : Object','','기록 파일 동기화'],
+    ['~','ADB_CHARSET = UTF-8, LIVE_PUBLISH_MS = 50, LIVE_BUFFER = 64KB','s','실시간 수집 (1.11)'],
     ['~','volatile m_process : Process'],
-    ['~','volatile m_thProcess, m_thWatchFile : Thread'],
+    ['~','volatile m_thProcess : Thread, volatile m_feed : LiveFeed'],
     ['~','volatile m_bPause : boolean'],
     ['~','m_strLogFileName : String']
   ],
   methods:[
     ['~','LOAD_PUBLISH_MS = 200 : long, NO_OUTPUT_WARN_MS = 5000 : int','s'],
     ['~','parseFile(File, boolean bUtf8) : void','','FileLogStore + LoadFile 스레드'],
-    ['~','startProcess(String cmd, boolean bUtf8) : void','','AdbProcess 스레드'],
-    ['~','startFileParse(String file, boolean bUtf8) : void','','기록 파일 FileLogStore + WatchFile 스레드'],
+    ['~','startProcess(String cmd, boolean bUtf8) : void','','기록 파일의 FileLogStore + AdbProcess 스레드(LiveFeed)'],
     ['~','startNoOutputWatch(…) · reportProcessEnd(…)','l','adb 무출력 경고 · 종료 안내'],
-    ['~','stopProcess() · setPause(boolean) · isRunning()'],
+    ['~','stopProcess() · setPause(boolean) · isRunning()','','Resume·Stop 때 쌓인 줄 publish()'],
     ['~','listDevices() : void','','AdbDevices 스레드'],
     ['~','makeFilename() : String · charsetOf(boolean) : Charset','s']
   ],
   inner:[
-    { name:'Listener', rel:'«interface»', fields:[], methods:[['+','onStatus · onTitle(String) · onProcessStopped() · onDevices(List) : void','a']]}
+    { name:'Listener', rel:'«interface»', fields:[], methods:[['+','onStatus · onTitle(String) · onProcessStopped() · onDevices(List) : void','a']]},
+    { name:'LiveFeed', rel:'inner class (1.11)', fields:[['~','m_file : File, m_out : OutputStream (64KB 버퍼), m_nWritten : long'],['~','m_arBatch / m_arReady : 쓴 줄·flush한 줄 {위치, 길이}','','Pause 중에는 m_arReady에 쌓임']],
+      methods:[['~','write(String) : void','','AdbProcess 스레드: 파일 버퍼에 쓰기'],['~','due() · flush() : void','','출력이 멈추거나 50ms마다'],['~','publish() : void','','synchronized: FileLogStore.appendLine() → notifyAppended()'],['~','close() : void']]}
   ]
 },
-{ name:'LogStore', abs:true, stereo:'«abstract»', rel:'implements LogList · 2026-10-06 대용량 구조', file:'LogStore.java · 138줄',
+{ name:'LogSearch', rel:'1.14 메시지 검색', file:'LogSearch.java · 173줄',
+  fields:[['~','CHUNK_ROWS = 65536 : int','s','진행률·중단 단위'],['-','volatile m_bCancel : boolean']],
+  methods:[
+    ['~','find(LogList, int nSize, String[] tokens, int nStart, boolean bForward, Progress) : Result','','끝에서 반대쪽 끝으로 이어서'],
+    ['~','cancel() · isCancelled() : boolean'],
+    ['~','matches(LogInfo, String[]) : boolean','s','Message, | OR, 대소문자 무시'],
+    ['-','scan(…) · scanChunk(…) : int','','전체: forEach 블록 / 필터 결과: 촘촘하면 블록, 듬성하면 행마다']
+  ],
+  inner:[
+    { name:'Result', rel:'static class', fields:[['~','m_nRow : int, m_bWrapped : boolean']], methods:[]},
+    { name:'Progress', rel:'«interface»', fields:[], methods:[['+','onProgress(int nDone, int nTotal) : void','a']]}
+  ]
+},
+{ name:'LogStore', abs:true, stereo:'«abstract»', rel:'implements LogList · 2026-10-06 대용량 구조', file:'LogStore.java · 148줄',
   fields:[
     ['~','CACHE_SIZE = 20000 : int','s','LRU 캐시 크기'],
     ['~','m_parser : ILogParser'],
@@ -1367,7 +1454,7 @@ const UML = [
     ['#','readLine(int) : String','a'],
     ['~','cleared() : LogStore','a','Clear: 이후 부분만 보는 새 목록'],
     ['+','get(int) : LogInfo','','캐시 → 없으면 readLine() → parse()'],
-    ['+','lineIndexOf(int) : int'],
+    ['+','lineIndexOf(int) : int · rawLine(int) : String','','rawLine: 원본 줄 (1.13)'],
     ['~','forEach(int from, int to, Visitor) : void','','분석·필터용 (캐시 안 씀)'],
     ['#','parse(int, String) · applyState(int, LogInfo)'],
     ['~','isMarked · setMarked · setMemo'],
@@ -1377,7 +1464,7 @@ const UML = [
     { name:'Visitor', rel:'«interface»', fields:[], methods:[['+','visit(int, LogInfo) : boolean','a','false면 중단']]}
   ]
 },
-{ name:'FileLogStore', rel:'extends LogStore', file:'FileLogStore.java · 224줄',
+{ name:'FileLogStore', rel:'extends LogStore', file:'FileLogStore.java · 296줄',
   fields:[
     ['~','READ_BUFFER = 4MB, MAX_LINE = 64MB : int','s'],
     ['~','m_file : File, m_charset : Charset'],
@@ -1392,6 +1479,8 @@ const UML = [
     ['#','readLine(int) : String','','FileChannel 위치 읽기'],
     ['~','forEach(int, int, Visitor) : void','','4MB 블록 순차 읽기'],
     ['-','channel() · readAt(…)','','닫혔으면 다시 열어 한 번 더'],
+    ['#','load(int) : LogInfo','','화면용: 주변 32KB·최대 256줄을 한 번에 읽어 캐시'],
+    ['~','appendLine(long, int, String) : void','l','실시간 수집: 쓴 위치를 바로 추가 (1.11)'],
     ['~','cleared() · close() · indexedEnd()']
   ]
 },
@@ -1399,23 +1488,24 @@ const UML = [
   fields:[['-','m_arLine : ArrayList<String>, volatile m_nSize : int']],
   methods:[['~','addMessage(String) : void','','안내 문구'],['#','readLine(int) · parse(int, String)','','메시지로만 표시'],['~','cleared() : LogStore']]
 },
-{ name:'FilteredList', rel:'implements LogList', file:'FilteredList.java · 32줄',
+{ name:'FilteredList', rel:'implements LogList', file:'FilteredList.java · 37줄',
   fields:[['~','m_store : LogStore'],['-','m_rows : IntList','','통과한 줄 번호']],
   methods:[['+','get(int) · lineIndexOf(int) · size()','','LogStore에서 읽음'],['~','add(int nIndex) : void','','엔진 스레드만']]
 },
-{ name:'LogList', kind:'iface', stereo:'«interface»', rel:'구현: LogStore, FilteredList', file:'LogList.java · 14줄',
+{ name:'LogList', kind:'iface', stereo:'«interface»', rel:'구현: LogStore, FilteredList', file:'LogList.java · 17줄',
   fields:[],
-  methods:[['+','size() : int · get(int) : LogInfo · lineIndexOf(int) : int','a']]
+  methods:[['+','size() : int · get(int) : LogInfo · lineIndexOf(int) : int','a'],['+','rawLine(int) : String','a','원본 줄 (1.13)']]
 },
 { name:'IntList · LongList', kind:'util', stereo:'«collection»', rel:'', file:'IntList.java · 40줄, LongList.java · 36줄',
   fields:[['-','volatile m_arValue : int[] / long[], volatile m_nSize : int']],
   methods:[['+','add(v) · get(i) · size()','','뒤에만 추가. 쓰기 하나·읽기 여럿 (값을 쓴 뒤 크기 공개)']]
-},{ name:'AppConfig', rel:'2026-10-06 추가 (S1, S9)', file:'AppConfig.java · 250줄',
+},{ name:'AppConfig', rel:'2026-10-06 추가 (S1, S9)', file:'AppConfig.java · 275줄',
   fields:[
     ['~','INI_FILE · INI_FILE_CMD · INI_FILE_COLOR · INI_* : String','s','ini 파일·키 이름'],
     ['~','DEFAULT_WIDTH/HEIGHT, MIN_WIDTH/HEIGHT : int','s'],
     ['~','DEFAULT_CMDS : String[]','s'],
-    ['~','strFontType, strFind … strHighlight : String','','LogFilter.ini 값'],
+    ['~','strFontType, strFind … strShowTid : String','','LogFilter.ini 값'],
+    ['~','arHighlight : String[6], arHighlightColor : int[6], arHighlightOn : boolean[6]','l','하이라이트 6개 (1.12)'],
     ['~','nWinWidth, nWinHeight, nWindowState : int'],
     ['~','arColumnWidth : int[]']
   ],
@@ -1425,14 +1515,15 @@ const UML = [
     ['~','loadCmds() : List<String>','s'],
     ['~','loadColors() · saveColors() : void','s','LogColor ↔ ini'],
     ['~','loadProperties · storeProperties(…)','s','try-with-resources'],
-    ['~','intOf · hexOf(Properties, String, int) : int','s','키별 기본값']
+    ['~','intOf · hexOf(Properties, String, int) : int · highlightOf(String, String) : String','s','키별 기본값']
   ]
 },
-{ name:'LogTable', rel:'extends JTable · implements FocusListener, ActionListener', file:'LogTable.java · 661줄',
+{ name:'LogTable', rel:'extends JTable · implements FocusListener, ActionListener', file:'LogTable.java · 779줄',
   fields:[
     ['~','m_LogFilterMain : LogFilterMain'],
     ['~','m_engine : FilterEngine','l','Find/Tag 토큰 · 북마크 위치'],
-    ['~','m_strHighlight : String, volatile m_arHighlightToken : String[]','','하이라이트(표시 설정)'],
+    ['~','volatile m_arHighlight : Highlight[6]','l','하이라이트 6개: 토큰 + 색상 번호 (1.12)'],
+    ['~','m_popupFullLog : JPopupMenu','l','마지막 로그 전체 팝업 (1.13)'],
     ['~','m_fFontSize : float'],
     ['~','m_bAltPressed : boolean'],
     ['~','m_arbShow : boolean[]','','컬럼 표시 여부']
@@ -1444,13 +1535,15 @@ const UML = [
     ['+','changeSelection(int, int, boolean, boolean[, boolean bMove]) : void'],
     ['+','showRow(int[, boolean bCenter]) : void'],
     ['~','gotoBookmark(boolean bNext) : void','l','S6: TreeSet 탐색'],
-    ['~','gotoNextBookmark() · gotoPreBookmark() : void'],
-    ['#','processKeyBinding(KeyStroke, KeyEvent, int, boolean) : boolean'],
+    ['~','gotoNextBookmark() · gotoPreBookmark() : void','','F2 / Shift+F2'],
+    ['~','showFullLog(int row, int col, Point) : void','l','오른쪽 클릭 → 로그 전체 팝업 (1.13)'],
+    ['~','abbreviate(String, int) · copyToClipboard(String)','s'],
+    ['#','processKeyBinding(KeyStroke, KeyEvent, int, boolean) : boolean','','F2/Shift+F2 북마크, F3/Shift+F3 검색, Ctrl+F'],
     ['+','actionPerformed(ActionEvent) : void','','Ctrl+C 복사'],
     ['+','showColumn(int, boolean) · hideColumn(int) : void'],
     ['+','setColumnWidth() · getColumnWidth(int) · packColumn(int, int)'],
     ['+','setFontSize(int) · getFontSize() : float'],
-    ['~','GetHighlight() · SetHighlight(String) · GetHighlightTokens()'],
+    ['~','SetHighlight(int n, String text, int color) · GetHighlights() : Highlight[]','l'],
     ['~','GetFindTokens() · GetTagShowTokens() : String[]','','FilterEngine에서 읽음'],
     ['+','setValueAt(Object, int, int) · isCellEditable(int, int)'],
     ['~','tagLength() : int','l','LogStore.m_nMaxTagLength (복사 패딩)'],
@@ -1466,6 +1559,7 @@ const UML = [
         ['~','openStyle · closeStyle · appendEscaped · plainText'],
         ['~','cellFont() · bookmarkColor(int) · highlightColors()']
       ]},
+    { name:'Highlight', rel:'static final class (1.12)', fields:[['~','m_strText : String, m_arToken : String[], m_nColor : int']], methods:[['~','emptySet() : Highlight[]','s']]},
     { name:'ColumnHeaderListener', rel:'extends MouseAdapter',
       fields:[], methods:[['+','mouseClicked(MouseEvent) : void','','헤더 더블클릭 → packColumn']]}
   ]
@@ -1548,8 +1642,8 @@ const UML = [
   fields:[['-','pathToSavedFile : String, itemCount : int, recentEntries : String[]'],['-','defaultText : String','s']],
   methods:[['+','RecentFileMenu(String name, int count) · addEntry(String)'],['+','onSelectFile(String) : void','a','main()의 익명 클래스 → parseFile()']]
 },
-{ name:'LogColor', kind:'util', stereo:'«static holder»', rel:'', file:'LogColor.java · 21줄',
-  fields:[['+','COLOR_DEBUG · INFO · WARN · ERROR · FATAL, COLOR_0 … COLOR_8 : int','s'],['+','COLOR_BOOKMARK, COLOR_BOOKMARK2 : int, COLOR_HIGHLIGHT : String[]','s']],
+{ name:'LogColor', kind:'util', stereo:'«static holder»', rel:'', file:'LogColor.java · 24줄',
+  fields:[['+','COLOR_DEBUG · INFO · WARN · ERROR · FATAL, COLOR_0 … COLOR_8 : int','s'],['+','COLOR_BOOKMARK, COLOR_BOOKMARK2 : int','s'],['+','HIGHLIGHT_COUNT = 6, DEFAULT_HIGHLIGHT[6], COLOR_HIGHLIGHT[6] : String (RRGGBB)','s','하이라이트 색상 (1.12)']],
   methods:[]
 },
 { name:'T', kind:'util', stereo:'«utility»', rel:'S7 정리', file:'T.java · 67줄',
