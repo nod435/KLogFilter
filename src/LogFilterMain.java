@@ -1076,8 +1076,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
         JPanel jpMain = new JPanel(new BorderLayout());
 
-        JPanel jpLogFilter = new JPanel();
-        jpLogFilter.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        // Log filter / Show column은 2줄로 배치해 폭을 줄인다.
+        JPanel jpLogFilter = new JPanel(new GridLayout(2, 1, 0, 0));
         jpLogFilter.setBorder(BorderFactory.createTitledBorder("Log filter"));
         m_chkVerbose.setText("Verbose");
         m_chkVerbose.setSelected(true);
@@ -1091,17 +1091,12 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_chkError.setSelected(true);
         m_chkFatal.setText("Fatal");
         m_chkFatal.setSelected(true);
-        jpLogFilter.add(m_chkVerbose);
-        jpLogFilter.add(m_chkDebug);
-        jpLogFilter.add(m_chkInfo);
-        jpLogFilter.add(m_chkWarn);
-        jpLogFilter.add(m_chkError);
-        jpLogFilter.add(m_chkFatal);
+        jpLogFilter.add(checkRow(m_chkVerbose, m_chkDebug, m_chkInfo));
+        jpLogFilter.add(checkRow(m_chkWarn, m_chkError, m_chkFatal));
 
         jpMain.add(jpLogFilter, BorderLayout.NORTH);
 
-        JPanel jpShowColumn = new JPanel();
-        jpShowColumn.setLayout(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        JPanel jpShowColumn = new JPanel(new GridLayout(2, 1, 0, 0));
         jpShowColumn.setBorder(BorderFactory.createTitledBorder("Show column"));
         m_chkClmBookmark.setText("Mark");
         m_chkClmBookmark.setToolTipText("Bookmark");
@@ -1121,18 +1116,37 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_chkClmTag.setSelected(true);
         m_chkClmMessage.setText("Msg");
         m_chkClmMessage.setSelected(true);
-        jpShowColumn.add(m_chkClmBookmark);
-        jpShowColumn.add(m_chkClmLine);
-        jpShowColumn.add(m_chkClmDate);
-        jpShowColumn.add(m_chkClmTime);
-        jpShowColumn.add(m_chkClmLogLV);
-        jpShowColumn.add(m_chkClmPid);
-        jpShowColumn.add(m_chkClmThread);
-        jpShowColumn.add(m_chkClmTag);
-        jpShowColumn.add(m_chkClmMessage);
+        jpShowColumn.add(checkRow(m_chkClmBookmark, m_chkClmLine, m_chkClmDate, m_chkClmTime, m_chkClmLogLV));
+        jpShowColumn.add(checkRow(m_chkClmPid, m_chkClmThread, m_chkClmTag, m_chkClmMessage));
 
-        jpMain.add(jpShowColumn, BorderLayout.CENTER);
+        // 두 묶음 모두 위쪽에 붙인다 (남는 높이에 줄 간격이 벌어지지 않도록)
+        JPanel jpNorth = new JPanel(new BorderLayout());
+        jpNorth.add(jpMain.getComponent(0), BorderLayout.NORTH);
+        jpNorth.add(jpShowColumn, BorderLayout.CENTER);
+        jpMain.add(jpNorth, BorderLayout.NORTH);
         return jpMain;
+    }
+
+    // 체크박스 한 줄 (왼쪽 정렬)
+    static JPanel checkRow(JCheckBox... arCheck)
+    {
+        JPanel jp = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        for(JCheckBox check : arCheck)
+            jp.add(check);
+        return jp;
+    }
+
+    // 가운데 영역을 정해진 비율로 나누기 위한 칸: 내용의 선호 폭을 무시하고 비율(weightx)대로만 폭을 받는다.
+    static JPanel ratioCell(Component comp)
+    {
+        JPanel jp = new JPanel(new BorderLayout())
+        {
+            private static final long serialVersionUID = 1L;
+            public Dimension getPreferredSize() { return new Dimension(1, super.getPreferredSize().height); }
+            public Dimension getMinimumSize()   { return new Dimension(1, super.getMinimumSize().height); }
+        };
+        jp.add(comp, BorderLayout.CENTER);
+        return jp;
     }
 
     Component getOptionFilter()
@@ -1141,10 +1155,15 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
         optionFilter.add(getCmdPanel(), BorderLayout.WEST);
         optionFilter.add(getCheckPanel(), BorderLayout.EAST);
-        // 가운데: 왼쪽 Word/Tag filter, 오른쪽 Highlight (둘 다 6줄이라 높이가 맞음)
-        JPanel jpCenter = new JPanel(new GridLayout(1, 2));
-        jpCenter.add(getFilterPanel());
-        jpCenter.add(getHighlightPanel());
+        // 가운데: 왼쪽 Word/Tag filter 3, 오른쪽 Highlight 1 비율 (둘 다 6줄이라 높이가 맞음)
+        JPanel jpCenter = new JPanel(new java.awt.GridBagLayout());
+        java.awt.GridBagConstraints gc = new java.awt.GridBagConstraints();
+        gc.fill    = java.awt.GridBagConstraints.BOTH;
+        gc.weighty = 1;
+        gc.weightx = 3;
+        jpCenter.add(ratioCell(getFilterPanel()), gc);
+        gc.weightx = 1;
+        jpCenter.add(ratioCell(getHighlightPanel()), gc);
         optionFilter.add(jpCenter, BorderLayout.CENTER);
 
         return optionFilter;
