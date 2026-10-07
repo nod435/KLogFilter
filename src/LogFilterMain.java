@@ -858,7 +858,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
         JPanel jpFind = new JPanel(new BorderLayout());
         JLabel find = new JLabel();
-        find.setText("        Find : ");
+        find.setText("Find : ");
         jpFind.add(find, BorderLayout.WEST);
         jpFind.add(m_tfFindWord, BorderLayout.CENTER);
         jpFind.add(m_chkEnableFind, BorderLayout.EAST);
@@ -880,21 +880,21 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
         JPanel jpPid = new JPanel(new BorderLayout());
         JLabel pid = new JLabel();
-        pid.setText("         Pid : ");
+        pid.setText("Pid : ");
         jpPid.add(pid, BorderLayout.WEST);
         jpPid.add(m_tfShowPid, BorderLayout.CENTER);
         jpPid.add(m_chkEnableShowPid, BorderLayout.EAST);
 
         JPanel jpTid = new JPanel(new BorderLayout());
         JLabel tid = new JLabel();
-        tid.setText("         Tid : ");
+        tid.setText("Tid : ");
         jpTid.add(tid, BorderLayout.WEST);
         jpTid.add(m_tfShowTid, BorderLayout.CENTER);
         jpTid.add(m_chkEnableShowTid, BorderLayout.EAST);
 
         JPanel jpShow = new JPanel(new BorderLayout());
         JLabel show = new JLabel();
-        show.setText("     Show : ");
+        show.setText("Show : ");
         jpShow.add(show, BorderLayout.WEST);
         jpShow.add(m_tfShowTag, BorderLayout.CENTER);
         jpShow.add(m_chkEnableShowTag, BorderLayout.EAST);
@@ -906,6 +906,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpRemoveTag.add(m_tfRemoveTag, BorderLayout.CENTER);
         jpRemoveTag.add(m_chkEnableRemoveTag, BorderLayout.EAST);
 
+        // 라벨을 왼쪽 정렬하고 모두 가장 긴 라벨 폭으로 맞춰, 입력창이 같은 위치에서 시작하게 한다.
+        alignLabels(find, remove, pid, tid, show, removeTag);
+
         jpTagFilter.add(jpPid);
         jpTagFilter.add(jpTid);
         jpTagFilter.add(jpShow);
@@ -914,6 +917,19 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpMain.add(jpTagFilter, BorderLayout.CENTER);
 
         return jpMain;
+    }
+
+    // 라벨들을 왼쪽 정렬하고 가장 넓은 라벨의 폭으로 맞춘다.
+    static void alignLabels(JLabel... arLabel)
+    {
+        int nWidth = 0;
+        for(JLabel label : arLabel)
+            nWidth = Math.max(nWidth, label.getPreferredSize().width);
+        for(JLabel label : arLabel)
+        {
+            label.setHorizontalAlignment(SwingConstants.LEFT);
+            label.setPreferredSize(new Dimension(nWidth, label.getPreferredSize().height));
+        }
     }
 
     Component getHighlightPanel()
