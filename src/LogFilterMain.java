@@ -858,14 +858,14 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
         JPanel jpFind = new JPanel(new BorderLayout());
         JLabel find = new JLabel();
-        find.setText("Find : ");
+        find.setText("Find :  ");
         jpFind.add(find, BorderLayout.WEST);
         jpFind.add(m_tfFindWord, BorderLayout.CENTER);
         jpFind.add(m_chkEnableFind, BorderLayout.EAST);
 
         JPanel jpRemove = new JPanel(new BorderLayout());
         JLabel remove = new JLabel();
-        remove.setText("Remove : ");
+        remove.setText("Remove :  ");
         jpRemove.add(remove, BorderLayout.WEST);
         jpRemove.add(m_tfRemoveWord, BorderLayout.CENTER);
         jpRemove.add(m_chkEnableRemove, BorderLayout.EAST);
@@ -880,28 +880,28 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
         JPanel jpPid = new JPanel(new BorderLayout());
         JLabel pid = new JLabel();
-        pid.setText("Pid : ");
+        pid.setText("Pid :  ");
         jpPid.add(pid, BorderLayout.WEST);
         jpPid.add(m_tfShowPid, BorderLayout.CENTER);
         jpPid.add(m_chkEnableShowPid, BorderLayout.EAST);
 
         JPanel jpTid = new JPanel(new BorderLayout());
         JLabel tid = new JLabel();
-        tid.setText("Tid : ");
+        tid.setText("Tid :  ");
         jpTid.add(tid, BorderLayout.WEST);
         jpTid.add(m_tfShowTid, BorderLayout.CENTER);
         jpTid.add(m_chkEnableShowTid, BorderLayout.EAST);
 
         JPanel jpShow = new JPanel(new BorderLayout());
         JLabel show = new JLabel();
-        show.setText("Show : ");
+        show.setText("Show :  ");
         jpShow.add(show, BorderLayout.WEST);
         jpShow.add(m_tfShowTag, BorderLayout.CENTER);
         jpShow.add(m_chkEnableShowTag, BorderLayout.EAST);
 
         JPanel jpRemoveTag = new JPanel(new BorderLayout());
         JLabel removeTag = new JLabel();
-        removeTag.setText("Remove : ");
+        removeTag.setText("Remove :  ");
         jpRemoveTag.add(removeTag, BorderLayout.WEST);
         jpRemoveTag.add(m_tfRemoveTag, BorderLayout.CENTER);
         jpRemoveTag.add(m_chkEnableRemoveTag, BorderLayout.EAST);
