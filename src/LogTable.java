@@ -24,7 +24,10 @@ import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
-import javax.swing.JTextArea;
+import javax.swing.JTextPane;
+import javax.swing.text.SimpleAttributeSet;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
 import javax.swing.JTable;
 import javax.swing.JViewport;
 import javax.swing.KeyStroke;
@@ -103,6 +106,46 @@ public class LogTable extends JTable implements FocusListener, ActionListener
 
         addMouseListener(new MouseAdapter()
         {
+            // 오른쪽 버튼을 누른 위치의 행 (뗄 때 이 행의 로그 전체를 보여준다)
+            int m_nRightPressRow = -1, m_nRightPressColumn = -1;
+
+            // 오른쪽 버튼: 누를 때 그 행을 선택하고, 뗄 때 처리한다.
+            // (mouseClicked는 누른 위치와 뗀 위치가 1픽셀만 달라도 오지 않아서, 실제 마우스로는 팝업이 안 뜨는 경우가 많았음)
+            public void mousePressed(MouseEvent e)
+            {
+                if(!SwingUtilities.isRightMouseButton(e)) return;
+                m_nRightPressRow    = rowAtPoint(e.getPoint());
+                m_nRightPressColumn = columnAtPoint(e.getPoint());
+                if(m_nRightPressRow >= 0 && !e.isAltDown())
+                    changeSelection(m_nRightPressRow, Math.max(0, m_nRightPressColumn), false, false, false);
+            }
+
+            public void mouseReleased(MouseEvent e)
+            {
+                if(!SwingUtilities.isRightMouseButton(e)) return;
+                int row = m_nRightPressRow >= 0 ? m_nRightPressRow : rowAtPoint(e.getPoint());
+                int colum = m_nRightPressColumn >= 0 ? m_nRightPressColumn : columnAtPoint(e.getPoint());
+                m_nRightPressRow = m_nRightPressColumn = -1;
+                if(row < 0 || colum < 0) return;
+                // Alt는 키보드 기록(m_bAltPressed)이 아니라 이 마우스 이벤트로 판단한다.
+                // (Alt+Tab 등으로 Alt 기록이 남아 있으면 일반 오른쪽 클릭이 무시되던 문제)
+                if(e.isAltDown())
+                {
+                    // Alt+우클릭(Tag): Remove tag 필터에 추가
+                    if(colum == LogFilterTableModel.COMUMN_TAG && m_engine != null)
+                    {
+                        String strTag = (String)((LogFilterTableModel)getModel()).getRow(row).getData(colum);
+                        m_engine.setRemoveTag(m_engine.getRemoveTag() + "|" + strTag);
+                        m_LogFilterMain.notiEvent(new INotiEvent.EventParam(INotiEvent.EVENT_CHANGE_FILTER_REMOVE_TAG));
+                    }
+                }
+                else
+                {
+                    // 우클릭: 그 줄의 로그 전체(원본 그대로)를 커서 위치에 보여준다. 복사 메뉴 포함.
+                    showFullLog(row, colum, e.getPoint());
+                }
+            }
+
             public void mouseClicked( MouseEvent e )
             {
                 Point p = e.getPoint();
@@ -115,7 +158,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                         logInfo.m_bMarked = !logInfo.m_bMarked;
                         m_LogFilterMain.bookmarkItem(row, logInfo.m_nLine - 1, logInfo.m_bMarked);
                      }
-                    else if(m_bAltPressed)
+                    else if(e.isAltDown())
                     {
                         // Alt+좌클릭(Tag): Show tag 필터에 추가/제거
                         int colum = columnAtPoint(p);
@@ -131,26 +174,6 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                                 m_engine.setShowTag(strShowTag + "|" + strTag);
                             m_LogFilterMain.notiEvent(new INotiEvent.EventParam(INotiEvent.EVENT_CHANGE_FILTER_SHOW_TAG));
                         }
-                    }
-                }
-                else if ( SwingUtilities.isRightMouseButton( e ))
-                {
-                    int colum = columnAtPoint(p);
-                    if(m_bAltPressed)
-                    {
-                        // Alt+우클릭(Tag): Remove tag 필터에 추가
-                        if(colum == LogFilterTableModel.COMUMN_TAG && m_engine != null)
-                        {
-                            String strTag = (String)((LogFilterTableModel)getModel()).getRow(row).getData(colum);
-                            m_engine.setRemoveTag(m_engine.getRemoveTag() + "|" + strTag);
-                            m_LogFilterMain.notiEvent(new INotiEvent.EventParam(INotiEvent.EVENT_CHANGE_FILTER_REMOVE_TAG));
-                        }
-                    }
-                    else
-                    {
-                        // 우클릭: 그 줄의 로그 전체(원본 그대로)를 커서 위치에 보여준다. 복사 메뉴 포함.
-                        changeSelection(row, colum, false, false, false);
-                        showFullLog(row, colum, p);
                     }
                 }
             }
@@ -171,20 +194,22 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         final String strLine = list.rawLine(nRow);
         final String strCell = (String)logInfo.getData(nColumn);
 
-        JTextArea taLine = new JTextArea(strLine);
+        // 테이블과 같은 하이라이트(입력창마다 고른 배경색 + 굵게)와 Find(빨간 굵은 글씨)를 적용한 줄바꿈 텍스트
+        JTextPane taLine = new JTextPane();
         taLine.setEditable(false);
-        taLine.setLineWrap(true);
-        taLine.setWrapStyleWord(true);
         taLine.setFont(getFont().deriveFont(m_fFontSize));
-        taLine.setForeground(logInfo.m_TextColor);
         taLine.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+        fillStyled(taLine.getStyledDocument(), strLine, logInfo.m_TextColor);
         taLine.setCaretPosition(0);
 
         // 줄바꿈한 높이를 구해 창 크기를 정한다. (짧으면 글자 폭에 맞춤)
-        int nTextWidth = taLine.getFontMetrics(taLine.getFont()).stringWidth(strLine.replace("\t", "    ")) + 16;
+        int nTextWidth = taLine.getFontMetrics(taLine.getFont()).stringWidth(strLine.replace("\t", "        ")) + 24;
         int nWidth     = Math.max(240, Math.min(Math.min(FULL_LOG_MAX_WIDTH, getVisibleRect().width - 20), nTextWidth));
         taLine.setSize(nWidth, Short.MAX_VALUE);
-        int nHeight    = Math.min(FULL_LOG_MAX_HEIGHT, taLine.getPreferredSize().height);
+        // 높이는 최대 400px, 창이 작으면 창 높이의 60%까지 (넘으면 스크롤)
+        java.awt.Window owner = SwingUtilities.getWindowAncestor(this);
+        int nMaxHeight = owner != null ? Math.max(120, Math.min(FULL_LOG_MAX_HEIGHT, owner.getHeight() * 6 / 10)) : FULL_LOG_MAX_HEIGHT;
+        int nHeight    = Math.min(nMaxHeight, taLine.getPreferredSize().height);
         JScrollPane spLine = new JScrollPane(taLine, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         spLine.setBorder(BorderFactory.createEmptyBorder());
         spLine.setPreferredSize(new Dimension(nWidth + (nHeight < taLine.getPreferredSize().height ? 18 : 0), nHeight));
@@ -208,7 +233,76 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         popup.add(miCopyLine);
         popup.add(miCopyCell);
         m_popupFullLog = popup;
-        popup.show(this, point.x, point.y);
+
+        // 프로그램 창의 가운데에 띄운다. (로그 화면보다 크면 창 기준으로 가운데)
+        Dimension size = popup.getPreferredSize();
+        java.awt.Window window = SwingUtilities.getWindowAncestor(this);
+        Rectangle rcCenter = window != null
+            ? SwingUtilities.convertRectangle(window, new Rectangle(0, 0, window.getWidth(), window.getHeight()), this)
+            : getVisibleRect();
+        int x = rcCenter.x + (rcCenter.width  - size.width)  / 2;
+        int y = rcCenter.y + (rcCenter.height - size.height) / 2;
+        popup.show(this, x, y);
+    }
+
+    /**
+     * strLine을 doc에 넣으면서 테이블 셀과 같은 규칙으로 꾸민다.
+     * 하이라이트 입력창 6개는 입력창 순서대로 고른 배경색 + 굵게(겹치면 뒤 입력창), Find 토큰은 빨간 굵은 글씨, 나머지는 레벨 글자색.
+     */
+    void fillStyled(StyledDocument doc, String strLine, Color colorText)
+    {
+        int nLen = strLine.length();
+        String strLower = strLine.toLowerCase();
+        Color[]   arBackground = new Color[nLen];
+        boolean[] arFind       = new boolean[nLen];
+
+        String[] arColor = LogColor.COLOR_HIGHLIGHT;
+        for(Highlight highlight : GetHighlights())
+        {
+            if(highlight.m_arToken.length == 0) continue;
+            Color color = new Color(Integer.parseInt(arColor[highlight.m_nColor % arColor.length], 16));
+            markRange(strLower, highlight.m_arToken, arBackground, color, null);
+        }
+        markRange(strLower, GetFindTokens(), null, null, arFind);
+
+        try
+        {
+            for(int nStart = 0; nStart < nLen; )
+            {
+                int nEnd = nStart + 1;
+                while(nEnd < nLen && arBackground[nEnd] == arBackground[nStart] && arFind[nEnd] == arFind[nStart])
+                    nEnd++;
+                SimpleAttributeSet attr = new SimpleAttributeSet();
+                StyleConstants.setForeground(attr, arFind[nStart] ? Color.RED : (colorText != null ? colorText : Color.BLACK));
+                if(arBackground[nStart] != null)
+                    StyleConstants.setBackground(attr, arBackground[nStart]);
+                StyleConstants.setBold(attr, arBackground[nStart] != null || arFind[nStart]);
+                doc.insertString(doc.getLength(), strLine.substring(nStart, nEnd), attr);
+                nStart = nEnd;
+            }
+        }
+        catch(javax.swing.text.BadLocationException e)
+        {
+            T.e(e);
+        }
+    }
+
+    // 소문자 토큰이 strLower에 나오는 구간을 표시한다 (배경색 또는 Find 표시)
+    static void markRange(String strLower, String[] arToken, Color[] arBackground, Color color, boolean[] arFind)
+    {
+        int nLen = strLower.length();
+        for(String strToken : arToken)
+        {
+            if(strToken.length() == 0) continue;
+            for(int nPos = strLower.indexOf(strToken); nPos >= 0; nPos = strLower.indexOf(strToken, nPos + strToken.length()))
+            {
+                for(int i = nPos; i < Math.min(nPos + strToken.length(), nLen); i++)
+                {
+                    if(arBackground != null) arBackground[i] = color;
+                    if(arFind != null)       arFind[i] = true;
+                }
+            }
+        }
     }
 
     JPopupMenu m_popupFullLog;     // 마지막으로 띄운 로그 전체 팝업 (테스트용)
