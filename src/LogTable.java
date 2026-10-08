@@ -264,6 +264,8 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             markRange(strLower, highlight.m_arToken, arBackground, color, null);
         }
         markRange(strLower, GetFindTokens(), null, null, arFind);
+        // 검색어: 빨간 배경 + 흰 굵은 글씨 (가장 우선)
+        markRange(strLower, GetSearchTokens(), arBackground, SEARCH_COLOR, null);
 
         try
         {
@@ -273,7 +275,8 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                 while(nEnd < nLen && arBackground[nEnd] == arBackground[nStart] && arFind[nEnd] == arFind[nStart])
                     nEnd++;
                 SimpleAttributeSet attr = new SimpleAttributeSet();
-                StyleConstants.setForeground(attr, arFind[nStart] ? Color.RED : (colorText != null ? colorText : Color.BLACK));
+                boolean bSearch = arBackground[nStart] == SEARCH_COLOR;
+                StyleConstants.setForeground(attr, bSearch ? Color.WHITE : arFind[nStart] ? Color.RED : (colorText != null ? colorText : Color.BLACK));
                 if(arBackground[nStart] != null)
                     StyleConstants.setBackground(attr, arBackground[nStart]);
                 StyleConstants.setBold(attr, arBackground[nStart] != null || arFind[nStart]);
@@ -367,6 +370,14 @@ public class LogTable extends JTable implements FocusListener, ActionListener
     }
 
     Highlight[] GetHighlights() { return m_arHighlight; }
+
+    // 메시지 검색어: Message 열에서 빨간 배경 + 흰 굵은 글씨로 표시 (하이라이트·Find보다 우선)
+    static final String SEARCH_BG    = "#E53935";
+    static final Color  SEARCH_COLOR = new Color(0xE53935);
+    volatile String[] m_arSearchToken = FilterToken.EMPTY;
+
+    void SetSearch(String strSearch) { m_arSearchToken = FilterToken.split(FilterEngine.nz(strSearch)); }
+    String[] GetSearchTokens()       { return m_arSearchToken; }
     String[] GetFindTokens()      { return m_engine != null ? m_engine.getFindTokens()    : FilterToken.EMPTY; }
     String[] GetTagShowTokens()   { return m_engine != null ? m_engine.getShowTagTokens() : FilterToken.EMPTY; }
 
@@ -659,10 +670,11 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             if(nIndex != LogFilterTableModel.COMUMN_MESSAGE && nIndex != LogFilterTableModel.COMUMN_TAG) return strText;
 
             String[] arFindToken      = nIndex == LogFilterTableModel.COMUMN_MESSAGE ? GetFindTokens() : GetTagShowTokens();
+            String[] arSearchToken    = nIndex == LogFilterTableModel.COMUMN_MESSAGE ? GetSearchTokens() : FilterToken.EMPTY;
             Highlight[] arHighlight   = GetHighlights();
 
-            // 하이라이트/Find 토큰이 하나도 일치하지 않으면 배열·HTML을 만들지 않고 바로 반환
-            boolean bAny = FilterToken.matchAny(strText, arFindToken);
+            // 하이라이트/Find/검색 토큰이 하나도 일치하지 않으면 배열·HTML을 만들지 않고 바로 반환
+            boolean bAny = FilterToken.matchAny(strText, arFindToken) || FilterToken.matchAny(strText, arSearchToken);
             for(int i = 0; !bAny && i < arHighlight.length; i++)
                 bAny = FilterToken.matchAny(strText, arHighlight[i].m_arToken);
             if(!bAny)
@@ -679,6 +691,13 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                 if(highlight.m_arToken.length > 0)
                     markMatch(strLower, highlight.m_arToken, new String[]{ arColor[highlight.m_nColor % arColor.length] }, arBackground, null);
             markMatch(strLower, arFindToken, null, null, arFind);
+            // 검색어는 맨 마지막에 칠해 하이라이트보다 우선, 그 구간은 Find 빨간 글씨 대신 흰 글씨
+            if(arSearchToken.length > 0)
+            {
+                markMatch(strLower, arSearchToken, new String[]{ SEARCH_BG }, arBackground, null);
+                for(int i = 0; i < arBackground.length; i++)
+                    if(arBackground[i] == SEARCH_BG) arFind[i] = false;
+            }
 
             if(!m_bChanged)
                 return plainText(strText);
@@ -741,7 +760,8 @@ public class LogTable extends JTable implements FocusListener, ActionListener
 
         void openStyle(StringBuilder sb, String strBackground, boolean bFind)
         {
-            if(strBackground != null) sb.append("<span style=\"background-color:").append(strBackground).append("\"><b>");
+            if(strBackground != null) sb.append("<span style=\"background-color:").append(strBackground)
+                                        .append(strBackground == SEARCH_BG ? ";color:#FFFFFF" : "").append("\"><b>");
             if(bFind)                 sb.append("<font color=#FF0000><b>");
         }
 

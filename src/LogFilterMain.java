@@ -1272,6 +1272,18 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tfSearch.setToolTipText("메시지 검색 (여러 개는 | 로 구분, 대소문자 무시) — Enter/F3: 다음, Shift+Enter/Shift+F3: 이전, Ctrl+F: 여기로");
         installUndoRedo(m_tfSearch);
         installInputHistory(m_tfSearch);
+        // 입력하는 대로 검색어를 테이블에 빨간색으로 표시 (재필터 없이 다시 그리기만)
+        m_tfSearch.getDocument().addDocumentListener(new DocumentListener()
+        {
+            void update()
+            {
+                m_tbLogTable.SetSearch(m_tfSearch.getText());
+                m_tbLogTable.repaint();
+            }
+            public void insertUpdate(DocumentEvent e)  { update(); }
+            public void removeUpdate(DocumentEvent e)  { update(); }
+            public void changedUpdate(DocumentEvent e) { update(); }
+        });
         // Enter: 히스토리에 저장하고 다음 찾기, Shift+Enter: 이전 찾기
         final javax.swing.Action commit = m_tfSearch.getActionMap().get("HistoryCommit");
         m_tfSearch.getActionMap().put("HistoryCommit", new AbstractAction()
