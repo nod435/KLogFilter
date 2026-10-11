@@ -129,6 +129,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     JCheckBox                 m_chkEnableShowPid;
     JCheckBox                 m_chkEnableShowTid;
     JCheckBox                 m_chkEnableTime;
+    JToggleButton             m_tbFindRegex;        // Find·Remove 정규식 모드 (1.19)
+    JToggleButton             m_tbRemoveRegex;
 
     //Log filter
     JCheckBox                 m_chkVerbose;
@@ -325,6 +327,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tfRemoveTag.setText(config.strRemoveTag);
         m_tfShowPid.setText(config.strShowPid);
         m_tfShowTid.setText(config.strShowTid);
+        m_tbFindRegex.setSelected(config.bFindRegex);
+        m_tbRemoveRegex.setSelected(config.bRemoveRegex);
+        applyRegexMode();
         m_tfTimeFrom.setText(config.strTimeFrom);
         m_tfTimeTo.setText(config.strTimeTo);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
@@ -357,6 +362,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.strRemoveTag = m_tfRemoveTag.getText();
         m_config.strShowPid   = m_tfShowPid.getText();
         m_config.strShowTid   = m_tfShowTid.getText();
+        m_config.bFindRegex   = m_tbFindRegex.isSelected();
+        m_config.bRemoveRegex = m_tbRemoveRegex.isSelected();
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
         m_config.strTimeTo    = m_tfTimeTo.getText();
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
@@ -393,6 +400,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.19 : Find·Remove 정규식 모드 (입력창 오른쪽 .* 버튼, 대소문자 무시)");
         addDesc("Version 1.18 : 시간 범위 필터 (Time : 시작 ~ 끝, 예: 12:30 ~ 12:45:30, 10-07 23:00 ~ 10-08 01:00)");
         addDesc("Version 1.17 : adb 기록 파일이 50MB를 넘으면 다음 파일(이름_2.txt, _3 …)에 이어서 기록, 화면은 끊김 없이 이어서 표시");
         addDesc("Version 1.16 : 입력창별 최근 입력 10개 저장(다음 실행에도 유지), ▼ 버튼·Alt+↓로 골라 쓰기");
@@ -517,7 +525,25 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     // ---- FilterEngine.Listener / LogSource.Listener ----
 
     public void onDataChanged(int nMode)    { refreshTable(nMode); }
-    public void onStatus(String strText)    { setStatus(strText); }
+    // 필터·로딩이 끝났다는 알림에 입력 오류(틀린 정규식·시각)를 덧붙여, 오류가 "Complete"에 가려지지 않게 한다.
+    public void onStatus(String strText)
+    {
+        String strError = inputErrors();
+        if(strError != null && strText != null && (strText.startsWith("Complete") || strText.startsWith("Ready")))
+            strText = strText + "   ⚠ " + strError;
+        setStatus(strText);
+    }
+
+    // 지금 입력창에 남아 있는 오류 (없으면 null)
+    volatile String m_strTimeError;
+    String inputErrors()
+    {
+        String strFind = m_engine.getFindRegexError(), strRemove = m_engine.getRemoveRegexError(), strTime = m_strTimeError;
+        StringBuilder sb = new StringBuilder();
+        for(String s : new String[]{ strFind, strRemove, strTime })
+            if(s != null) sb.append(sb.length() > 0 ? " / " : "").append(s);
+        return sb.length() > 0 ? sb.toString() : null;
+    }
     public void onTitle(String strTitle)    { setTitle(strTitle); }
 
     public void onProcessStopped()
@@ -852,6 +878,12 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     // [입력창][▼]: ▼를 누르면 최근 입력 목록을 띄워 골라 쓴다.
     static JPanel withHistory(final JTextComponent comp)
     {
+        return withHistory(comp, null);
+    }
+
+    // [입력창][extra][▼]: extra(예: 정규식 토글)는 ▼ 앞에 둔다. ▼는 오른쪽 끝에 맞춰진다.
+    static JPanel withHistory(final JTextComponent comp, Component extra)
+    {
         final JButton btn = new JButton("▼");
         btn.setMargin(new Insets(0, 2, 0, 2));
         btn.setFocusable(false);
@@ -866,8 +898,52 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         });
         JPanel jp = new JPanel(new BorderLayout());
         jp.add(comp, BorderLayout.CENTER);
-        jp.add(btn, BorderLayout.EAST);
+        if(extra == null)
+            jp.add(btn, BorderLayout.EAST);
+        else
+        {
+            JPanel jpEast = new JPanel(new BorderLayout());
+            jpEast.add(extra, BorderLayout.WEST);
+            jpEast.add(btn, BorderLayout.EAST);
+            jp.add(jpEast, BorderLayout.EAST);
+        }
         return jp;
+    }
+
+    // 정규식 모드 토글 ".*" (켜면 그 입력창을 정규식으로)
+    JToggleButton createRegexToggle(final String strWhich)
+    {
+        final JToggleButton tb = new JToggleButton(".*");
+        tb.setMargin(new Insets(0, 3, 0, 3));
+        tb.setFocusable(false);
+        tb.setToolTipText(strWhich + " 정규식 모드: 켜면 입력을 정규식으로 Message에서 찾습니다 (대소문자 무시). 끄면 | 로 나눈 단어 포함 검사");
+        tb.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e) { applyRegexMode(); }
+        });
+        return tb;
+    }
+
+    // 정규식 토글 상태를 엔진에 반영하고 재필터
+    void applyRegexMode()
+    {
+        m_engine.setFindRegex(m_tbFindRegex.isSelected());
+        m_engine.setRemoveRegex(m_tbRemoveRegex.isSelected());
+        showRegexErrors();
+        m_engine.requestFilter();
+        m_tbLogTable.repaint();
+    }
+
+    // 틀린 정규식이면 그 입력창을 붉게, 상태 표시줄에 이유 (그 필터는 거르지 않음)
+    void showRegexErrors()
+    {
+        String strFindError = m_engine.getFindRegexError(), strRemoveError = m_engine.getRemoveRegexError();
+        m_tfFindWord.setBackground(strFindError != null ? COLOR_INPUT_ERROR : Color.WHITE);
+        m_tfRemoveWord.setBackground(strRemoveError != null ? COLOR_INPUT_ERROR : Color.WHITE);
+        m_tfFindWord.setToolTipText(strFindError);
+        m_tfRemoveWord.setToolTipText(strRemoveError);
+        if(strFindError != null || strRemoveError != null)
+            setStatus(strFindError != null ? strFindError : strRemoveError);
     }
     Component getFilterPanel()
     {
@@ -927,13 +1003,15 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         JLabel find = new JLabel();
         find.setText("Find :  ");
         jpFind.add(checkAndLabel(m_chkEnableFind, find), BorderLayout.WEST);
-        jpFind.add(withHistory(m_tfFindWord), BorderLayout.CENTER);
+        m_tbFindRegex   = createRegexToggle("Find");
+        m_tbRemoveRegex = createRegexToggle("Remove");
+        jpFind.add(withHistory(m_tfFindWord, m_tbFindRegex), BorderLayout.CENTER);
 
         JPanel jpRemove = new JPanel(new BorderLayout());
         JLabel remove = new JLabel();
         remove.setText("Remove :  ");
         jpRemove.add(checkAndLabel(m_chkEnableRemove, remove), BorderLayout.WEST);
-        jpRemove.add(withHistory(m_tfRemoveWord), BorderLayout.CENTER);
+        jpRemove.add(withHistory(m_tfRemoveWord, m_tbRemoveRegex), BorderLayout.CENTER);
 
         // 시간 범위: [체크박스][Time :][시작 ▼] ~ [끝 ▼]
         JPanel jpTime = new JPanel(new BorderLayout());
@@ -1568,6 +1646,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             m_engine.setRemoveTag(checkBox.isSelected() ? m_tfRemoveTag.getText() : "");
         else if(checkBox.equals(m_chkEnableTime))
             applyTimeRange();
+        if(checkBox.equals(m_chkEnableFind) || checkBox.equals(m_chkEnableRemove))
+            showRegexErrors();
         m_engine.requestFilter();
     }
 
@@ -1578,6 +1658,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         m_tfTimeFrom.setBackground(Color.WHITE);
         m_tfTimeTo.setBackground(Color.WHITE);
+        m_strTimeError = null;
         if(!m_chkEnableTime.isSelected())
         {
             m_engine.clearTimeRange();
@@ -1601,6 +1682,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                     field.setBackground(COLOR_INPUT_ERROR);
                 }
             }
+            m_strTimeError = e.getMessage();
             setStatus(e.getMessage());
         }
     }
@@ -1733,9 +1815,15 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             }
 
             if(doc.equals(m_tfFindWord.getDocument()) && m_chkEnableFind.isSelected())
+            {
                 m_engine.setFind(strText);
+                showRegexErrors();
+            }
             else if(doc.equals(m_tfRemoveWord.getDocument()) && m_chkEnableRemove.isSelected())
+            {
                 m_engine.setRemove(strText);
+                showRegexErrors();
+            }
             else if(doc.equals(m_tfShowPid.getDocument()) && m_chkEnableShowPid.isSelected())
                 m_engine.setShowPid(strText);
             else if(doc.equals(m_tfShowTid.getDocument()) && m_chkEnableShowTid.isSelected())

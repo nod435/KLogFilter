@@ -83,8 +83,41 @@ public class FilterEngine
     }
 
     // ---- 필터 조건 설정 (토큰을 먼저 만들고 문자열을 나중에 넣는다) ----
-    void setFind(String str)      { m_arFindToken      = FilterToken.split(str); m_strFind      = nz(str); }
-    void setRemove(String str)    { m_arRemoveToken    = FilterToken.split(str); m_strRemove    = nz(str); }
+    void setFind(String str)      { m_arFindToken      = FilterToken.split(str); m_strFind      = nz(str); m_patFind   = compile(m_strFind, m_bFindRegex, 0); }
+    void setRemove(String str)    { m_arRemoveToken    = FilterToken.split(str); m_strRemove    = nz(str); m_patRemove = compile(m_strRemove, m_bRemoveRegex, 1); }
+
+    // 정규식 모드 (1.19): 켜면 Find/Remove 문자열을 정규식으로 Message에서 찾는다(대소문자 무시). 끄면 '|'로 나눈 단어 포함 검사.
+    volatile boolean                m_bFindRegex;
+    volatile boolean                m_bRemoveRegex;
+    volatile java.util.regex.Pattern m_patFind;          // 정규식 모드이고 올바른 식일 때만, 아니면 null
+    volatile java.util.regex.Pattern m_patRemove;
+    final String[]                  m_arRegexError = new String[2];   // [0] Find, [1] Remove 정규식 오류 (없으면 null)
+
+    void setFindRegex(boolean b)   { m_bFindRegex = b;   m_patFind   = compile(m_strFind, b, 0); }
+    void setRemoveRegex(boolean b) { m_bRemoveRegex = b; m_patRemove = compile(m_strRemove, b, 1); }
+    String getFindRegexError()     { return m_arRegexError[0]; }
+    String getRemoveRegexError()   { return m_arRegexError[1]; }
+
+    // 화면 표시용: 정규식 모드면 Find 정규식 (틀린 식이면 null)
+    java.util.regex.Pattern getFindPattern() { return m_bFindRegex ? m_patFind : null; }
+    boolean isFindRegex()                    { return m_bFindRegex; }
+
+    // 정규식 모드가 아니거나 비었으면 null. 틀린 식이면 null이고 오류를 기록한다(그 필터는 거르지 않음).
+    private java.util.regex.Pattern compile(String strText, boolean bRegex, int nSlot)
+    {
+        m_arRegexError[nSlot] = null;
+        if(!bRegex || strText.length() == 0)
+            return null;
+        try
+        {
+            return java.util.regex.Pattern.compile(strText, java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE);
+        }
+        catch(java.util.regex.PatternSyntaxException e)
+        {
+            m_arRegexError[nSlot] = (nSlot == 0 ? "Find" : "Remove") + " 정규식 오류: " + e.getDescription() + (e.getIndex() >= 0 ? " (위치 " + e.getIndex() + ")" : "");
+            return null;
+        }
+    }
     void setShowTag(String str)   { m_arShowTagToken   = FilterToken.split(str); m_strShowTag   = nz(str); }
     void setRemoveTag(String str) { m_arRemoveTagToken = FilterToken.split(str); m_strRemoveTag = nz(str); }
     void setShowPid(String str)   { m_arShowPidToken   = FilterToken.split(str); m_strShowPid   = nz(str); }
@@ -242,9 +275,26 @@ public class FilterEngine
             && matchShow(logInfo.m_strThread, m_arShowTidToken)
             && matchShow(logInfo.m_strTag, m_arShowTagToken)
             && matchRemove(logInfo.m_strTag, m_arRemoveTagToken)
-            && matchShow(logInfo.m_strMessage, m_arFindToken)
-            && matchRemove(logInfo.m_strMessage, m_arRemoveToken)
+            && checkFind(logInfo.m_strMessage)
+            && checkRemove(logInfo.m_strMessage)
             && checkTimeRange(logInfo);
+    }
+
+    // Find: 정규식 모드면 정규식이 메시지 안에서 찾아지는지, 아니면 단어 중 하나라도 포함하는지
+    boolean checkFind(String strMessage)
+    {
+        if(!m_bFindRegex)
+            return matchShow(strMessage, m_arFindToken);
+        java.util.regex.Pattern pattern = m_patFind;
+        return pattern == null || pattern.matcher(strMessage).find();
+    }
+
+    boolean checkRemove(String strMessage)
+    {
+        if(!m_bRemoveRegex)
+            return matchRemove(strMessage, m_arRemoveToken);
+        java.util.regex.Pattern pattern = m_patRemove;
+        return pattern == null || !pattern.matcher(strMessage).find();
     }
 
     boolean checkTimeRange(LogInfo logInfo)

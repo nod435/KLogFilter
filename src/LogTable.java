@@ -264,6 +264,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             markRange(strLower, highlight.m_arToken, arBackground, color, null);
         }
         markRange(strLower, GetFindTokens(), null, null, arFind);
+        markPattern(strLine, GetFindPattern(), arFind);
         // 검색어: 빨간 배경 + 흰 굵은 글씨 (가장 우선)
         markRange(strLower, GetSearchTokens(), arBackground, SEARCH_COLOR, null);
 
@@ -378,7 +379,25 @@ public class LogTable extends JTable implements FocusListener, ActionListener
 
     void SetSearch(String strSearch) { m_arSearchToken = FilterToken.split(FilterEngine.nz(strSearch)); }
     String[] GetSearchTokens()       { return m_arSearchToken; }
-    String[] GetFindTokens()      { return m_engine != null ? m_engine.getFindTokens()    : FilterToken.EMPTY; }
+    // Find 단어 (정규식 모드에서는 비어 있고, 대신 GetFindPattern()으로 표시)
+    String[] GetFindTokens()      { return m_engine != null && !m_engine.isFindRegex() ? m_engine.getFindTokens() : FilterToken.EMPTY; }
+    java.util.regex.Pattern GetFindPattern() { return m_engine != null ? m_engine.getFindPattern() : null; }
+
+    // 정규식이 찾은 구간을 표시한다 (빈 일치는 건너뜀)
+    static boolean markPattern(String strText, java.util.regex.Pattern pattern, boolean[] arFind)
+    {
+        if(pattern == null) return false;
+        boolean bAny = false;
+        java.util.regex.Matcher m = pattern.matcher(strText);
+        while(m.find())
+        {
+            if(m.end() == m.start()) continue;
+            for(int i = m.start(); i < m.end() && i < arFind.length; i++)
+                arFind[i] = true;
+            bAny = true;
+        }
+        return bAny;
+    }
     String[] GetTagShowTokens()   { return m_engine != null ? m_engine.getShowTagTokens() : FilterToken.EMPTY; }
 
     void gotoNextBookmark()
@@ -671,10 +690,12 @@ public class LogTable extends JTable implements FocusListener, ActionListener
 
             String[] arFindToken      = nIndex == LogFilterTableModel.COMUMN_MESSAGE ? GetFindTokens() : GetTagShowTokens();
             String[] arSearchToken    = nIndex == LogFilterTableModel.COMUMN_MESSAGE ? GetSearchTokens() : FilterToken.EMPTY;
+            java.util.regex.Pattern patFind = nIndex == LogFilterTableModel.COMUMN_MESSAGE ? GetFindPattern() : null;
             Highlight[] arHighlight   = GetHighlights();
 
             // 하이라이트/Find/검색 토큰이 하나도 일치하지 않으면 배열·HTML을 만들지 않고 바로 반환
-            boolean bAny = FilterToken.matchAny(strText, arFindToken) || FilterToken.matchAny(strText, arSearchToken);
+            boolean bAny = FilterToken.matchAny(strText, arFindToken) || FilterToken.matchAny(strText, arSearchToken)
+                        || (patFind != null && patFind.matcher(strText).find());
             for(int i = 0; !bAny && i < arHighlight.length; i++)
                 bAny = FilterToken.matchAny(strText, arHighlight[i].m_arToken);
             if(!bAny)
@@ -691,6 +712,8 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                 if(highlight.m_arToken.length > 0)
                     markMatch(strLower, highlight.m_arToken, new String[]{ arColor[highlight.m_nColor % arColor.length] }, arBackground, null);
             markMatch(strLower, arFindToken, null, null, arFind);
+            if(markPattern(strText, patFind, arFind))
+                m_bChanged = true;
             // 검색어는 맨 마지막에 칠해 하이라이트보다 우선, 그 구간은 Find 빨간 글씨 대신 흰 글씨
             if(arSearchToken.length > 0)
             {

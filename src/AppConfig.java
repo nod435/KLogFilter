@@ -35,6 +35,8 @@ public class AppConfig
     static final String INI_TID_SHOW        = "TID_SHOW";
     static final String INI_TIME_FROM       = "TIME_FROM";            // 시간 범위 필터 (1.18)
     static final String INI_TIME_TO         = "TIME_TO";
+    static final String INI_FIND_REGEX      = "FIND_REGEX";           // 정규식 모드 (1.19)
+    static final String INI_REMOVE_REGEX    = "REMOVE_REGEX";
     static final String INI_COLOR_0         = "INI_COLOR_0";
     static final String INI_COLOR_1         = "INI_COLOR_1";
     static final String INI_COLOR_2         = "INI_COLOR_2";
@@ -70,6 +72,8 @@ public class AppConfig
     String strShowTid   = "";
     String strTimeFrom  = "";
     String strTimeTo    = "";
+    boolean bFindRegex;
+    boolean bRemoveRegex;
     // 하이라이트 입력창 6개: 문자열, 색상 번호, 사용 여부 (기본: n번 입력창은 n번 색상, 사용)
     String[]  arHighlight      = new String[LogColor.HIGHLIGHT_COUNT];
     int[]     arHighlightColor = new int[LogColor.HIGHLIGHT_COUNT];
@@ -104,6 +108,8 @@ public class AppConfig
         config.strShowTid   = p.getProperty(INI_TID_SHOW, "");
         config.strTimeFrom  = p.getProperty(INI_TIME_FROM, "");
         config.strTimeTo    = p.getProperty(INI_TIME_TO, "");
+        config.bFindRegex   = "true".equalsIgnoreCase(p.getProperty(INI_FIND_REGEX, "false").trim());
+        config.bRemoveRegex = "true".equalsIgnoreCase(p.getProperty(INI_REMOVE_REGEX, "false").trim());
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             // 이전 버전 설정(HIGHLIGHT 하나)은 첫 번째 입력창으로 옮긴다.
@@ -158,6 +164,8 @@ public class AppConfig
         p.setProperty(INI_TID_SHOW,     strShowTid);
         p.setProperty(INI_TIME_FROM,    strTimeFrom);
         p.setProperty(INI_TIME_TO,      strTimeTo);
+        p.setProperty(INI_FIND_REGEX,   "" + bFindRegex);
+        p.setProperty(INI_REMOVE_REGEX, "" + bRemoveRegex);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             p.setProperty(INI_HIGHLIGHT_ + nIndex,       arHighlight[nIndex] == null ? "" : arHighlight[nIndex]);
