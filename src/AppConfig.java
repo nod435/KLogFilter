@@ -30,6 +30,7 @@ public class AppConfig
     static final String INI_HIGHLIGHT_      = "HIGHLIGHT_";           // 하이라이트 입력창 n의 문자열
     static final String INI_HIGHLIGHT_COLOR_= "HIGHLIGHT_COLOR_";     // 입력창 n이 쓰는 색상 번호 (0~5)
     static final String INI_HIGHLIGHT_ON_   = "HIGHLIGHT_ON_";        // 입력창 n 사용 여부
+    static final String INI_HISTORY_        = "HISTORY_";             // 최근 입력 기록 HISTORY_<입력창>_<0~9>
     static final String INI_PID_SHOW        = "PID_SHOW";
     static final String INI_TID_SHOW        = "TID_SHOW";
     static final String INI_COLOR_0         = "INI_COLOR_0";
@@ -77,6 +78,8 @@ public class AppConfig
             arHighlightOn[nIndex]    = true;
         }
     }
+    // 입력창별 최근 입력 기록: 이름(FIND, HIGHLIGHT_0, SEARCH …) → 목록 (LogFilter.ini의 HISTORY_<이름>_0~9)
+    java.util.Map<String, List<String>> mapHistory = new java.util.LinkedHashMap<String, List<String>>();
     int    nWinWidth    = DEFAULT_WIDTH;
     int    nWinHeight   = DEFAULT_HEIGHT;
     int    nWindowState = JFrame.NORMAL;
@@ -112,6 +115,28 @@ public class AppConfig
 
         for(int nIndex = 0; nIndex < LogFilterTableModel.COMUMN_MAX; nIndex++)
             config.arColumnWidth[nIndex] = intOf(p, INI_COMUMN + nIndex, LogFilterTableModel.ColWidth[nIndex]);
+
+        // 최근 입력 기록: HISTORY_<이름>_<번호> (번호 순서 = 최근 순서)
+        java.util.Map<String, String[]> mapTemp = new java.util.TreeMap<String, String[]>();
+        for(String strKey : p.stringPropertyNames())
+        {
+            if(!strKey.startsWith(INI_HISTORY_)) continue;
+            int nSep = strKey.lastIndexOf('_');
+            String strName = strKey.substring(INI_HISTORY_.length(), nSep);
+            int nIndex;
+            try { nIndex = Integer.parseInt(strKey.substring(nSep + 1)); } catch(NumberFormatException e) { continue; }
+            if(strName.length() == 0 || nIndex < 0 || nIndex >= InputHistory.MAX) continue;
+            String[] ar = mapTemp.get(strName);
+            if(ar == null) mapTemp.put(strName, ar = new String[InputHistory.MAX]);
+            ar[nIndex] = p.getProperty(strKey);
+        }
+        for(java.util.Map.Entry<String, String[]> entry : mapTemp.entrySet())
+        {
+            List<String> arItem = new ArrayList<String>();
+            for(String s : entry.getValue())
+                if(s != null && s.length() > 0) arItem.add(s);
+            config.mapHistory.put(entry.getKey(), arItem);
+        }
         return config;
     }
 
@@ -136,6 +161,12 @@ public class AppConfig
         p.setProperty(INI_WINDOW_STATE, "" + nWindowState);
         for(int nIndex = 0; nIndex < arColumnWidth.length; nIndex++)
             p.setProperty(INI_COMUMN + nIndex, "" + arColumnWidth[nIndex]);
+        for(java.util.Map.Entry<String, List<String>> entry : mapHistory.entrySet())
+        {
+            List<String> arItem = entry.getValue();
+            for(int nIndex = 0; nIndex < arItem.size() && nIndex < InputHistory.MAX; nIndex++)
+                p.setProperty(INI_HISTORY_ + entry.getKey() + "_" + nIndex, arItem.get(nIndex));
+        }
         storeProperties(p, INI_FILE);
     }
 

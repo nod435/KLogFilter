@@ -331,6 +331,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         }
         for(int nIndex = 0; nIndex < LogFilterTableModel.COMUMN_MAX; nIndex++)
             LogFilterTableModel.setColumnWidth(nIndex, config.arColumnWidth[nIndex]);
+        // 입력창별 최근 입력 기록 (이전 실행에서 저장한 것)
+        for(InputHistory history : m_mapHistory.values())
+            history.setItems(config.mapHistory.get(history.m_strKey));
     }
 
     void saveConfig()
@@ -357,6 +360,13 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         }
         for(int nIndex = 0; nIndex < LogFilterTableModel.COMUMN_MAX; nIndex++)
             m_config.arColumnWidth[nIndex] = m_tbLogTable.getColumnWidth(nIndex);
+        // 최근 입력 기록 (지금 입력창에 있는 값도 맨 앞에 넣어 저장)
+        m_config.mapHistory.clear();
+        for(InputHistory history : m_mapHistory.values())
+        {
+            history.commit();
+            m_config.mapHistory.put(history.m_strKey, history.items());
+        }
         m_config.save();
     }
     // 시작 안내 문구를 담는 메모리 목록
@@ -376,6 +386,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.16 : 입력창별 최근 입력 10개 저장(다음 실행에도 유지), ▼ 버튼·Alt+↓로 골라 쓰기");
         addDesc("Version 1.15 : File > 강제 종료 (진행 중인 작업을 기다리지 않고 바로 종료)");
         addDesc("Version 1.14 : 메시지 검색 (Ctrl+F, F3 다음 / Shift+F3 이전), 북마크 이동은 F2 / Shift+F2");
         addDesc("Version 1.13 : 오른쪽 클릭 → 그 줄의 로그 전체 보기 (줄바꿈, 로그 전체/셀 값 복사)");
@@ -814,94 +825,38 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         });
     }
 
-    // 편집창별 최근 입력값 cache 최대 개수
-    static final int MAX_INPUT_HISTORY = 10;
+    // 입력창별 최근 입력 기록 (이름 → 기록). 설정 파일에 저장되어 다음 실행에도 남는다.
+    final java.util.Map<String, InputHistory> m_mapHistory = new java.util.LinkedHashMap<String, InputHistory>();
 
-    // 편집창(텍스트 필드)에 최근 입력값 cache(최대 10개)와 ↑/↓ 방향키 불러오기 기능을 추가한다.
-    void installInputHistory(final JTextComponent comp)
+    // 편집창에 최근 입력 기록(최대 10개)과 ↑/↓·Alt+↓ 불러오기를 붙인다.
+    InputHistory installInputHistory(JTextComponent comp, String strKey)
     {
-        // 최근 입력값 목록(맨 앞이 가장 최근). Enter 또는 포커스 이동 시 저장된다.
-        final List<String> history = new ArrayList<String>();
-        // 현재 히스토리 탐색 위치. -1이면 탐색 중이 아님(사용자가 직접 편집 중).
-        final int[] cursor = { -1 };
-
-        // 현재 값을 cache에 저장(중복 제거 후 맨 앞으로, 최대 10개 유지)
-        final Runnable commit = new Runnable()
-        {
-            public void run()
-            {
-                String text = comp.getText();
-                if(text == null || text.trim().length() == 0)
-                    return;
-                history.remove(text);
-                history.add(0, text);
-                while(history.size() > MAX_INPUT_HISTORY)
-                    history.remove(history.size() - 1);
-                cursor[0] = -1;
-            }
-        };
-
-        // Enter : 현재 값을 cache에 저장
-        comp.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "HistoryCommit");
-        comp.getActionMap().put("HistoryCommit", new AbstractAction()
-        {
-            private static final long serialVersionUID = 1L;
-            public void actionPerformed(ActionEvent e)
-            {
-                commit.run();
-            }
-        });
-
-        // 히스토리 탐색을 시작하기 전에 입력창에 있던 값. ↓로 맨 앞을 지나면 이 값으로 돌아온다.
-        final String[] draft = { "" };
-
-        // ↑ : 더 예전 입력값으로 이동
-        comp.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "HistoryPrev");
-        comp.getActionMap().put("HistoryPrev", new AbstractAction()
-        {
-            private static final long serialVersionUID = 1L;
-            public void actionPerformed(ActionEvent e)
-            {
-                if(history.isEmpty())
-                    return;
-                if(cursor[0] == -1)
-                {
-                    draft[0] = comp.getText();
-                    // 지금 값이 가장 최근 기록과 같으면 그 다음 것부터 보여준다.
-                    cursor[0] = history.get(0).equals(draft[0]) && history.size() > 1 ? 1 : 0;
-                }
-                else if(cursor[0] < history.size() - 1)
-                    cursor[0]++;
-                comp.setText(history.get(cursor[0]));
-                comp.setCaretPosition(comp.getDocument().getLength());
-            }
-        });
-
-        // ↓ : 더 최근 입력값으로 이동. 맨 앞을 지나면 탐색 전 값으로 돌아간다. (탐색 중이 아니면 아무 동작 안 함)
-        comp.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "HistoryNext");
-        comp.getActionMap().put("HistoryNext", new AbstractAction()
-        {
-            private static final long serialVersionUID = 1L;
-            public void actionPerformed(ActionEvent e)
-            {
-                if(cursor[0] == -1)
-                    return;
-                cursor[0]--;
-                comp.setText(cursor[0] == -1 ? draft[0] : history.get(cursor[0]));
-                comp.setCaretPosition(comp.getDocument().getLength());
-            }
-        });
-
-        // 포커스가 벗어날 때도 현재 값을 cache에 저장(Enter를 누르지 않아도 기록)
-        comp.addFocusListener(new java.awt.event.FocusAdapter()
-        {
-            public void focusLost(java.awt.event.FocusEvent e)
-            {
-                commit.run();
-            }
-        });
+        InputHistory history = new InputHistory(strKey, comp);
+        m_mapHistory.put(strKey, history);
+        comp.putClientProperty(InputHistory.class, history);
+        return history;
     }
 
+    // [입력창][▼]: ▼를 누르면 최근 입력 목록을 띄워 골라 쓴다.
+    static JPanel withHistory(final JTextComponent comp)
+    {
+        final JButton btn = new JButton("▼");
+        btn.setMargin(new Insets(0, 2, 0, 2));
+        btn.setFocusable(false);
+        btn.setToolTipText("최근 입력 목록 (최대 10개, Alt+↓)");
+        btn.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e)
+            {
+                InputHistory history = (InputHistory)comp.getClientProperty(InputHistory.class);
+                if(history != null) history.showPopup(comp);
+            }
+        });
+        JPanel jp = new JPanel(new BorderLayout());
+        jp.add(comp, BorderLayout.CENTER);
+        jp.add(btn, BorderLayout.EAST);
+        return jp;
+    }
     Component getFilterPanel()
     {
         m_chkEnableFind         = new JCheckBox();
@@ -933,12 +888,12 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         installUndoRedo(m_tfShowTid);
 
         // 필터 편집창에 최근 입력값 ↑/↓ 불러오기 기능 추가
-        installInputHistory(m_tfFindWord);
-        installInputHistory(m_tfRemoveWord);
-        installInputHistory(m_tfShowTag);
-        installInputHistory(m_tfRemoveTag);
-        installInputHistory(m_tfShowPid);
-        installInputHistory(m_tfShowTid);
+        installInputHistory(m_tfFindWord,   "FIND");
+        installInputHistory(m_tfRemoveWord, "REMOVE");
+        installInputHistory(m_tfShowTag,    "SHOW_TAG");
+        installInputHistory(m_tfRemoveTag,  "REMOVE_TAG");
+        installInputHistory(m_tfShowPid,    "PID");
+        installInputHistory(m_tfShowTid,    "TID");
 
         JPanel jpMain = new JPanel(new BorderLayout());
 
@@ -949,13 +904,13 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         JLabel find = new JLabel();
         find.setText("Find :  ");
         jpFind.add(checkAndLabel(m_chkEnableFind, find), BorderLayout.WEST);
-        jpFind.add(m_tfFindWord, BorderLayout.CENTER);
+        jpFind.add(withHistory(m_tfFindWord), BorderLayout.CENTER);
 
         JPanel jpRemove = new JPanel(new BorderLayout());
         JLabel remove = new JLabel();
         remove.setText("Remove :  ");
         jpRemove.add(checkAndLabel(m_chkEnableRemove, remove), BorderLayout.WEST);
-        jpRemove.add(m_tfRemoveWord, BorderLayout.CENTER);
+        jpRemove.add(withHistory(m_tfRemoveWord), BorderLayout.CENTER);
 
         jpWordFilter.add(jpFind, BorderLayout.NORTH);
         jpWordFilter.add(jpRemove);
@@ -969,25 +924,25 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         JLabel pid = new JLabel();
         pid.setText("Pid :  ");
         jpPid.add(checkAndLabel(m_chkEnableShowPid, pid), BorderLayout.WEST);
-        jpPid.add(m_tfShowPid, BorderLayout.CENTER);
+        jpPid.add(withHistory(m_tfShowPid), BorderLayout.CENTER);
 
         JPanel jpTid = new JPanel(new BorderLayout());
         JLabel tid = new JLabel();
         tid.setText("Tid :  ");
         jpTid.add(checkAndLabel(m_chkEnableShowTid, tid), BorderLayout.WEST);
-        jpTid.add(m_tfShowTid, BorderLayout.CENTER);
+        jpTid.add(withHistory(m_tfShowTid), BorderLayout.CENTER);
 
         JPanel jpShow = new JPanel(new BorderLayout());
         JLabel show = new JLabel();
         show.setText("Show :  ");
         jpShow.add(checkAndLabel(m_chkEnableShowTag, show), BorderLayout.WEST);
-        jpShow.add(m_tfShowTag, BorderLayout.CENTER);
+        jpShow.add(withHistory(m_tfShowTag), BorderLayout.CENTER);
 
         JPanel jpRemoveTag = new JPanel(new BorderLayout());
         JLabel removeTag = new JLabel();
         removeTag.setText("Remove :  ");
         jpRemoveTag.add(checkAndLabel(m_chkEnableRemoveTag, removeTag), BorderLayout.WEST);
-        jpRemoveTag.add(m_tfRemoveTag, BorderLayout.CENTER);
+        jpRemoveTag.add(withHistory(m_tfRemoveTag), BorderLayout.CENTER);
 
         // 라벨을 모두 가장 긴 라벨 폭으로 맞추고 오른쪽 정렬해, 입력창이 같은 위치에서 시작하게 한다.
         alignLabels(find, remove, pid, tid, show, removeTag);
@@ -1041,7 +996,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             m_arTfHighlight[nIndex] = new JTextField();
             m_arTfHighlight[nIndex].setToolTipText("하이라이트할 단어 (여러 개는 | 로 구분, 대소문자 무시)");
             installUndoRedo(m_arTfHighlight[nIndex]);
-            installInputHistory(m_arTfHighlight[nIndex]);
+            installInputHistory(m_arTfHighlight[nIndex], "HIGHLIGHT_" + nIndex);
 
             JPanel jpLeft = new JPanel(new BorderLayout());
             jpLeft.add(m_arChkHighlight[nIndex], BorderLayout.WEST);
@@ -1049,7 +1004,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
             JPanel jpRow = new JPanel(new BorderLayout(2, 0));
             jpRow.add(jpLeft, BorderLayout.WEST);
-            jpRow.add(m_arTfHighlight[nIndex], BorderLayout.CENTER);
+            jpRow.add(withHistory(m_arTfHighlight[nIndex]), BorderLayout.CENTER);
             jpMain.add(jpRow);
         }
         return jpMain;
@@ -1325,7 +1280,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tfSearch = new JTextField();
         m_tfSearch.setToolTipText("메시지 검색 (여러 개는 | 로 구분, 대소문자 무시) — Enter/F3: 다음, Shift+Enter/Shift+F3: 이전, Ctrl+F: 여기로");
         installUndoRedo(m_tfSearch);
-        installInputHistory(m_tfSearch);
+        installInputHistory(m_tfSearch, "SEARCH");
         // 입력하는 대로 검색어를 테이블에 빨간색으로 표시 (재필터 없이 다시 그리기만)
         m_tfSearch.getDocument().addDocumentListener(new DocumentListener()
         {
@@ -1378,7 +1333,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         JPanel jpSearch = new JPanel(new BorderLayout(4, 0));
         jpSearch.setBorder(BorderFactory.createEmptyBorder(5, 6, 5, 4));
         jpSearch.add(new JLabel("Search : "), BorderLayout.WEST);
-        jpSearch.add(m_tfSearch, BorderLayout.CENTER);
+        jpSearch.add(withHistory(m_tfSearch), BorderLayout.CENTER);
         jpSearch.add(jpButtons, BorderLayout.EAST);
         return jpSearch;
     }
