@@ -20,19 +20,43 @@ public class FileLogStore extends LogStore
     static final int READ_BUFFER = 4 << 20;     // 4MB씩 읽는다
     static final int MAX_LINE    = 64 << 20;    // 한 줄이 이보다 길면 잘라서 여러 줄로
 
-    final File      m_file;
+    final File      m_file;                     // 첫 번째 파일 (목록의 이름. 실시간 수집이면 수집 세션을 가리킨다)
     final Charset   m_charset;
     private final LongList m_offsets = new LongList(1 << 16);
     private final IntList  m_lengths = new IntList(1 << 16);
     private volatile long  m_nIndexedEnd;       // 여기까지 색인함(다음 색인을 시작할 위치)
-    private FileChannel    m_channel;
     private volatile boolean m_bClosed;         // close() 후에는 다시 열지 않는다 (교체된 목록)
     private byte[]         m_indexBuffer;       // 색인 스레드 전용
 
+    /**
+     * 파일 조각: 실시간 수집에서 기록 파일이 50MB를 넘으면 다음 파일로 이어 쓴다.
+     * 줄 위치는 모든 파일을 이어 붙인 위치(가상 위치)로 기억하고, 읽을 때 조각을 찾아 그 파일에서 읽는다.
+     * 파일을 열어 읽을 때는 조각이 하나뿐이다.
+     */
+    static final class Segment
+    {
+        final File  m_file;
+        final long  m_nStart;       // 이 파일의 첫 바이트의 가상 위치
+        FileChannel m_channel;      // FileLogStore 락 안에서만
+
+        Segment(File file, long nStart)
+        {
+            m_file   = file;
+            m_nStart = nStart;
+        }
+    }
+    private volatile Segment[] m_arSegment;     // 시작 위치 순. 추가할 때 새 배열로 교체
+
     public FileLogStore(File file, Charset charset, ILogParser parser, long nStartOffset)
     {
+        this(new Segment[]{ new Segment(file, 0) }, charset, parser, nStartOffset);
+    }
+
+    private FileLogStore(Segment[] arSegment, Charset charset, ILogParser parser, long nStartOffset)
+    {
         super(parser);
-        m_file        = file;
+        m_arSegment   = arSegment;
+        m_file        = arSegment[0].m_file;
         m_charset     = charset;
         m_nIndexedEnd = nStartOffset;
     }
@@ -47,37 +71,76 @@ public class FileLogStore extends LogStore
         return m_nIndexedEnd;
     }
 
-    private synchronized FileChannel channel() throws IOException
+    // 실시간 수집: 다음 기록 파일이 가상 위치 nStart부터 이어진다. (그 파일의 줄을 추가하기 전에 호출)
+    synchronized void addSegment(File file, long nStart)
+    {
+        Segment[] ar = java.util.Arrays.copyOf(m_arSegment, m_arSegment.length + 1);
+        ar[ar.length - 1] = new Segment(file, nStart);
+        m_arSegment = ar;
+    }
+
+    // 이 목록이 읽는 파일들 (첫 파일부터)
+    File[] files()
+    {
+        Segment[] ar = m_arSegment;
+        File[] arFile = new File[ar.length];
+        for(int i = 0; i < ar.length; i++)
+            arFile[i] = ar[i].m_file;
+        return arFile;
+    }
+
+    private synchronized FileChannel channel(Segment segment) throws IOException
     {
         if(m_bClosed) throw new ClosedChannelException();
-        if(m_channel == null || !m_channel.isOpen())
-            m_channel = FileChannel.open(m_file.toPath(), StandardOpenOption.READ);
-        return m_channel;
+        if(segment.m_channel == null || !segment.m_channel.isOpen())
+            segment.m_channel = FileChannel.open(segment.m_file.toPath(), StandardOpenOption.READ);
+        return segment.m_channel;
+    }
+
+    // 첫 번째 파일 (파일 열기 색인용)
+    private FileChannel channel() throws IOException
+    {
+        return channel(m_arSegment[0]);
+    }
+
+    // 모든 조각을 이어 붙인 크기 (마지막 파일의 시작 위치 + 그 파일 크기)
+    private long totalSize() throws IOException
+    {
+        Segment[] ar = m_arSegment;
+        Segment last = ar[ar.length - 1];
+        return last.m_nStart + channel(last).size();
     }
 
     synchronized void close()
     {
         m_bClosed = true;
-        try
+        for(Segment segment : m_arSegment)
         {
-            if(m_channel != null) m_channel.close();
+            try
+            {
+                if(segment.m_channel != null) segment.m_channel.close();
+            }
+            catch(IOException e)
+            {
+                T.e(e);
+            }
+            segment.m_channel = null;
         }
-        catch(IOException e)
-        {
-            T.e(e);
-        }
-        m_channel = null;
     }
 
     LogStore cleared()
     {
-        return new FileLogStore(m_file, m_charset, m_parser, m_nIndexedEnd);
+        Segment[] ar = m_arSegment;
+        Segment[] arCopy = new Segment[ar.length];
+        for(int i = 0; i < ar.length; i++)
+            arCopy[i] = new Segment(ar[i].m_file, ar[i].m_nStart);
+        return new FileLogStore(arCopy, m_charset, m_parser, m_nIndexedEnd);
     }
 
-    // nPos부터 nLen바이트를 buf에 채운다. 실제로 읽은 바이트 수를 돌려준다.
-    private static int read(FileChannel channel, long nPos, byte[] buf, int nLen) throws IOException
+    // nPos부터 nLen바이트를 buf[nOff...]에 채운다. 실제로 읽은 바이트 수를 돌려준다.
+    private static int read(FileChannel channel, long nPos, byte[] buf, int nOff, int nLen) throws IOException
     {
-        ByteBuffer bb = ByteBuffer.wrap(buf, 0, nLen);
+        ByteBuffer bb = ByteBuffer.wrap(buf, nOff, nLen);
         int nTotal = 0;
         while(nTotal < nLen)
         {
@@ -88,17 +151,41 @@ public class FileLogStore extends LogStore
         return nTotal;
     }
 
+    private static int read(FileChannel channel, long nPos, byte[] buf, int nLen) throws IOException
+    {
+        return read(channel, nPos, buf, 0, nLen);
+    }
+
+    // 가상 위치 nPos부터 nLen바이트. 파일 조각 경계를 넘으면 나눠 읽는다.
+    private int readSegments(long nPos, byte[] buf, int nLen) throws IOException
+    {
+        Segment[] ar = m_arSegment;
+        int nTotal = 0;
+        while(nTotal < nLen)
+        {
+            long nCur = nPos + nTotal;
+            int k = ar.length - 1;
+            while(k > 0 && ar[k].m_nStart > nCur) k--;
+            long nSegEnd = k + 1 < ar.length ? ar[k + 1].m_nStart : Long.MAX_VALUE;
+            int nWant = (int)Math.min(nLen - nTotal, nSegEnd - nCur);
+            int n = read(channel(ar[k]), nCur - ar[k].m_nStart, buf, nTotal, nWant);
+            nTotal += n;
+            if(n < nWant) break;        // 파일 끝
+        }
+        return nTotal;
+    }
+
     // 다른 스레드가 읽다가 인터럽트되어 채널이 닫혔으면 다시 열어 한 번 더 읽는다.
     private int readAt(long nPos, byte[] buf, int nLen) throws IOException
     {
         try
         {
-            return read(channel(), nPos, buf, nLen);
+            return readSegments(nPos, buf, nLen);
         }
         catch(ClosedChannelException e)
         {
             if(m_bClosed) throw e;
-            return read(channel(), nPos, buf, nLen);
+            return readSegments(nPos, buf, nLen);
         }
     }
 
@@ -279,7 +366,7 @@ public class FileLogStore extends LogStore
                 {
                     if(nLength > buf.length) buf = new byte[nLength];
                     nBufStart = nOffset;
-                    nBufLen   = readAt(nOffset, buf, (int)Math.min(buf.length, channel().size() - nOffset));
+                    nBufLen   = readAt(nOffset, buf, (int)Math.min(buf.length, totalSize() - nOffset));
                 }
                 String strLine = new String(buf, (int)(nOffset - nBufStart), Math.min(nLength, nBufLen - (int)(nOffset - nBufStart)), m_charset);
                 LogInfo logInfo = parse(i, strLine);

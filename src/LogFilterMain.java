@@ -386,6 +386,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.17 : adb 기록 파일이 50MB를 넘으면 다음 파일(이름_2.txt, _3 …)에 이어서 기록, 화면은 끊김 없이 이어서 표시");
         addDesc("Version 1.16 : 입력창별 최근 입력 10개 저장(다음 실행에도 유지), ▼ 버튼·Alt+↓로 골라 쓰기");
         addDesc("Version 1.15 : File > 강제 종료 (진행 중인 작업을 기다리지 않고 바로 종료)");
         addDesc("Version 1.14 : 메시지 검색 (Ctrl+F, F3 다음 / Shift+F3 이전), 북마크 이동은 F2 / Shift+F2");

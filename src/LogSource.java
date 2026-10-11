@@ -153,6 +153,8 @@ public class LogSource
     static final Charset ADB_CHARSET     = Charset.forName("UTF-8");   // adb 출력은 장치에서 UTF-8로 온다
     static final long    LIVE_PUBLISH_MS = 50;      // 출력이 계속 들어오는 동안 화면에 알리는 간격
     static final int     LIVE_BUFFER     = 64 << 10;
+    // 기록 파일 하나의 최대 크기. 넘으면 다음 파일(이름_2.txt, _3 …)에 이어 쓴다. (테스트용으로 -Dklogfilter.rotateBytes로 바꿀 수 있음)
+    static final long    LIVE_ROTATE_BYTES = Long.getLong("klogfilter.rotateBytes", 50L << 20);
 
     /**
      * adb 출력 한 줄씩을 기록 파일에 쓰면서, 쓴 위치를 목록(FileLogStore)에 바로 추가한다.
@@ -161,9 +163,11 @@ public class LogSource
      */
     class LiveFeed
     {
-        final File         m_file;
-        final OutputStream m_out;
-        long               m_nWritten;                                  // 파일에 쓴 바이트 수 (AdbProcess 스레드만)
+        final File         m_file;                                      // 첫 기록 파일 (수집 세션을 가리킴)
+        OutputStream       m_out;                                       // 지금 쓰는 파일
+        long               m_nWritten;                                  // 모든 기록 파일에 쓴 바이트 수 = 가상 위치 (AdbProcess 스레드만)
+        long               m_nFileBytes;                                // 지금 파일에 쓴 바이트 수
+        int                m_nFileCount = 1;
         final ArrayList<long[]> m_arBatch   = new ArrayList<long[]>();  // 쓰고 아직 flush하지 않은 줄 {위치, 길이}
         final ArrayList<String> m_arBatchStr = new ArrayList<String>();
         final ArrayList<long[]> m_arReady   = new ArrayList<long[]>();  // flush했고 화면에 넘길 줄 (Pause 중에는 쌓임)
@@ -180,12 +184,36 @@ public class LogSource
         void write(String strLine) throws IOException
         {
             byte[] arByte = strLine.getBytes(ADB_CHARSET);
+            // 이 줄을 쓰면 최대 크기를 넘으면 다음 파일로 (줄 중간에서 나누지 않음)
+            if(m_nFileBytes > 0 && m_nFileBytes + arByte.length + 2 > LIVE_ROTATE_BYTES)
+                rotate();
             m_out.write(arByte);
             m_out.write('\r');
             m_out.write('\n');
             m_arBatch.add(new long[]{ m_nWritten, arByte.length });
             m_arBatchStr.add(strLine);
-            m_nWritten += arByte.length + 2;
+            m_nWritten   += arByte.length + 2;
+            m_nFileBytes += arByte.length + 2;
+        }
+
+        // 지금 파일을 마무리하고 다음 파일을 연다. 목록에는 다음 파일이 지금 가상 위치부터 이어진다고 알린다.
+        void rotate() throws IOException
+        {
+            flush();
+            m_out.close();
+            m_nFileCount++;
+            File next = rotatedFile(m_file, m_nFileCount);
+            m_out = new BufferedOutputStream(new FileOutputStream(next), LIVE_BUFFER);
+            m_nFileBytes = 0;
+            synchronized(this)
+            {
+                m_arLogFiles.add(next.getName());
+                LogStore current = m_engine.getStore();
+                if(current instanceof FileLogStore && ((FileLogStore)current).m_file.equals(m_file))
+                    ((FileLogStore)current).addSegment(next, m_nWritten);
+            }
+            m_listener.onTitle(next.getName());
+            m_listener.onStatus(String.format("기록 파일이 %dMB를 넘어 다음 파일에 이어서 기록합니다 : %s", LIVE_ROTATE_BYTES >> 20, next.getName()));
         }
 
         boolean due()
@@ -251,11 +279,24 @@ public class LogSource
     }
 
     volatile LiveFeed    m_feed;
+    // 이번 수집의 기록 파일들 (첫 파일부터. 50MB마다 하나씩 늘어남)
+    final List<String>   m_arLogFiles = java.util.Collections.synchronizedList(new ArrayList<String>());
+
+    // 첫 파일 LogFilter_날짜_시각.txt → n번째 파일 LogFilter_날짜_시각_n.txt
+    static File rotatedFile(File first, int n)
+    {
+        String strName = first.getName();
+        int nDot = strName.lastIndexOf('.');
+        String strBase = nDot > 0 ? strName.substring(0, nDot) : strName, strExt = nDot > 0 ? strName.substring(nDot) : "";
+        return new File(first.getAbsoluteFile().getParentFile(), strBase + "_" + n + strExt);
+    }
 
     void startProcess(final String strCmd, final boolean bUtf8)
     {
         m_strLogFileName = makeFilename();
         final File file = new File(m_strLogFileName);
+        m_arLogFiles.clear();
+        m_arLogFiles.add(m_strLogFileName);
         final LiveFeed feed;
         try
         {
