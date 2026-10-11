@@ -33,6 +33,8 @@ public class AppConfig
     static final String INI_HISTORY_        = "HISTORY_";             // 최근 입력 기록 HISTORY_<입력창>_<0~9>
     static final String INI_PID_SHOW        = "PID_SHOW";
     static final String INI_TID_SHOW        = "TID_SHOW";
+    static final String INI_TIME_FROM       = "TIME_FROM";            // 시간 범위 필터 (1.18)
+    static final String INI_TIME_TO         = "TIME_TO";
     static final String INI_COLOR_0         = "INI_COLOR_0";
     static final String INI_COLOR_1         = "INI_COLOR_1";
     static final String INI_COLOR_2         = "INI_COLOR_2";
@@ -66,6 +68,8 @@ public class AppConfig
     String strRemoveTag = "";
     String strShowPid   = "";
     String strShowTid   = "";
+    String strTimeFrom  = "";
+    String strTimeTo    = "";
     // 하이라이트 입력창 6개: 문자열, 색상 번호, 사용 여부 (기본: n번 입력창은 n번 색상, 사용)
     String[]  arHighlight      = new String[LogColor.HIGHLIGHT_COUNT];
     int[]     arHighlightColor = new int[LogColor.HIGHLIGHT_COUNT];
@@ -98,6 +102,8 @@ public class AppConfig
         config.strRemoveTag = p.getProperty(INI_TAG_REMOVE, "");
         config.strShowPid   = p.getProperty(INI_PID_SHOW, "");
         config.strShowTid   = p.getProperty(INI_TID_SHOW, "");
+        config.strTimeFrom  = p.getProperty(INI_TIME_FROM, "");
+        config.strTimeTo    = p.getProperty(INI_TIME_TO, "");
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             // 이전 버전 설정(HIGHLIGHT 하나)은 첫 번째 입력창으로 옮긴다.
@@ -150,6 +156,8 @@ public class AppConfig
         p.setProperty(INI_TAG_REMOVE,   strRemoveTag);
         p.setProperty(INI_PID_SHOW,     strShowPid);
         p.setProperty(INI_TID_SHOW,     strShowTid);
+        p.setProperty(INI_TIME_FROM,    strTimeFrom);
+        p.setProperty(INI_TIME_TO,      strTimeTo);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             p.setProperty(INI_HIGHLIGHT_ + nIndex,       arHighlight[nIndex] == null ? "" : arHighlight[nIndex]);

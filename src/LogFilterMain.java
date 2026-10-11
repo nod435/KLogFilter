@@ -111,6 +111,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     JTextField                m_tfRemoveTag;
     JTextField                m_tfShowPid;
     JTextField                m_tfShowTid;
+    JTextField                m_tfTimeFrom;         // 시간 범위 필터 시작·끝 (1.18)
+    JTextField                m_tfTimeTo;
 
     //Device
     JButton                   m_btnDevice;
@@ -126,6 +128,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     JCheckBox                 m_chkEnableRemoveTag;
     JCheckBox                 m_chkEnableShowPid;
     JCheckBox                 m_chkEnableShowTid;
+    JCheckBox                 m_chkEnableTime;
 
     //Log filter
     JCheckBox                 m_chkVerbose;
@@ -322,6 +325,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tfRemoveTag.setText(config.strRemoveTag);
         m_tfShowPid.setText(config.strShowPid);
         m_tfShowTid.setText(config.strShowTid);
+        m_tfTimeFrom.setText(config.strTimeFrom);
+        m_tfTimeTo.setText(config.strTimeTo);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             m_arTfHighlight[nIndex].setText(config.arHighlight[nIndex]);
@@ -352,6 +357,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.strRemoveTag = m_tfRemoveTag.getText();
         m_config.strShowPid   = m_tfShowPid.getText();
         m_config.strShowTid   = m_tfShowTid.getText();
+        m_config.strTimeFrom  = m_tfTimeFrom.getText();
+        m_config.strTimeTo    = m_tfTimeTo.getText();
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             m_config.arHighlight[nIndex]      = m_arTfHighlight[nIndex].getText();
@@ -386,6 +393,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.18 : 시간 범위 필터 (Time : 시작 ~ 끝, 예: 12:30 ~ 12:45:30, 10-07 23:00 ~ 10-08 01:00)");
         addDesc("Version 1.17 : adb 기록 파일이 50MB를 넘으면 다음 파일(이름_2.txt, _3 …)에 이어서 기록, 화면은 끊김 없이 이어서 표시");
         addDesc("Version 1.16 : 입력창별 최근 입력 10개 저장(다음 실행에도 유지), ▼ 버튼·Alt+↓로 골라 쓰기");
         addDesc("Version 1.15 : File > 강제 종료 (진행 중인 작업을 기다리지 않고 바로 종료)");
@@ -737,11 +745,14 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tfRemoveTag.getDocument().addDocumentListener(m_dlFilterListener);
         m_tfShowPid.getDocument().addDocumentListener(m_dlFilterListener);
         m_tfShowTid.getDocument().addDocumentListener(m_dlFilterListener);
+        m_tfTimeFrom.getDocument().addDocumentListener(m_dlFilterListener);
+        m_tfTimeTo.getDocument().addDocumentListener(m_dlFilterListener);
 
         m_chkEnableFind.addItemListener(m_itemListener);
         m_chkEnableRemove.addItemListener(m_itemListener);
         m_chkEnableShowPid.addItemListener(m_itemListener);
         m_chkEnableShowTid.addItemListener(m_itemListener);
+        m_chkEnableTime.addItemListener(m_itemListener);
         m_chkEnableShowTag.addItemListener(m_itemListener);
         m_chkEnableRemoveTag.addItemListener(m_itemListener);
 
@@ -872,6 +883,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_chkEnableRemoveTag.setSelected(true);
         m_chkEnableShowPid.setSelected(true);
         m_chkEnableShowTid.setSelected(true);
+        m_chkEnableTime = new JCheckBox();
+        m_chkEnableTime.setSelected(true);
 
         m_tfFindWord    = new JTextField();
         m_tfRemoveWord  = new JTextField();
@@ -879,6 +892,13 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tfRemoveTag   = new JTextField();
         m_tfShowPid     = new JTextField();
         m_tfShowTid     = new JTextField();
+        m_tfTimeFrom    = new JTextField();
+        m_tfTimeTo      = new JTextField();
+        String strTimeTip = "시간 범위 (비우면 제한 없음). 예: 12:30, 12:30:15, 12:30:15.500, 10-07 12:30 — 시작이 끝보다 늦으면 자정을 넘는 범위";
+        m_tfTimeFrom.setToolTipText("시작 시각 — " + strTimeTip);
+        m_tfTimeTo.setToolTipText("끝 시각 — " + strTimeTip);
+        installUndoRedo(m_tfTimeFrom);
+        installUndoRedo(m_tfTimeTo);
 
         // 필터 편집창에 Ctrl+Z 백업(실행취소) 기능 추가
         installUndoRedo(m_tfFindWord);
@@ -895,10 +915,12 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         installInputHistory(m_tfRemoveTag,  "REMOVE_TAG");
         installInputHistory(m_tfShowPid,    "PID");
         installInputHistory(m_tfShowTid,    "TID");
+        installInputHistory(m_tfTimeFrom,   "TIME_FROM");
+        installInputHistory(m_tfTimeTo,     "TIME_TO");
 
         JPanel jpMain = new JPanel(new BorderLayout());
 
-        JPanel jpWordFilter = new JPanel(new BorderLayout());
+        JPanel jpWordFilter = new JPanel(new GridLayout(3, 1));
         jpWordFilter.setBorder(BorderFactory.createTitledBorder("Word filter"));
 
         JPanel jpFind = new JPanel(new BorderLayout());
@@ -913,8 +935,22 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpRemove.add(checkAndLabel(m_chkEnableRemove, remove), BorderLayout.WEST);
         jpRemove.add(withHistory(m_tfRemoveWord), BorderLayout.CENTER);
 
-        jpWordFilter.add(jpFind, BorderLayout.NORTH);
+        // 시간 범위: [체크박스][Time :][시작 ▼] ~ [끝 ▼]
+        JPanel jpTime = new JPanel(new BorderLayout());
+        JLabel time = new JLabel();
+        time.setText("Time :  ");
+        jpTime.add(checkAndLabel(m_chkEnableTime, time), BorderLayout.WEST);
+        JPanel jpTimeTo = new JPanel(new BorderLayout());
+        jpTimeTo.add(new JLabel(" ~ "), BorderLayout.WEST);
+        jpTimeTo.add(withHistory(m_tfTimeTo), BorderLayout.CENTER);
+        JPanel jpTimeFields = new JPanel(new GridLayout(1, 2, 2, 0));
+        jpTimeFields.add(withHistory(m_tfTimeFrom));
+        jpTimeFields.add(jpTimeTo);
+        jpTime.add(jpTimeFields, BorderLayout.CENTER);
+
+        jpWordFilter.add(jpFind);
         jpWordFilter.add(jpRemove);
+        jpWordFilter.add(jpTime);
 
         jpMain.add(jpWordFilter, BorderLayout.NORTH);
 
@@ -946,7 +982,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpRemoveTag.add(withHistory(m_tfRemoveTag), BorderLayout.CENTER);
 
         // 라벨을 모두 가장 긴 라벨 폭으로 맞추고 오른쪽 정렬해, 입력창이 같은 위치에서 시작하게 한다.
-        alignLabels(find, remove, pid, tid, show, removeTag);
+        alignLabels(find, remove, time, pid, tid, show, removeTag);
 
         jpTagFilter.add(jpPid);
         jpTagFilter.add(jpTid);
@@ -1530,7 +1566,43 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             m_engine.setShowTag(checkBox.isSelected() ? m_tfShowTag.getText() : "");
         else if(checkBox.equals(m_chkEnableRemoveTag))
             m_engine.setRemoveTag(checkBox.isSelected() ? m_tfRemoveTag.getText() : "");
+        else if(checkBox.equals(m_chkEnableTime))
+            applyTimeRange();
         m_engine.requestFilter();
+    }
+
+    static final Color COLOR_INPUT_ERROR = new Color(0xFFD6D6);   // 형식이 틀린 입력창 배경
+
+    // 시간 범위 입력을 엔진에 반영한다. 형식이 틀리면 그 입력창을 붉게 표시하고 상태 표시줄에 이유를 보여주며, 시간 필터는 끈다.
+    void applyTimeRange()
+    {
+        m_tfTimeFrom.setBackground(Color.WHITE);
+        m_tfTimeTo.setBackground(Color.WHITE);
+        if(!m_chkEnableTime.isSelected())
+        {
+            m_engine.clearTimeRange();
+            return;
+        }
+        try
+        {
+            m_engine.setTimeRange(m_tfTimeFrom.getText(), m_tfTimeTo.getText());
+        }
+        catch(IllegalArgumentException e)
+        {
+            m_engine.clearTimeRange();
+            for(JTextField field : new JTextField[]{ m_tfTimeFrom, m_tfTimeTo })
+            {
+                try
+                {
+                    TimeRange.parse(field.getText(), "");
+                }
+                catch(IllegalArgumentException bad)
+                {
+                    field.setBackground(COLOR_INPUT_ERROR);
+                }
+            }
+            setStatus(e.getMessage());
+        }
     }
 
     void setProcessBtn(boolean bStart)
@@ -1672,6 +1744,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                 m_engine.setShowTag(strText);
             else if(doc.equals(m_tfRemoveTag.getDocument()) && m_chkEnableRemoveTag.isSelected())
                 m_engine.setRemoveTag(strText);
+            else if(doc.equals(m_tfTimeFrom.getDocument()) || doc.equals(m_tfTimeTo.getDocument()))
+                applyTimeRange();
 
             // 진행 중인 재필터는 바로 중단시키고, 새 재필터는 입력이 멈춘 뒤 시작한다.
             m_engine.markChanged();
@@ -1727,6 +1801,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                     || check.equals(m_chkEnableRemove)
                     || check.equals(m_chkEnableShowPid)
                     || check.equals(m_chkEnableShowTid)
+                    || check.equals(m_chkEnableTime)
                     || check.equals(m_chkEnableShowTag)
                     || check.equals(m_chkEnableRemoveTag)
                     || highlightIndexOf(check) >= 0)

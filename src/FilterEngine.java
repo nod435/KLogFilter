@@ -90,6 +90,11 @@ public class FilterEngine
     void setShowPid(String str)   { m_arShowPidToken   = FilterToken.split(str); m_strShowPid   = nz(str); }
     void setShowTid(String str)   { m_arShowTidToken   = FilterToken.split(str); m_strShowTid   = nz(str); }
 
+    // 시간 범위 필터 (null이면 끔). 형식이 틀리면 IllegalArgumentException, 그때는 이전 조건을 그대로 둔다.
+    volatile TimeRange m_timeRange;
+    void setTimeRange(String strFrom, String strTo) { m_timeRange = TimeRange.parse(strFrom, strTo); }
+    void clearTimeRange()                           { m_timeRange = null; }
+
     String getShowTag()   { return m_strShowTag; }
     String getRemoveTag() { return m_strRemoveTag; }
 
@@ -238,7 +243,14 @@ public class FilterEngine
             && matchShow(logInfo.m_strTag, m_arShowTagToken)
             && matchRemove(logInfo.m_strTag, m_arRemoveTagToken)
             && matchShow(logInfo.m_strMessage, m_arFindToken)
-            && matchRemove(logInfo.m_strMessage, m_arRemoveToken);
+            && matchRemove(logInfo.m_strMessage, m_arRemoveToken)
+            && checkTimeRange(logInfo);
+    }
+
+    boolean checkTimeRange(LogInfo logInfo)
+    {
+        TimeRange range = m_timeRange;
+        return range == null || range.accept(logInfo.m_strDate, logInfo.m_strTime);
     }
 
     // 필터 조건이 하나라도 켜져 있으면 true (하이라이트는 표시만 바꾸므로 제외)
@@ -248,7 +260,8 @@ public class FilterEngine
                      || m_nFilterLogLV != LogInfo.LOG_LV_ALL
                      || m_strShowPid.length() > 0 || m_strShowTid.length() > 0
                      || m_strShowTag.length() > 0 || m_strRemoveTag.length() > 0
-                     || m_strFind.length() > 0    || m_strRemove.length() > 0;
+                     || m_strFind.length() > 0    || m_strRemove.length() > 0
+                     || m_timeRange != null;
         return m_bUserFilter;
     }
 
