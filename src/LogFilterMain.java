@@ -185,8 +185,20 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             }
         };
 
+        // 강제 종료: 백그라운드 작업(필터·검색·adb)을 기다리지 않고 바로 끝낸다.
+        JMenuItem fileForceExit = new JMenuItem("강제 종료");
+        fileForceExit.setMnemonic(KeyEvent.VK_X);
+        fileForceExit.setToolTipText("adb 수집을 멈추고, 진행 중인 작업을 기다리지 않고 바로 종료");
+        fileForceExit.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) {
+                mainFrame.forceExit(true);
+            }
+        });
+
         file.add(fileOpen);
         file.add(m_recentMenu);
+        file.addSeparator();
+        file.add(fileForceExit);
 
         menubar.add(file);
         mainFrame.setJMenuBar(menubar);
@@ -211,6 +223,47 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         saveConfig();
         AppConfig.saveColors();
         System.exit(0);
+    }
+
+    static final long FORCE_EXIT_FLUSH_MS = 1000;   // 강제 종료 때 adb 기록 파일을 마무리할 최대 시간
+
+    /**
+     * 강제 종료: adb 프로세스를 끝내고(기록 파일은 최대 1초 마무리), 설정은 저장을 시도한 뒤,
+     * 필터·검색 같은 백그라운드 작업이 멈춰 있어도 기다리지 않고 JVM을 바로 끝낸다(halt).
+     */
+    void forceExit(boolean bConfirm)
+    {
+        if(bConfirm)
+        {
+            int nAnswer = javax.swing.JOptionPane.showConfirmDialog(this,
+                "진행 중인 작업을 기다리지 않고 바로 종료합니다.\n(adb 수집 중이면 멈추고, 기록 파일은 그때까지 저장됩니다)",
+                "강제 종료", javax.swing.JOptionPane.OK_CANCEL_OPTION, javax.swing.JOptionPane.WARNING_MESSAGE);
+            if(nAnswer != javax.swing.JOptionPane.OK_OPTION)
+                return;
+        }
+        Thread thCapture = m_source.m_thProcess;
+        m_source.stopProcess();
+        if(thCapture != null)
+        {
+            try
+            {
+                thCapture.join(FORCE_EXIT_FLUSH_MS);
+            }
+            catch(InterruptedException e)
+            {
+                // 그대로 종료
+            }
+        }
+        try
+        {
+            saveConfig();
+            AppConfig.saveColors();
+        }
+        catch(Throwable t)
+        {
+            T.e(t);     // 저장에 실패해도 종료는 한다
+        }
+        Runtime.getRuntime().halt(0);
     }
 
     public LogFilterMain()
@@ -323,6 +376,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.15 : File > 강제 종료 (진행 중인 작업을 기다리지 않고 바로 종료)");
         addDesc("Version 1.14 : 메시지 검색 (Ctrl+F, F3 다음 / Shift+F3 이전), 북마크 이동은 F2 / Shift+F2");
         addDesc("Version 1.13 : 오른쪽 클릭 → 그 줄의 로그 전체 보기 (줄바꿈, 로그 전체/셀 값 복사)");
         addDesc("Version 1.12 : Highlight 입력창 6개, 입력창마다 색상(6가지) 선택");
