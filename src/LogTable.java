@@ -232,6 +232,27 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         });
         popup.add(miCopyLine);
         popup.add(miCopyCell);
+        // 이 줄의 날짜·시각을 시간 범위 필터의 시작/끝으로 (1.22)
+        final LogInfo logRow = logInfo;
+        final String strTime = TimeRange.lineTime(logInfo.m_strTime);
+        if(strTime != null && m_LogFilterMain != null)
+        {
+            String strDate = TimeRange.lineDate(logInfo.m_strDate);
+            String strWhen = (strDate != null ? strDate + " " : "") + strTime;
+            popup.addSeparator();
+            JMenuItem miFrom = new JMenuItem("이 줄 시각을 Time 시작으로 : " + strWhen);
+            miFrom.addActionListener(new ActionListener()
+            {
+                public void actionPerformed(ActionEvent e) { m_LogFilterMain.setTimeFromLog(logRow, true); }
+            });
+            JMenuItem miTo = new JMenuItem("이 줄 시각을 Time 끝으로 : " + strWhen);
+            miTo.addActionListener(new ActionListener()
+            {
+                public void actionPerformed(ActionEvent e) { m_LogFilterMain.setTimeFromLog(logRow, false); }
+            });
+            popup.add(miFrom);
+            popup.add(miTo);
+        }
         m_popupFullLog = popup;
 
         // 프로그램 창의 가운데에 띄운다. (로그 화면보다 크면 창 기준으로 가운데)

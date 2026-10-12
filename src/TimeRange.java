@@ -3,13 +3,14 @@ import java.util.regex.Pattern;
 
 /**
  * 시간 범위 필터: 시작·끝 시각 사이의 줄만 통과시킨다. 한쪽은 비워 둘 수 있다.
- * 입력 형식: "12:30", "12:30:15", "12:30:15.500", 날짜를 붙이면 "10-07 12:30" (월-일).
+ * 입력 형식: "12:30", "12:30:15", "12:30:15.500", 날짜를 붙이면 "10-07 12:30" (월-일) 또는 "2026-10-07 12:30".
+ *   (logcat 시각에는 연도가 없으므로 연도는 비교하지 않는다)
  * - 날짜 없이 쓰면 시각만 비교하고, 시작이 끝보다 늦으면(23:00 ~ 01:00) 자정을 넘는 범위로 본다.
  * - 시각이 없는 줄(kernel, brief 형식 등)은 시간 필터를 켜면 보이지 않는다.
  */
 public final class TimeRange
 {
-    private static final Pattern INPUT = Pattern.compile("^\\s*(?:(\\d{1,2})-(\\d{1,2})\\s+)?(\\d{1,2}):(\\d{1,2})(?::(\\d{1,2})(?:\\.(\\d{1,3}))?)?\\s*$");
+    private static final Pattern INPUT = Pattern.compile("^\\s*(?:(?:\\d{4}[-/.])?(\\d{1,2})[-/.](\\d{1,2})\\s+)?(\\d{1,2}):(\\d{1,2})(?::(\\d{1,2})(?:\\.(\\d{1,3}))?)?\\s*$");
 
     final String  m_strFrom;    // 비교용 키 ("MM-dd HH:mm:ss.SSS" 또는 "HH:mm:ss.SSS"), 없으면 null
     final String  m_strTo;
@@ -40,7 +41,7 @@ public final class TimeRange
             return null;
         Matcher m = INPUT.matcher(strText);
         if(!m.matches())
-            throw new IllegalArgumentException(strWhich + " 시각 형식이 맞지 않습니다: \"" + strText.trim() + "\" (예: 12:30, 12:30:15.500, 10-07 12:30)");
+            throw new IllegalArgumentException(strWhich + " 시각 형식이 맞지 않습니다: \"" + strText.trim() + "\" (예: 12:30, 12:30:15.500, 10-07 12:30, 2026-10-07 12:30)");
         int nHour = Integer.parseInt(m.group(3)), nMin = Integer.parseInt(m.group(4));
         int nSec  = m.group(5) != null ? Integer.parseInt(m.group(5)) : (bEnd ? 59 : 0);
         String strMs = m.group(6) != null ? (m.group(6) + "00").substring(0, 3) : (bEnd ? "999" : "000");

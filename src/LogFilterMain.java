@@ -478,6 +478,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.22 : Time 범위에 날짜 (날짜 버튼으로 월-일 시:분:초 선택, 오른쪽 클릭 '이 줄 시각을 Time 시작/끝으로')");
         addDesc("Version 1.21 : 안드로이드 장치 통계 (상태 표시줄 오른쪽 CPU·메모리, 누르면 그래프·코어별·상위 프로세스)");
         addDesc("Version 1.20 : View 메뉴 Full / Compact 화면 (F12 전환, Compact는 로그 화면만)");
         addDesc("Version 1.19 : Find·Remove 정규식 모드 (입력창 오른쪽 .* 버튼, 대소문자 무시)");
@@ -1052,7 +1053,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tfShowTid     = new JTextField();
         m_tfTimeFrom    = new JTextField();
         m_tfTimeTo      = new JTextField();
-        String strTimeTip = "시간 범위 (비우면 제한 없음). 예: 12:30, 12:30:15, 12:30:15.500, 10-07 12:30 — 시작이 끝보다 늦으면 자정을 넘는 범위";
+        String strTimeTip = "시간 범위 (비우면 제한 없음). 예: 12:30, 12:30:15.500, 10-07 12:30, 2026-10-07 12:30 — 날짜 버튼으로 날짜·시각 선택, 로그 줄 오른쪽 클릭으로도 설정. 날짜 없이 시작이 끝보다 늦으면 자정을 넘는 범위";
         m_tfTimeFrom.setToolTipText("시작 시각 — " + strTimeTip);
         m_tfTimeTo.setToolTipText("끝 시각 — " + strTimeTip);
         installUndoRedo(m_tfTimeFrom);
@@ -1102,9 +1103,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpTime.add(checkAndLabel(m_chkEnableTime, time), BorderLayout.WEST);
         JPanel jpTimeTo = new JPanel(new BorderLayout());
         jpTimeTo.add(new JLabel(" ~ "), BorderLayout.WEST);
-        jpTimeTo.add(withHistory(m_tfTimeTo), BorderLayout.CENTER);
+        jpTimeTo.add(withHistory(m_tfTimeTo, createTimePickerButton(m_tfTimeTo, false)), BorderLayout.CENTER);
         JPanel jpTimeFields = new JPanel(new GridLayout(1, 2, 2, 0));
-        jpTimeFields.add(withHistory(m_tfTimeFrom));
+        jpTimeFields.add(withHistory(m_tfTimeFrom, createTimePickerButton(m_tfTimeFrom, true)));
         jpTimeFields.add(jpTimeTo);
         jpTime.add(jpTimeFields, BorderLayout.CENTER);
 
@@ -1818,6 +1819,127 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     }
 
     static final Color COLOR_INPUT_ERROR = new Color(0xFFD6D6);   // 형식이 틀린 입력창 배경
+
+    // ---- 시간 범위의 날짜·시각 고르기 (1.22) ----
+    static final java.util.regex.Pattern TIME_INPUT = java.util.regex.Pattern.compile(
+        "^\\s*(?:(?:\\d{4}[-/.])?(\\d{1,2})[-/.](\\d{1,2})\\s+)?(\\d{1,2}):(\\d{1,2})(?::(\\d{1,2}))?.*$");
+
+    // 시간 입력창 옆 "날짜" 버튼: 누르면 월-일 시:분:초를 고르는 창
+    JButton createTimePickerButton(final JTextField field, final boolean bFrom)
+    {
+        final JButton btn = new JButton("날짜");
+        btn.setMargin(new Insets(0, 3, 0, 3));
+        btn.setFocusable(false);
+        btn.setToolTipText((bFrom ? "시작" : "끝") + " 날짜·시각 고르기 (선택한 줄 또는 " + (bFrom ? "첫" : "마지막") + " 줄의 날짜·시각으로 시작)");
+        btn.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e) { showTimePicker(field, bFrom, btn); }
+        });
+        return btn;
+    }
+
+    javax.swing.JPopupMenu m_popupTimePicker;     // 마지막으로 띄운 날짜·시각 고르기 (테스트용)
+    javax.swing.JSpinner   m_spinTimePicker;
+
+    void showTimePicker(final JTextField field, final boolean bFrom, Component anchor)
+    {
+        java.util.Calendar cal = initialPickerTime(field.getText(), bFrom);
+        final javax.swing.JSpinner spin = new javax.swing.JSpinner(new javax.swing.SpinnerDateModel(cal.getTime(), null, null, java.util.Calendar.MINUTE));
+        spin.setEditor(new javax.swing.JSpinner.DateEditor(spin, "MM-dd HH:mm:ss"));
+        final javax.swing.JPopupMenu popup = new javax.swing.JPopupMenu();
+        JButton btnApply = new JButton("적용");
+        btnApply.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e)
+            {
+                java.util.Calendar c = java.util.Calendar.getInstance();
+                c.setTime((java.util.Date)spin.getValue());
+                field.setText(String.format("%02d-%02d %02d:%02d:%02d", c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.DAY_OF_MONTH),
+                    c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND)));
+                m_chkEnableTime.setSelected(true);
+                popup.setVisible(false);
+            }
+        });
+        JButton btnClear = new JButton("지우기");
+        btnClear.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e) { field.setText(""); popup.setVisible(false); }
+        });
+        JPanel jp = new JPanel(new BorderLayout(4, 4));
+        jp.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        jp.add(new JLabel((bFrom ? "시작" : "끝") + " 날짜·시각 (월-일 시:분:초, ↑/↓로 바꾸기)"), BorderLayout.NORTH);
+        jp.add(spin, BorderLayout.CENTER);
+        JPanel jpButtons = new JPanel(new GridLayout(1, 2, 4, 0));
+        jpButtons.add(btnApply);
+        jpButtons.add(btnClear);
+        jp.add(jpButtons, BorderLayout.SOUTH);
+        popup.add(jp);
+        m_popupTimePicker = popup;
+        m_spinTimePicker  = spin;
+        popup.show(anchor, 0, anchor.getHeight());
+        spin.requestFocusInWindow();
+    }
+
+    // 고르기 창의 처음 값: 입력창 값(날짜가 없으면 줄의 날짜) → 선택한 줄 → 첫(시작)/마지막(끝) 줄 → 지금
+    java.util.Calendar initialPickerTime(String strText, boolean bFrom)
+    {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.set(java.util.Calendar.MILLISECOND, 0);
+        LogInfo row = pickerRow(bFrom);
+        if(row != null)
+            setFromLog(cal, TimeRange.lineDate(row.m_strDate), TimeRange.lineTime(row.m_strTime));
+        java.util.regex.Matcher m = TIME_INPUT.matcher(strText == null ? "" : strText);
+        if(m.matches())
+        {
+            if(m.group(1) != null)
+            {
+                cal.set(java.util.Calendar.MONTH, Integer.parseInt(m.group(1)) - 1);
+                cal.set(java.util.Calendar.DAY_OF_MONTH, Integer.parseInt(m.group(2)));
+            }
+            cal.set(java.util.Calendar.HOUR_OF_DAY, Integer.parseInt(m.group(3)));
+            cal.set(java.util.Calendar.MINUTE, Integer.parseInt(m.group(4)));
+            cal.set(java.util.Calendar.SECOND, m.group(5) != null ? Integer.parseInt(m.group(5)) : (bFrom ? 0 : 59));
+        }
+        return cal;
+    }
+
+    LogInfo pickerRow(boolean bFrom)
+    {
+        int nRows = m_tmLogTableModel.getRowCount();
+        if(nRows == 0) return null;
+        int nRow = m_tbLogTable.getSelectedRow();
+        if(nRow < 0 || nRow >= nRows) nRow = bFrom ? 0 : nRows - 1;
+        return m_tmLogTableModel.getRow(nRow);
+    }
+
+    static void setFromLog(java.util.Calendar cal, String strDate, String strTime)
+    {
+        if(strDate != null)
+        {
+            cal.set(java.util.Calendar.MONTH, Integer.parseInt(strDate.substring(0, 2)) - 1);
+            cal.set(java.util.Calendar.DAY_OF_MONTH, Integer.parseInt(strDate.substring(3, 5)));
+        }
+        if(strTime != null)
+        {
+            cal.set(java.util.Calendar.HOUR_OF_DAY, Integer.parseInt(strTime.substring(0, 2)));
+            cal.set(java.util.Calendar.MINUTE, Integer.parseInt(strTime.substring(3, 5)));
+            cal.set(java.util.Calendar.SECOND, Integer.parseInt(strTime.substring(6, 8)));
+        }
+    }
+
+    // 오른쪽 클릭한 줄의 날짜·시각을 Time 시작(bFrom)/끝으로 넣는다
+    void setTimeFromLog(LogInfo logInfo, boolean bFrom)
+    {
+        String strTime = TimeRange.lineTime(logInfo.m_strTime);
+        if(strTime == null)
+        {
+            setStatus("이 줄에는 시각이 없습니다");
+            return;
+        }
+        String strDate = TimeRange.lineDate(logInfo.m_strDate);
+        (bFrom ? m_tfTimeFrom : m_tfTimeTo).setText((strDate != null ? strDate + " " : "") + strTime);
+        m_chkEnableTime.setSelected(true);
+    }
 
     // 시간 범위 입력을 엔진에 반영한다. 형식이 틀리면 그 입력창을 붉게 표시하고 상태 표시줄에 이유를 보여주며, 시간 필터는 끈다.
     void applyTimeRange()
