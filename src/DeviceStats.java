@@ -20,6 +20,8 @@ public class DeviceStats
         void onStats(Sample sample);        // 새 측정값 (장치가 없거나 오류면 sample.m_strError)
         // 장치 재부팅을 알아챘다 (boot_id가 바뀜, 1.24)
         default void onReboot(Sample sample) { }
+        // 정한 측정 시간이 끝나 측정을 멈췄다 (1.27)
+        default void onFinished(long nStartTime, long nEndTime) { }
     }
 
     static final long   INTERVAL_MS   = 2000;      // 기본 측정 주기
@@ -68,6 +70,9 @@ public class DeviceStats
     private volatile boolean m_bRunning;
     private volatile boolean m_bWantTop;            // 상위 프로세스도 읽을지 (자세히 보기 창이 열려 있을 때)
     private volatile long    m_nIntervalMs = INTERVAL_MS;   // 측정 주기 (1.23)
+    private volatile long    m_nDurationMs;         // 측정 시간 (0 = 계속) (1.27)
+    private volatile long    m_nStartTime;          // 이번 측정을 시작한 시각
+    private volatile long    m_nFinishTime;         // 측정 시간이 끝나 멈춘 시각 (0 = 끝나지 않음)
     private volatile boolean m_bSleeping;           // 다음 측정을 기다리는 중 (이때만 깨운다: adb 실행 중에 깨우면 그 측정이 실패함)
     private Thread           m_thread;
     private long[][]         m_arPrevCpu;           // 이전 /proc/stat (전체 + 코어별) {합계, 쉼}
@@ -102,20 +107,50 @@ public class DeviceStats
         if(m_thread != null && m_bSleeping) m_thread.interrupt();
     }
     long interval() { return m_nIntervalMs; }
+
+    // 측정 시간 (0 = 계속). 기다리는 중이면 깨워서 끝났는지 바로 본다. 시작 시각은 그대로 (1.27)
+    synchronized void setDuration(long nMs)
+    {
+        m_nDurationMs = Math.max(0, nMs);
+        if(m_thread != null && m_bSleeping) m_thread.interrupt();
+    }
+    long duration()   { return m_nDurationMs; }
+    long startTime()  { return m_nStartTime; }
+    long finishTime() { return m_nFinishTime; }
+
+    // 측정 시간을 지금부터 다시 센다
+    synchronized void restartPeriod()
+    {
+        m_nStartTime = System.currentTimeMillis();
+        m_nFinishTime = 0;
+        if(m_thread != null && m_bSleeping) m_thread.interrupt();
+    }
+
+    // 멈출 시각 (계속 측정이면 0)
+    long deadline()
+    {
+        long nDuration = m_nDurationMs;
+        return nDuration > 0 ? m_nStartTime + nDuration : 0;
+    }
     boolean isRunning()        { return m_bRunning; }
 
     synchronized void start()
     {
         if(m_bRunning) return;
         m_bRunning = true;
+        m_nStartTime = System.currentTimeMillis();
+        m_nFinishTime = 0;
         m_thread = new Thread(new Runnable()
         {
             public void run()
             {
-                while(m_bRunning)
+                // stop() 뒤 바로 start()해도 이전 스레드는 자기가 현재 스레드가 아니면 끝난다
+                final Thread me = Thread.currentThread();
+                while(m_thread == me)
                 {
+                    if(finishIfDue(me)) break;
                     Sample sample = measure();
-                    if(!m_bRunning) break;
+                    if(m_thread != me) break;
                     if(sample.m_strError == null)
                         synchronized(m_arHistory)
                         {
@@ -125,11 +160,15 @@ public class DeviceStats
                     m_listener.onStats(sample);
                     if((sample.m_strBootId != null || sample.m_strError == null) && checkReboot(sample))
                         m_listener.onReboot(sample);
+                    // 장치가 없으면 덜 자주 (최대 10초). 측정 시간이 끝나는 시각을 넘겨 자지 않는다.
+                    long nSleep = sample.m_strError == null ? m_nIntervalMs : Math.max(m_nIntervalMs, Math.min(m_nIntervalMs * 3, 10000));
+                    long nDeadline = deadline();
+                    if(nDeadline > 0)
+                        nSleep = Math.min(nSleep, Math.max(0, nDeadline - System.currentTimeMillis()));
                     m_bSleeping = true;
                     try
                     {
-                        // 장치가 없으면 덜 자주 (최대 10초)
-                        Thread.sleep(sample.m_strError == null ? m_nIntervalMs : Math.max(m_nIntervalMs, Math.min(m_nIntervalMs * 3, 10000)));
+                        if(nSleep > 0) Thread.sleep(nSleep);
                     }
                     catch(InterruptedException e)
                     {
@@ -142,6 +181,58 @@ public class DeviceStats
         }, "DeviceStats");
         m_thread.setDaemon(true);
         m_thread.start();
+    }
+
+    // 측정 시간이 지났으면 멈추고 알린다
+    boolean finishIfDue(Thread me)
+    {
+        long nDeadline = deadline();
+        long nNow = System.currentTimeMillis();
+        if(nDeadline <= 0 || nNow < nDeadline) return false;
+        synchronized(this)
+        {
+            if(m_thread != me) return true;
+            m_bRunning = false;
+            m_thread = null;
+            m_arPrevCpu = null;
+            m_nFinishTime = nNow;
+        }
+        m_listener.onFinished(m_nStartTime, nNow);
+        return true;
+    }
+
+    // 측정 시간 상태 한 줄 (자세히 창·설정 창)
+    String periodText()
+    {
+        long nDuration = m_nDurationMs, nStart = m_nStartTime, nNow = System.currentTimeMillis();
+        if(m_nFinishTime > 0)
+            return "측정 시간: " + durationText(m_nFinishTime - nStart) + " 측정 완료 (" + timeText(nStart) + " ~ " + timeText(m_nFinishTime) + ")";
+        if(!m_bRunning)
+            return "측정 시간: " + (nDuration > 0 ? durationText(nDuration) + " (켜면 시작)" : "계속");
+        if(nDuration > 0)
+            return "측정 시간: " + durationText(nDuration) + " · 남은 시간 " + clockText(Math.max(0, nStart + nDuration - nNow)) + " (" + timeText(nStart + nDuration) + "에 멈춤)";
+        return "측정 시간: 계속 · 시작 " + timeText(nStart) + " · 경과 " + clockText(nNow - nStart);
+    }
+
+    // 3시간 / 1시간 30분 / 45분 / 20초
+    static String durationText(long nMs)
+    {
+        long nSec = Math.round(nMs / 1000.0);
+        if(nSec < 60) return nSec + "초";
+        long nMin = Math.round(nSec / 60.0), nH = nMin / 60, nM = nMin % 60;
+        return nH == 0 ? nM + "분" : nM == 0 ? nH + "시간" : nH + "시간 " + nM + "분";
+    }
+
+    // 2:05:09
+    static String clockText(long nMs)
+    {
+        long nSec = (nMs + 999) / 1000;
+        return String.format("%d:%02d:%02d", nSec / 3600, nSec / 60 % 60, nSec % 60);
+    }
+
+    static String timeText(long nTime)
+    {
+        return new java.text.SimpleDateFormat("MM-dd HH:mm:ss").format(new java.util.Date(nTime));
     }
 
     synchronized void stop()

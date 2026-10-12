@@ -264,8 +264,14 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             viewInterval.add(mi);
             mainFrame.m_arMiInterval.add(mi);
         }
+        // 측정 시간 (1.27)
+        JMenuItem viewDuration = new JMenuItem("장치 통계 측정 시간…");
+        viewDuration.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.showStatsDurationDialog(); }
+        });
         view.add(mainFrame.m_miDeviceStats);
         view.add(viewInterval);
+        view.add(viewDuration);
         view.add(viewStats);
         menubar.add(view);
         mainFrame.setJMenuBar(menubar);
@@ -430,6 +436,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         if(config.bCompactView)
             setCompactView(true);
         m_deviceStats.setInterval(config.nStatsIntervalSec * 1000L);
+        m_nStatsDurationMin = config.nStatsDurationMin;
+        m_deviceStats.setDuration(m_nStatsDurationMin * 60000L);
         setDeviceStats(config.bDeviceStats);
         m_source.m_bAutoReconnect = config.bAutoReconnect;
         m_tfTimeFrom.setText(config.strTimeFrom);
@@ -467,7 +475,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.bFindRegex   = m_tbFindRegex.isSelected();
         m_config.bRemoveRegex = m_tbRemoveRegex.isSelected();
         m_config.bCompactView = m_bCompactView;
-        m_config.bDeviceStats = m_bDeviceStats;
+        m_config.bDeviceStats = m_bDeviceStats || m_bStatsFinished;     // 측정 시간이 끝나 멈췄어도 다음 실행에는 다시 측정
+        m_config.nStatsDurationMin = m_nStatsDurationMin;
         m_config.bAutoReconnect = m_source.m_bAutoReconnect;
         m_config.nStatsIntervalSec = (int)(m_deviceStats.interval() / 1000);
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
@@ -506,6 +515,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.27 : 장치 통계 측정 시간 설정 (View > 장치 통계 측정 시간…, 정한 시간이 지나면 측정을 멈춤)");
         addDesc("Version 1.26 : 장치 통계에 CPU 온도 (thermal_zone 센서, 상태 표시줄·자세히 창·그래프)");
         addDesc("Version 1.25 : 장치 통계를 이미지로 복사·저장 (자세히 창의 버튼, Ctrl+C)");
         addDesc("Version 1.24 : 수집 중 장치 재부팅 표시 (연결이 끊기면 다시 연결해 이어서 수집, 재부팅 시점에 북마크된 표시 줄)");
@@ -1730,7 +1740,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                     public void run()
                     {
                         if(!m_bDeviceStats) return;
-                        m_lbStats.setText(sample.summary());
+                        long nDeadline = m_deviceStats.deadline();
+                        m_lbStats.setText(sample.summary() + (nDeadline > 0 ? " · 남은 " + DeviceStats.clockText(Math.max(0, nDeadline - System.currentTimeMillis())) : ""));
                         m_lbStats.setForeground(sample.m_strError != null ? Color.GRAY : Color.BLACK);
                         if(m_dlgStats != null && m_dlgStats.isVisible())
                             m_dlgStats.update(sample);
@@ -1750,6 +1761,26 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                 catch(Exception e) { }
                 addRebootRecord(sample.m_strBootId, strInfo);
                 m_source.markReboot(sample.m_strBootId, sample.m_strUptime);
+            }
+
+            // 정한 측정 시간이 끝났다 (1.27): 측정을 멈추고 알린다. 마지막 통계는 자세히 창에 남는다.
+            public void onFinished(final long nStartTime, final long nEndTime)
+            {
+                runOnEdt(new Runnable()
+                {
+                    public void run()
+                    {
+                        if(!m_bDeviceStats) return;
+                        m_bDeviceStats = false;
+                        m_bStatsFinished = true;
+                        if(m_miDeviceStats != null) m_miDeviceStats.setSelected(false);
+                        String strTime = DeviceStats.durationText(nEndTime - nStartTime);
+                        m_lbStats.setText("장치 통계 측정 완료 (" + strTime + ", ~" + new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(nEndTime)) + ")");
+                        m_lbStats.setForeground(new Color(0x2E7D32));
+                        setStatus("장치 통계: 정한 시간(" + strTime + ") 측정을 마쳤습니다 — 상태 표시줄의 통계를 누르면 마지막 결과, View > 장치 통계 표시로 다시 시작");
+                        if(m_dlgStats != null) m_dlgStats.updatePeriod();
+                    }
+                });
             }
         });
     }
@@ -1780,6 +1811,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     void setDeviceStats(boolean bOn)
     {
         m_bDeviceStats = bOn;
+        m_bStatsFinished = false;
         if(m_miDeviceStats != null) m_miDeviceStats.setSelected(bOn);
         m_deviceStats.setDevice(m_strSelectedDevice);
         if(bOn)
@@ -1794,6 +1826,33 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             m_lbStats.setText(" ");
             if(m_dlgStats != null) m_dlgStats.setVisible(false);
         }
+        if(m_dlgStats != null) m_dlgStats.updatePeriod();
+    }
+
+    // ---- 장치 통계 측정 시간 (1.27) ----
+    int     m_nStatsDurationMin;        // 0 = 계속
+    boolean m_bStatsFinished;           // 정한 시간이 끝나 멈춤 (다시 켜기 전까지)
+
+    // 측정 시간(분, 0 = 계속)을 정하고 지금부터 다시 센다. 꺼져 있으면 켠다.
+    void setStatsDuration(int nMin)
+    {
+        m_nStatsDurationMin = Math.max(0, nMin);
+        m_deviceStats.setDuration(m_nStatsDurationMin * 60000L);
+        if(m_bDeviceStats)
+            m_deviceStats.restartPeriod();
+        else
+            setDeviceStats(true);
+        if(m_dlgStats != null) m_dlgStats.updatePeriod();
+        setStatus(m_nStatsDurationMin > 0
+            ? "장치 통계: 지금부터 " + DeviceStats.durationText(m_nStatsDurationMin * 60000L) + " 동안 측정합니다 (" + DeviceStats.timeText(m_deviceStats.deadline()) + "에 멈춤)"
+            : "장치 통계: 시간 제한 없이 계속 측정합니다");
+    }
+
+    void showStatsDurationDialog()
+    {
+        int nMin = StatsDurationDialog.ask(this, m_nStatsDurationMin, m_deviceStats.periodText().replaceFirst("^측정 시간: ", ""));
+        if(nMin >= 0)
+            setStatsDuration(nMin);
     }
 
     final List<javax.swing.JRadioButtonMenuItem> m_arMiInterval = new ArrayList<javax.swing.JRadioButtonMenuItem>();   // View > 장치 통계 주기
@@ -1811,7 +1870,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
     void showStatsDialog()
     {
-        if(!m_bDeviceStats)
+        // 측정 시간이 끝나 멈춘 뒤에는 다시 켜지 않고 마지막 결과를 보여 준다
+        if(!m_bDeviceStats && !m_bStatsFinished)
             setDeviceStats(true);
         if(m_dlgStats == null)
             m_dlgStats = new StatsDialog(this, m_deviceStats);

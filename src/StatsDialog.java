@@ -33,6 +33,8 @@ public class StatsDialog extends JDialog
     final JLabel           m_lbMem     = new JLabel(" ");
     final JLabel           m_lbReboot  = new JLabel("재부팅: 감지된 것 없음");
     final JLabel           m_lbTemp    = new JLabel("온도: -");
+    final JLabel           m_lbPeriod  = new JLabel("측정 시간: -");         // 1.27
+    final javax.swing.Timer m_tmPeriod = new javax.swing.Timer(1000, e -> updatePeriod());   // 남은 시간을 1초마다
     final GraphPanel       m_graph     = new GraphPanel();
     final CorePanel        m_cores     = new CorePanel();
     final javax.swing.JComboBox<String> m_cbInterval = new javax.swing.JComboBox<String>();
@@ -66,13 +68,20 @@ public class StatsDialog extends JDialog
         JPanel jpInterval = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 0));
         jpInterval.add(new JLabel("주기 :"));
         jpInterval.add(m_cbInterval);
+        // 측정 시간 (1.27)
+        javax.swing.JButton btnDuration = new javax.swing.JButton("측정 시간…");
+        btnDuration.setMargin(new java.awt.Insets(1, 6, 1, 6));
+        btnDuration.setToolTipText("장치 통계를 몇 시간 동안 측정할지 정하기");
+        btnDuration.addActionListener(e -> { if(getOwner() instanceof LogFilterMain) ((LogFilterMain)getOwner()).showStatsDurationDialog(); });
+        jpInterval.add(btnDuration);
         JPanel jpLine1 = new JPanel(new BorderLayout());
         jpLine1.add(m_lbSummary, BorderLayout.CENTER);
         jpLine1.add(jpInterval, BorderLayout.EAST);
 
         m_lbReboot.setForeground(Color.GRAY);
-        JPanel jpTop = new JPanel(new GridLayout(4, 1));
+        JPanel jpTop = new JPanel(new GridLayout(5, 1));
         jpTop.add(jpLine1);
+        jpTop.add(m_lbPeriod);
         jpTop.add(m_lbMem);
         jpTop.add(m_lbTemp);
         jpTop.add(m_lbReboot);
@@ -139,7 +148,16 @@ public class StatsDialog extends JDialog
     public void setVisible(boolean b)
     {
         m_stats.setWantTop(b);
+        if(b) { updatePeriod(); m_tmPeriod.start(); }
+        else  m_tmPeriod.stop();
         super.setVisible(b);
+    }
+
+    // 측정 시간 줄: 남은 시간 / 경과 / 완료 (1.27)
+    void updatePeriod()
+    {
+        m_lbPeriod.setText(m_stats.periodText());
+        m_lbPeriod.setForeground(m_stats.finishTime() > 0 ? new Color(0x2E7D32) : Color.DARK_GRAY);
     }
 
     JPanel m_jpCapture;     // 이미지로 만들 영역 (버튼 줄 제외)
@@ -245,6 +263,7 @@ public class StatsDialog extends JDialog
             m_lbMem.setText(String.format("메모리: 사용 %,d MB / 전체 %,d MB, 사용 가능 %,d MB",
                 (sample.m_nMemTotalKb - sample.m_nMemAvailKb) / 1024, sample.m_nMemTotalKb / 1024, sample.m_nMemAvailKb / 1024));
         m_graph.setHistory(m_stats.history());
+        updatePeriod();
         if(sample.m_strError == null)
         {
             if(sample.m_arThermal.isEmpty())
