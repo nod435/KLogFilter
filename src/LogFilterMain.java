@@ -231,6 +231,18 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         view.addSeparator();
         view.add(viewToggle);
         mainFrame.syncViewMenu();
+        view.addSeparator();
+        mainFrame.m_miDeviceStats = new javax.swing.JCheckBoxMenuItem("장치 통계 표시 (CPU·메모리)");
+        mainFrame.m_miDeviceStats.setSelected(mainFrame.m_bDeviceStats);
+        mainFrame.m_miDeviceStats.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.setDeviceStats(mainFrame.m_miDeviceStats.isSelected()); }
+        });
+        JMenuItem viewStats = new JMenuItem("장치 통계 자세히…");
+        viewStats.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.showStatsDialog(); }
+        });
+        view.add(mainFrame.m_miDeviceStats);
+        view.add(viewStats);
         menubar.add(view);
         mainFrame.setJMenuBar(menubar);
 
@@ -357,6 +369,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         setDnDListener();
         addChangeListener();
         installSearchKeys();
+        initDeviceStats();
         m_engine.start();
 
         setVisible(true);
@@ -392,6 +405,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         applyRegexMode();
         if(config.bCompactView)
             setCompactView(true);
+        setDeviceStats(config.bDeviceStats);
         m_tfTimeFrom.setText(config.strTimeFrom);
         m_tfTimeTo.setText(config.strTimeTo);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
@@ -427,6 +441,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.bFindRegex   = m_tbFindRegex.isSelected();
         m_config.bRemoveRegex = m_tbRemoveRegex.isSelected();
         m_config.bCompactView = m_bCompactView;
+        m_config.bDeviceStats = m_bDeviceStats;
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
         m_config.strTimeTo    = m_tfTimeTo.getText();
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
@@ -463,6 +478,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.21 : 안드로이드 장치 통계 (상태 표시줄 오른쪽 CPU·메모리, 누르면 그래프·코어별·상위 프로세스)");
         addDesc("Version 1.20 : View 메뉴 Full / Compact 화면 (F12 전환, Compact는 로그 화면만)");
         addDesc("Version 1.19 : Find·Remove 정규식 모드 (입력창 오른쪽 .* 버튼, 대소문자 무시)");
         addDesc("Version 1.18 : 시간 범위 필터 (Time : 시작 ~ 끝, 예: 12:30 ~ 12:45:30, 10-07 23:00 ~ 10-08 01:00)");
@@ -811,6 +827,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                     m_strSelectedDevice = device.m_strSerial;
                     setStatus(device.isOnline() ? "선택한 장치 : " + device.m_strSerial : deviceStateMessage(device));
                 }
+                if(m_deviceStats != null)
+                    m_deviceStats.setDevice(m_strSelectedDevice);     // 장치 통계도 선택한 장치로
             }
         });
         jpOptionDevice.add(vbar);
@@ -1635,7 +1653,83 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         m_tfStatus = new JTextField("ready");
         m_tfStatus.setEditable(false);
-        return m_tfStatus;
+
+        // 오른쪽: 장치 통계 요약 (누르면 자세히)
+        m_lbStats = new JLabel(" ");
+        m_lbStats.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
+        m_lbStats.setToolTipText("안드로이드 장치 CPU·메모리 (2초마다). 누르면 자세히 — View > 장치 통계 표시로 끄고 켜기");
+        m_lbStats.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+        m_lbStats.addMouseListener(new java.awt.event.MouseAdapter()
+        {
+            public void mouseClicked(java.awt.event.MouseEvent e) { showStatsDialog(); }
+        });
+
+        JPanel jp = new JPanel(new BorderLayout());
+        jp.add(m_tfStatus, BorderLayout.CENTER);
+        jp.add(m_lbStats, BorderLayout.EAST);
+        return jp;
+    }
+
+    // ---- 안드로이드 장치 통계 (1.21) ----
+    JLabel                          m_lbStats;
+    DeviceStats                     m_deviceStats;
+    StatsDialog                     m_dlgStats;
+    boolean                         m_bDeviceStats;
+    javax.swing.JCheckBoxMenuItem   m_miDeviceStats;    // View 메뉴 (main()에서 만듦)
+    volatile DeviceStats.Sample     m_lastStats;
+
+    void initDeviceStats()
+    {
+        m_deviceStats = new DeviceStats(new DeviceStats.Listener()
+        {
+            public void onStats(final DeviceStats.Sample sample)
+            {
+                m_lastStats = sample;
+                runOnEdt(new Runnable()
+                {
+                    public void run()
+                    {
+                        if(!m_bDeviceStats) return;
+                        m_lbStats.setText(sample.summary());
+                        m_lbStats.setForeground(sample.m_strError != null ? Color.GRAY : Color.BLACK);
+                        if(m_dlgStats != null && m_dlgStats.isVisible())
+                            m_dlgStats.update(sample);
+                    }
+                });
+            }
+        });
+    }
+
+    // 장치 통계 켜기/끄기 (켜면 2초마다 adb로 읽는다)
+    void setDeviceStats(boolean bOn)
+    {
+        m_bDeviceStats = bOn;
+        if(m_miDeviceStats != null) m_miDeviceStats.setSelected(bOn);
+        m_deviceStats.setDevice(m_strSelectedDevice);
+        if(bOn)
+        {
+            m_lbStats.setText("장치 통계 읽는 중…");
+            m_lbStats.setForeground(Color.GRAY);
+            m_deviceStats.start();
+        }
+        else
+        {
+            m_deviceStats.stop();
+            m_lbStats.setText(" ");
+            if(m_dlgStats != null) m_dlgStats.setVisible(false);
+        }
+    }
+
+    void showStatsDialog()
+    {
+        if(!m_bDeviceStats)
+            setDeviceStats(true);
+        if(m_dlgStats == null)
+            m_dlgStats = new StatsDialog(this, m_deviceStats);
+        if(m_lastStats != null)
+            m_dlgStats.update(m_lastStats);
+        m_dlgStats.setVisible(true);
+        m_dlgStats.toFront();
     }
 
     Component getTabPanel()
