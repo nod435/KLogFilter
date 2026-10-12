@@ -506,6 +506,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.26 : 장치 통계에 CPU 온도 (thermal_zone 센서, 상태 표시줄·자세히 창·그래프)");
         addDesc("Version 1.25 : 장치 통계를 이미지로 복사·저장 (자세히 창의 버튼, Ctrl+C)");
         addDesc("Version 1.24 : 수집 중 장치 재부팅 표시 (연결이 끊기면 다시 연결해 이어서 수집, 재부팅 시점에 북마크된 표시 줄)");
         addDesc("Version 1.23 : 장치 통계 주기 선택 (1·2·5·10·30·60초, View 메뉴 또는 자세히 창)");

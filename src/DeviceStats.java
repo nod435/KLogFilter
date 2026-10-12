@@ -41,6 +41,8 @@ public class DeviceStats
         long     m_nTime = System.currentTimeMillis();
         String   m_strBootId;               // /proc/sys/kernel/random/boot_id (재부팅하면 바뀜)
         String   m_strUptime;               // /proc/uptime 첫 값 (초)
+        double   m_dTemp = -1;              // CPU 온도 °C (못 읽으면 -1) (1.26)
+        List<String[]> m_arThermal = new ArrayList<String[]>();   // 온도 센서 {이름, °C}
 
         double memUsedPercent()
         {
@@ -53,6 +55,8 @@ public class DeviceStats
             if(m_strError != null) return "장치 통계: " + m_strError;
             StringBuilder sb = new StringBuilder("장치 ");
             sb.append(m_dCpu < 0 ? "CPU …" : String.format("CPU %.0f%%", m_dCpu));
+            if(m_dTemp >= 0)
+                sb.append(String.format(" · %.1f°C", m_dTemp));
             if(m_nMemTotalKb > 0)
                 sb.append(String.format(" · MEM %.1f/%.1fGB (%.0f%%)", (m_nMemTotalKb - m_nMemAvailKb) / 1048576.0, m_nMemTotalKb / 1048576.0, memUsedPercent()));
             return sb.toString();
@@ -173,7 +177,9 @@ public class DeviceStats
     {
         Sample sample = new Sample();
         sample.m_strDevice = m_strDevice;
-        String[] out = runAdb("cat", "/proc/stat", "/proc/meminfo", "/proc/sys/kernel/random/boot_id", "/proc/uptime");
+        // 한 번의 adb로 CPU·메모리·부팅 정보와 온도 센서(thermal_zone)를 함께 읽는다
+        String[] out = runAdb("cat /proc/stat /proc/meminfo /proc/sys/kernel/random/boot_id /proc/uptime; "
+                            + "for z in /sys/class/thermal/thermal_zone*; do echo THERMAL $(cat $z/type 2>/dev/null) $(cat $z/temp 2>/dev/null); done");
         if(out[1] != null)
         {
             sample.m_strError = out[1];
@@ -193,6 +199,8 @@ public class DeviceStats
         applyCpu(sample, m_arPrevCpu, arCpu);
         m_arPrevCpu = arCpu;
         long[] mem = parseMemInfo(out[0]);
+        sample.m_arThermal = parseThermal(out[0]);
+        sample.m_dTemp = cpuTemp(sample.m_arThermal);
         sample.m_nMemTotalKb = mem[0];
         sample.m_nMemAvailKb = mem[1];
         if(m_bWantTop)
@@ -323,6 +331,43 @@ public class DeviceStats
         long nTotal = cur[0] - prev[0], nIdle = cur[1] - prev[1];
         if(nTotal <= 0) return 0;
         return Math.max(0, Math.min(100, (nTotal - nIdle) * 100.0 / nTotal));
+    }
+
+    /** "THERMAL <이름> <값>" 줄들 → {이름, °C}. 값이 1000보다 크면 밀리도(45000 → 45.0). 읽을 수 없는 센서는 뺀다. */
+    static List<String[]> parseThermal(String strOut)
+    {
+        List<String[]> ar = new ArrayList<String[]>();
+        for(String strLine : strOut.split("\n"))
+        {
+            String[] t = strLine.trim().split("\\s+");
+            if(t.length < 3 || !t[0].equals("THERMAL")) continue;
+            try
+            {
+                double v = Double.parseDouble(t[t.length - 1]);
+                if(Math.abs(v) >= 1000) v /= 1000;
+                if(v <= -50 || v >= 200) continue;          // 꺼진 센서 등 엉뚱한 값
+                StringBuilder sbName = new StringBuilder();
+                for(int i = 1; i < t.length - 1; i++) sbName.append(i > 1 ? " " : "").append(t[i]);
+                ar.add(new String[]{ sbName.toString(), String.format("%.1f", v) });
+            }
+            catch(NumberFormatException e) { }
+        }
+        return ar;
+    }
+
+    static final java.util.regex.Pattern CPU_ZONE = java.util.regex.Pattern.compile("(?i).*(cpu|soc|tsens|core|big|little|x86_pkg|ap_|mtktscpu).*");
+
+    // CPU 온도: 이름이 CPU 쪽인 센서 중 가장 높은 값, 없으면 전체에서 가장 높은 값. 센서가 없으면 -1.
+    static double cpuTemp(List<String[]> arThermal)
+    {
+        double dCpu = -1, dAll = -1;
+        for(String[] z : arThermal)
+        {
+            double v = Double.parseDouble(z[1]);
+            dAll = Math.max(dAll, v);
+            if(CPU_ZONE.matcher(z[0]).matches()) dCpu = Math.max(dCpu, v);
+        }
+        return dCpu >= 0 ? dCpu : dAll;
     }
 
     /** /proc/meminfo → {MemTotal kB, 사용 가능 kB} */

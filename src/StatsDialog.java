@@ -26,11 +26,13 @@ public class StatsDialog extends JDialog
     private static final long serialVersionUID = 1L;
     static final Color COLOR_CPU = new Color(0x1E6FD9);
     static final Color COLOR_MEM = new Color(0x2E9E44);
+    static final Color COLOR_TEMP = new Color(0xEF6C00);     // 온도 (1.26)
 
     final DeviceStats      m_stats;
     final JLabel           m_lbSummary = new JLabel(" ");
     final JLabel           m_lbMem     = new JLabel(" ");
     final JLabel           m_lbReboot  = new JLabel("재부팅: 감지된 것 없음");
+    final JLabel           m_lbTemp    = new JLabel("온도: -");
     final GraphPanel       m_graph     = new GraphPanel();
     final CorePanel        m_cores     = new CorePanel();
     final javax.swing.JComboBox<String> m_cbInterval = new javax.swing.JComboBox<String>();
@@ -69,9 +71,10 @@ public class StatsDialog extends JDialog
         jpLine1.add(jpInterval, BorderLayout.EAST);
 
         m_lbReboot.setForeground(Color.GRAY);
-        JPanel jpTop = new JPanel(new GridLayout(3, 1));
+        JPanel jpTop = new JPanel(new GridLayout(4, 1));
         jpTop.add(jpLine1);
         jpTop.add(m_lbMem);
+        jpTop.add(m_lbTemp);
         jpTop.add(m_lbReboot);
         jpTop.setBorder(BorderFactory.createEmptyBorder(6, 8, 4, 8));
 
@@ -223,7 +226,14 @@ public class StatsDialog extends JDialog
         m_bSyncing = false;
         long nSpan = nSec * DeviceStats.HISTORY;
         String strSpan = nSpan >= 3600 ? (nSpan / 3600) + "시간" : nSpan >= 60 ? (nSpan / 60) + "분" : nSpan + "초";
-        m_graph.setBorder(BorderFactory.createTitledBorder("최근 " + strSpan + " (" + nSec + "초마다, 파랑: CPU, 초록: 메모리)"));
+        // 범례 글자는 각 선과 같은 색
+        m_graph.setBorder(BorderFactory.createTitledBorder("<html>최근 " + strSpan + " (" + nSec + "초마다, "
+            + legend(COLOR_CPU, "파랑: CPU %") + ", " + legend(COLOR_MEM, "초록: 메모리 %") + ", " + legend(COLOR_TEMP, "주황: CPU 온도 °C") + ")</html>"));
+    }
+
+    static String legend(Color c, String strText)
+    {
+        return String.format("<b><font color='#%06X'>%s</font></b>", c.getRGB() & 0xFFFFFF, strText);
     }
 
     // EDT에서 호출
@@ -235,6 +245,22 @@ public class StatsDialog extends JDialog
             m_lbMem.setText(String.format("메모리: 사용 %,d MB / 전체 %,d MB, 사용 가능 %,d MB",
                 (sample.m_nMemTotalKb - sample.m_nMemAvailKb) / 1024, sample.m_nMemTotalKb / 1024, sample.m_nMemAvailKb / 1024));
         m_graph.setHistory(m_stats.history());
+        if(sample.m_strError == null)
+        {
+            if(sample.m_arThermal.isEmpty())
+                m_lbTemp.setText("온도: 센서를 읽을 수 없습니다");
+            else
+            {
+                StringBuilder sb = new StringBuilder(String.format("온도: CPU %.1f°C   (", sample.m_dTemp));
+                for(int i = 0; i < sample.m_arThermal.size() && i < 6; i++)
+                    sb.append(i > 0 ? ", " : "").append(sample.m_arThermal.get(i)[0]).append(' ').append(sample.m_arThermal.get(i)[1]).append("°C");
+                if(sample.m_arThermal.size() > 6) sb.append(" …");
+                m_lbTemp.setText(sb.append(')').toString());
+                StringBuilder sbTip = new StringBuilder("<html>");
+                for(String[] z : sample.m_arThermal) sbTip.append(z[0]).append(" : ").append(z[1]).append("°C<br>");
+                m_lbTemp.setToolTipText(sbTip.append("</html>").toString());
+            }
+        }
         if(sample.m_strError == null && sample.m_dCpu >= 0)     // 첫 측정은 이전 값이 없어 코어 값도 없음
         {
             m_cores.setCores(sample.m_arCore);
@@ -275,19 +301,21 @@ public class StatsDialog extends JDialog
                 g.drawString(p + "%", 4, y + 4);
                 g.setColor(new Color(0xDDDDDD));
             }
-            drawLine(g, x0, y0, w, h, true);
-            drawLine(g, x0, y0, w, h, false);
+            drawLine(g, x0, y0, w, h, 0);
+            drawLine(g, x0, y0, w, h, 1);
+            drawLine(g, x0, y0, w, h, 2);
         }
 
-        void drawLine(Graphics2D g, int x0, int y0, int w, int h, boolean bCpu)
+        // nKind: 0 CPU %, 1 메모리 %, 2 온도 °C (같은 0~100 눈금)
+        void drawLine(Graphics2D g, int x0, int y0, int w, int h, int nKind)
         {
-            g.setColor(bCpu ? COLOR_CPU : COLOR_MEM);
+            g.setColor(nKind == 0 ? COLOR_CPU : nKind == 1 ? COLOR_MEM : COLOR_TEMP);
             int nPrevX = -1, nPrevY = -1;
             int n = DeviceStats.HISTORY;
             List<DeviceStats.Sample> ar = m_arHistory;
             for(int i = 0; i < ar.size(); i++)
             {
-                double v = bCpu ? ar.get(i).m_dCpu : ar.get(i).memUsedPercent();
+                double v = nKind == 0 ? ar.get(i).m_dCpu : nKind == 1 ? ar.get(i).memUsedPercent() : Math.min(100, ar.get(i).m_dTemp);
                 if(v < 0) { nPrevX = -1; continue; }
                 int x = x0 + w * (n - ar.size() + i) / (n - 1);
                 int y = y0 + h - (int)(h * v / 100);
