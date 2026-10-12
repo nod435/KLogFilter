@@ -1,8 +1,8 @@
 # KLogFilter 소스 구조 및 동작 흐름
 
-> 작성일: 2026-10-02 · 생성: 2026-10-07 21:22:14 (파일 이름의 `20261007212214`) · 대상 버전: LogFilter 1.14 (큰버전.중간버전.빌드날짜) · 기준 소스: [github.com/nod435/KLogFilter](https://github.com/nod435/KLogFilter) `fd5e19f` + 로컬 변경분(1.1절) (현재 24개 파일, 약 5,600줄 / 원본 18개, 약 4,400줄)
+> 작성일: 2026-10-02 · 생성: 2026-10-12 09:23:31 (파일 이름의 `20261012092331`) · 대상 버전: LogFilter 1.19 (큰버전.중간버전.빌드날짜) · 기준 소스: [github.com/nod435/KLogFilter](https://github.com/nod435/KLogFilter) `fd5e19f` + 로컬 변경분(1.1절) (현재 26개 파일, 약 6,500줄 / 원본 18개, 약 4,400줄)
 >
-> 시퀀스 다이어그램(4장), 클래스 관계도와 클래스별 UML 구조(5.1·5.2절)는 HTML 버전에만 있다: [SOURCE_STRUCTURE_20261007212214.html](SOURCE_STRUCTURE_20261007212214.html)
+> 시퀀스 다이어그램(4장), 클래스 관계도와 클래스별 UML 구조(5.1·5.2절)는 HTML 버전에만 있다: [SOURCE_STRUCTURE_20261012092331.html](SOURCE_STRUCTURE_20261012092331.html)
 
 ---
 
@@ -11,10 +11,10 @@
 KLogFilter는 Android `logcat` 로그를 보면서 필터링하는 Java Swing 데스크톱 툴이다.
 
 - **입력:** 저장된 로그 파일(Open, Recent, 드래그&드롭, 실행 인자)을 읽거나, `adb logcat` 출력을 실시간으로 받는다.
-- **기능:** 워드/태그/PID/TID/레벨 필터, 하이라이트 6개(색상 선택), 메시지 검색(Ctrl+F, F3), 오른쪽 클릭 로그 전체 보기, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사
+- **기능:** 워드/태그/PID/TID/레벨 필터, 시간 범위 필터, Find·Remove 정규식 모드, 입력창별 최근 입력 10개, 하이라이트 6개(색상 선택), 메시지 검색(Ctrl+F, F3), 오른쪽 클릭 로그 전체 보기, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사
 - **빌드 환경:** Eclipse Java 프로젝트, JavaSE-1.8(원본은 1.6). JDK 8로 빌드한다.
 - **패키지:** default 패키지만 사용하고, 외부 라이브러리 의존성은 없다.
-- **버전 규칙(2026-10-06~):** `큰버전.중간버전.날짜`. 중간버전은 신규 기능 추가 때 +1, 날짜는 빌드 날짜시간 `yyyyMMddHHmmss`. `src/AppVersion.java`(MAJOR·MINOR)와 `build.bat`(날짜)이 담당. 현재 1.14 (1.10 대용량 파일, 1.11 adb 바로 읽기, 1.12 하이라이트 6개, 1.13 로그 전체 보기, 1.14 메시지 검색).
+- **버전 규칙(2026-10-06~):** `큰버전.중간버전.날짜`. 중간버전은 신규 기능 추가 때 +1, 날짜는 빌드 날짜시간 `yyyyMMddHHmmss`. `src/AppVersion.java`(MAJOR·MINOR)와 `build.bat`(날짜)이 담당. 현재 1.19 (1.10 대용량 파일, 1.11 adb 바로 읽기, 1.12 하이라이트 6개, 1.13 로그 전체 보기, 1.14 메시지 검색, 1.15 강제 종료, 1.16 입력 기록, 1.17 기록 파일 50MB 나누기, 1.18 시간 범위 필터, 1.19 정규식 모드).
 
 ```powershell
 # 빌드 — 로컬 소스(UTF-8)
@@ -31,6 +31,12 @@ java -cp bin LogFilterMain [로그파일]
 
 | 구분 | 파일 | 내용 | 상태 |
 |---|---|---|---|
+| 정규식 모드 | `FilterEngine` · `LogTable` · `LogFilterMain` · `AppConfig` | 2026-10-11 (1.19): Find·Remove 입력창의 `.*` 토글로 입력창마다 정규식 모드(대소문자 무시, Message에서 find). 정규식 일치 구간을 빨간 굵은 글씨로 표시, 틀린 식은 입력창을 붉게·상태 표시줄에 이유(Complete에 덧붙임)·거르지 않음 | 적용됨 |
+| 시간 범위 필터 | `TimeRange`(신규) · `FilterEngine` · `LogFilterMain` · `AppConfig` | 2026-10-11 (1.18): Word filter의 `Time : 시작 ~ 끝`. 12:30 / 12:30:15.500 / 10-07 12:30, 자정을 넘는 범위, 시각 없는 줄은 숨김, 틀린 형식은 붉게 표시 | 적용됨 |
+| 기록 파일 나누기 | `LogSource` · `FileLogStore` | 2026-10-11 (1.17): adb 기록 파일이 50MB를 넘으면 `이름_2.txt`, `_3` …에 이어서 기록(줄 단위). 목록은 파일 조각(Segment)을 이어 붙인 가상 위치로 끊김 없이 표시 | 적용됨 |
+| 입력 기록 | `InputHistory`(신규) · `LogFilterMain` · `AppConfig` | 2026-10-11 (1.16): 입력창별 최근 입력 10개를 `LogFilter.ini`(HISTORY_*)에 저장, ▼ 버튼·Alt+↓ 목록에서 골라 쓰기, ↑/↓ | 적용됨 |
+| 강제 종료 | `LogFilterMain` | 2026-10-11 (1.15): File > 강제 종료 — adb를 멈추고(기록 파일 최대 1초 마무리) 설정 저장 후 백그라운드 작업을 기다리지 않고 halt | 적용됨 |
+| 표시 개선 | `LogTable` · `LogFilterMain` | 2026-10-08: 오른쪽 클릭을 누름/뗌으로 처리(실제 마우스에서 안 뜨던 문제), Alt는 마우스 이벤트로 판단, 팝업은 창 가운데·하이라이트 색상 적용. 검색어는 빨간 배경 + 흰 글씨 | 적용됨 |
 | 메시지 검색 | `LogSearch`(신규) · `LogFilterMain` · `LogTable` | 2026-10-07 (1.14): 필터와 별개로 보이는 목록의 Message에서 찾기. Ctrl+F 검색창, Enter/F3 다음, Shift+Enter/Shift+F3 이전, 끝에서 반대쪽으로 이어서, 백그라운드 검색. 북마크 이동은 F2 다음 / Shift+F2 이전으로 변경 | 적용됨 |
 | 로그 전체 보기 | `LogTable` · `LogList` · `LogStore` · `FilteredList` | 2026-10-07 (1.13): 오른쪽 클릭 → 그 줄의 원본 로그 전체를 줄바꿈해 팝업으로(원래 줄 번호, 로그 전체/셀 값 복사 메뉴). Alt+오른쪽 클릭은 그대로 | 적용됨 |
 | 하이라이트 6개 | `LogFilterMain` · `LogTable` · `AppConfig` · `LogColor` | 2026-10-07 (1.12): Highlight 입력창 6개(Word/Tag filter 오른쪽), 입력창마다 색상 6개 중 선택, 설정 `HIGHLIGHT_n`/`HIGHLIGHT_COLOR_n`/`HIGHLIGHT_ON_n`(이전 `HIGHLIGHT`는 1번으로) | 적용됨 |
@@ -65,18 +71,20 @@ java -cp bin LogFilterMain [로그파일]
 
 | 파일 | 줄 수 | 역할 |
 |---|---:|---|
-| [LogFilterMain.java](../src/LogFilterMain.java) | 1705 (원본 2084) | 메인 프레임. 화면 구성과 이벤트 연결, Highlight 입력창 6개, 메시지 검색 입력·키(Ctrl+F, F3). 동작은 아래 클래스에 위임 |
-| [FilterEngine.java](../src/FilterEngine.java) | 615 | **신규.** 현재 줄 목록(`LogStore`)과 필터 결과(`FilteredList`), 북마크/에러 맵, 필터 조건과 토큰, 분석·재필터 스레드(증분·병렬) |
-| [LogSource.java](../src/LogSource.java) | 438 | **신규.** 파일 색인(LoadFile 스레드), adb 실행과 출력 바로 읽기(`LiveFeed`: 기록 파일에 쓰면서 줄 위치를 목록에 바로 추가), 장치 목록 |
+| [LogFilterMain.java](../src/LogFilterMain.java) | 1909 (원본 2084) | 메인 프레임. 화면 구성과 이벤트 연결, Highlight 입력창 6개, 메시지 검색 입력·키(Ctrl+F, F3). 동작은 아래 클래스에 위임 |
+| [FilterEngine.java](../src/FilterEngine.java) | 678 | **신규.** 현재 줄 목록(`LogStore`)과 필터 결과(`FilteredList`), 북마크/에러 맵, 필터 조건과 토큰·정규식·시간 범위, 분석·재필터 스레드(증분·병렬) |
+| [LogSource.java](../src/LogSource.java) | 479 | **신규.** 파일 색인(LoadFile 스레드), adb 실행과 출력 바로 읽기(`LiveFeed`: 기록 파일에 쓰면서 줄 위치를 목록에 바로 추가), 50MB마다 다음 기록 파일, 장치 목록 |
 | [LogStore.java](../src/LogStore.java) | 148 | **신규(대용량).** 줄 목록 공통 부모. 지연 해석 + LRU 캐시(2만 줄), 북마크(BitSet)·메모, 최대 태그 길이, `m_bComplete`, 원본 줄(`rawLine`) |
-| [FileLogStore.java](../src/FileLogStore.java) | 296 | **신규(대용량).** 파일 기반 줄 목록. 줄마다 시작 위치·길이(12바이트)만 기억, 4MB 단위 색인, `FileChannel` 위치 읽기, 화면용 주변 32KB 읽기, 실시간 수집용 `appendLine()` |
+| [FileLogStore.java](../src/FileLogStore.java) | 383 | **신규(대용량).** 파일 기반 줄 목록. 줄마다 시작 위치·길이(12바이트)만 기억, 4MB 단위 색인, `FileChannel` 위치 읽기, 화면용 주변 32KB 읽기, 실시간 수집용 `appendLine()`, 여러 기록 파일을 조각(Segment)으로 이어 읽기 |
 | [MemoryLogStore.java](../src/MemoryLogStore.java) | 44 | **신규(대용량).** 메모리 줄 목록(시작 안내 문구) |
 | [FilteredList.java](../src/FilteredList.java) | 37 | **신규(대용량).** 필터 결과. 통과한 줄 번호(`IntList`)만 갖고 내용은 `LogStore`에서 읽음 |
 | [LogList.java](../src/LogList.java) | 17 | **신규(대용량).** 화면이 보는 목록 인터페이스(`size`, `get`, `lineIndexOf`, `rawLine`) |
 | [LogSearch.java](../src/LogSearch.java) | 173 | **신규(1.14).** 메시지 검색: 보이는 목록에서 다음/이전 일치 행 찾기(끝에서 반대쪽으로 이어서), 중단 가능, 블록 읽기 |
+| [InputHistory.java](../src/InputHistory.java) | 179 | **신규(1.16).** 입력창 하나의 최근 입력 10개: 기록, ↑/↓, ▼·Alt+↓ 목록, 목록 지우기 |
+| [TimeRange.java](../src/TimeRange.java) | 107 | **신규(1.18).** 시간 범위 필터 입력 해석(시각·날짜), 줄의 시각 비교, 자정 넘김 |
 | [IntList.java](../src/IntList.java) · [LongList.java](../src/LongList.java) | 40 · 36 | **신규(대용량).** 뒤에만 추가하는 기본형 배열. 쓰는 스레드 하나, 읽는 스레드 여럿 |
-| [AppConfig.java](../src/AppConfig.java) | 275 | **신규.** 설정 파일(*.ini) 읽기/쓰기, 키별 기본값, 하이라이트 6개·색상 6개 |
-| [LogTable.java](../src/LogTable.java) | 779 | 로그 테이블. 셀 렌더링(하이라이트 6개·색상별), 키/마우스, 오른쪽 클릭 로그 전체 팝업, 복사, 북마크 이동(F2/Shift+F2), F3 검색 |
+| [AppConfig.java](../src/AppConfig.java) | 322 | **신규.** 설정 파일(*.ini) 읽기/쓰기, 키별 기본값, 하이라이트 6개·색상 6개, 입력 기록, 시간 범위, 정규식 모드 |
+| [LogTable.java](../src/LogTable.java) | 916 | 로그 테이블. 셀 렌더링(하이라이트 6개·색상별), 키/마우스, 오른쪽 클릭 로그 전체 팝업, 복사, 북마크 이동(F2/Shift+F2), F3 검색 |
 | [IndicatorPanel.java](../src/IndicatorPanel.java) | 232 | 북마크/에러 위치 바(픽셀 캐시), 북마크만/에러만 보기 |
 | [LogFilterTableModel.java](../src/LogFilterTableModel.java) | 76 | 테이블 모델(`LogList` 참조), 컬럼 정의/폭, EDT에서 알린 행 수 |
 | [LogCatParser.java](../src/LogCatParser.java) | 230 | 로그 한 줄 → `LogInfo` (threadtime · time · year · uid · brief · process · tag · kernel/dmesg) |
@@ -123,6 +131,9 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 - **병렬 처리:** 처리할 줄이 13만 개(`CHUNK_LINES`×2) 이상이면 6만5천 줄 단위로 나눠 `FilterWorker` 풀(코어 수−1)에서 처리하고, 결과는 순서대로 합친다. 조건이 바뀌거나 목록이 교체되면 작업을 중단한다. 작업은 인터럽트하지 않는다(`FileChannel`은 인터럽트되면 닫힌다).
 - **adb 바로 읽기(1.11):** AdbProcess 스레드의 `LiveFeed`가 adb 출력을 64KB 버퍼로 기록 파일에 쓰고, 쓴 위치·길이를 `FileLogStore.appendLine()`으로 바로 추가한다(해석한 줄은 캐시에). 출력이 잠시 멈추거나 50ms마다 flush한 뒤 목록에 넘기므로 화면은 파일에 기록된 줄만 읽는다. Pause 중에는 쌓아 두었다가 Resume·Stop 때 넘긴다.
 - **메시지 검색(1.14):** `LogSearch`가 지금 보이는 목록(전체 또는 필터 결과)에서 찾는다. 전체 목록은 `forEach` 블록 읽기, 필터 결과는 원본에서 촘촘하면 블록 읽기·듬성하면 행마다 읽기. 새 검색을 시작하면 이전 검색은 중단된다.
+- **기록 파일 나누기(1.17):** `LiveFeed`가 파일에 쓴 바이트를 세다가 다음 줄이 50MB를 넘게 하면 지금 파일을 닫고 다음 파일을 연다. 줄 위치는 모든 파일을 이어 붙인 가상 위치이고, `FileLogStore`는 파일 조각(시작 위치·파일)을 받아 읽을 때 조각을 찾아 그 파일에서 읽는다(경계를 넘는 블록은 나눠 읽음). Clear는 조각을 복사한다.
+- **필터 추가(1.18·1.19):** `FilterEngine.accept()`에 시간 범위(`TimeRange`)와 정규식 판정(`checkFind`/`checkRemove`)이 더해졌다. 틀린 입력은 그 조건만 끄고, 오류는 입력창(붉은 배경·툴팁)과 상태 표시줄에 남긴다.
+- **입력 기록(1.16):** `InputHistory`가 입력창마다 붙고, `AppConfig`가 `HISTORY_<입력창>_0~9`로 저장한다.
 - **남은 결합:** `LogTable`·`IndicatorPanel`은 여전히 `LogFilterMain` 필드(`m_scrollVBar`, `m_tbLogTable`, `m_engine`)를 직접 참조한다. `LogColor`와 컬럼 폭은 public static이다.
 
 ### 3.3 핵심 데이터 구조 (`FilterEngine`)
@@ -143,19 +154,21 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 
 ## 4. 동작 흐름
 
-시퀀스 다이어그램은 [HTML 버전](SOURCE_STRUCTURE_20261007212214.html) 4장에 있다. 요약:
+시퀀스 다이어그램은 [HTML 버전](SOURCE_STRUCTURE_20261012092331.html) 4장에 있다. 요약:
 
 | 흐름 | 순서 |
 |---|---|
 | 시작 | `new LogFilterMain()` → `FilterEngine`·`LogCatParser`·`LogSource` 생성 → 화면 구성 → `m_engine.start()` → `addDesc()` → `AppConfig.load()` → `applyConfig()` → `loadColors()`·`loadCmds()` |
 | 파일 열기 | Open/Recent/드래그&드롭/인자 → `LogFilterMain.parseFile()` → `LogSource.parseFile()`: `new FileLogStore` → `engine.setStore()` / LoadFile 스레드: `indexNext()`로 4MB씩 줄 위치 색인 → 200ms마다 `notifyIndexed()`("Loading x%") → 끝나면 `m_bComplete` = true("Loaded N lines · analyzing") / 엔진 스레드: 색인된 줄을 이어서 분석·필터 판정 → 끝나면 "Ready" |
 | 화면 표시 | `LogFilterTableModel.getValueAt()` → `LogList.get(i)` → `LogStore` 캐시에 없으면 `FileLogStore.readLine()`(위치 읽기) → `parse()` → 캐시. 보이는 줄만 읽는다 |
-| logcat | Run → `LogSource.startProcess()`: 기록 파일 생성 + `setStore(기록 파일의 FileLogStore)` / AdbProcess 스레드: adb 출력(stderr 포함) 한 줄씩 → `LiveFeed.write()`(파일 버퍼) → 출력이 멈추거나 50ms마다 `flush()` → `FileLogStore.appendLine()` → `notifyAppended()` → 증분 분석 → `refreshTable(FOLLOW_END)` |
+| logcat | Run → `LogSource.startProcess()`: 기록 파일 생성 + `setStore(기록 파일의 FileLogStore)` / AdbProcess 스레드: adb 출력(stderr 포함) 한 줄씩 → `LiveFeed.write()`(파일 버퍼) → 출력이 멈추거나 50ms마다 `flush()` → `FileLogStore.appendLine()` → `notifyAppended()` → 증분 분석 → `refreshTable(FOLLOW_END)` / 다음 줄이 50MB를 넘으면 `LiveFeed.rotate()`: 파일 닫기 → `이름_n.txt` 열기 → `FileLogStore.addSegment()` |
 | 재필터 | 입력 변경 → `FilterEngine.setFind()` 등 + `markChanged()` → 250ms 디바운스 → `requestFilter()` → 엔진 스레드가 새 `FilteredList`를 채움(많으면 병렬, 채우는 동안에도 표시, "Filtering x%") → `onDataChanged(SELECT_LAST)` → "Complete" |
 | 렌더링 | `LogCellRenderer`가 Find/Tag 토큰(`FilterEngine`)과 하이라이트 6개(`LogTable.Highlight`: 토큰 + 색상 번호)로 일치 여부 확인 → 없으면 원문, 있으면 입력창마다 고른 색상으로 이스케이프된 HTML |
 | 북마크 | 더블클릭/Ctrl+F2 → `FilterEngine.bookmarkItem()` / F2·Shift+F2 → 표시 북마크 위치 `TreeSet`에서 다음/이전 |
 | 검색 | Ctrl+F → 검색창 / Enter·F3(다음), Shift+Enter·Shift+F3(이전) → `LogFilterMain.search()` → LogSearch 스레드: `LogSearch.find()`(선택 행 다음부터, 끝에서 반대쪽으로 이어서) → EDT: 행 선택·가운데로, 상태 표시줄에 줄 번호 |
 | 로그 전체 보기 | 오른쪽 클릭 → 행 선택 → `LogTable.showFullLog()` → `LogList.rawLine()`(원본 줄) → 팝업(줄바꿈, 줄 번호, 로그 전체/셀 값 복사) |
+| 강제 종료 | File > 강제 종료 → 확인 → `LogSource.stopProcess()` → AdbProcess 스레드 최대 1초 대기(기록 파일 마무리) → `saveConfig()` → `Runtime.halt(0)` |
+| 입력 기록 | Enter·포커스 이동 → `InputHistory.commit()` / ▼·Alt+↓ → `showPopup()` → 고르면 입력창에 넣음 → DocumentListener → 필터 적용 / 종료 때 `AppConfig` HISTORY_* 저장 |
 | 종료 | `LogSource.stopProcess()` → `FilterEngine.stop()` → `saveConfig()` → `AppConfig.saveColors()` → `System.exit(0)` |
 
 **스레드:** EDT, `FilterEngine`(분석·재필터), `FilterWorker-n`(병렬 처리 풀, 데몬), `LoadFile`, `AdbProcess`(adb 출력 읽기·기록·목록 추가), `LogSearch`(메시지 검색, 데몬), `AdbDevices`. 백그라운드 스레드는 Swing을 직접 건드리지 않는다.
@@ -164,13 +177,15 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 
 ## 5. 클래스별 상세
 
-클래스별 필드/메서드 UML 박스와 클래스 관계도는 [HTML 버전](SOURCE_STRUCTURE_20261007212214.html) 5장에 있다.
+클래스별 필드/메서드 UML 박스와 클래스 관계도는 [HTML 버전](SOURCE_STRUCTURE_20261012092331.html) 5장에 있다.
 
 - **LogFilterMain:** 화면 구성(`get*Panel`, `getHighlightPanel()` 6줄, `getSearchPanel()`), 하이라이트 반영(`updateHighlight()`), 메시지 검색(`search()`, `installSearchKeys()`), 이벤트 연결, Listener 구현(`onDataChanged`·`onStatus`·`onTitle`·`onProcessStopped`·`onDevices`), `refreshTable()`·`runOnEdt()`, 설정 반영(`applyConfig`/`saveConfig`), 동작 위임.
 - **FilterEngine:** `setStore()`, `clearData()`(같은 파일의 이후 부분만 보는 새 목록), `bookmarkItem()`, `getView()`(LOCK 없음), `accept()`, `checkUseFilter()`, `markChanged()`/`requestFilter()`(전체), `requestAnalysis()`/`notifyIndexed()`/`notifyAppended()`(증분), `process()`/`processParallel()`, `start()`/`stop()`. 내부 `Listener` 인터페이스, `View` 클래스.
 - **LogStore / FileLogStore / MemoryLogStore:** `get()`(캐시 + 북마크·메모 상태 반영), `forEach()`(블록 순차 읽기), `readLine()`, `parse()`, `isMarked()`/`setMarked()`/`setMemo()`, `cleared()`, `close()`, `rawLine()`(원본 줄). `FileLogStore.appendLine()`: 실시간 수집에서 쓴 위치를 바로 추가(파일 다시 읽지 않음). `FileLogStore.indexNext(bIncludeTail)`: 빈 줄 건너뜀, CRLF 제거, 쓰는 중인 파일은 '\n'으로 끝난 줄까지만. 닫힌 채널은 다시 열어 한 번 더 읽는다.
 - **FilteredList / LogList / IntList / LongList:** 필터 결과(줄 번호 목록), 화면용 목록 인터페이스, 뒤에만 추가하는 기본형 배열(쓰기 하나·읽기 여럿).
 - **LogSource:** `parseFile()`, `startProcess()`, `stopProcess()`, `setPause()`(Resume하면 쌓인 줄을 넘김), `listDevices()`. 내부 `LiveFeed`(write·flush·publish), `Listener` 인터페이스, `Device` 클래스.
+- **InputHistory:** `commit()`·`add()`, ↑/↓ 탐색, `showPopup()`(▼·Alt+↓), `clear()`, `items()`/`setItems()`(설정 저장·읽기).
+- **TimeRange:** `parse(from, to)`(형식이 틀리면 IllegalArgumentException), `accept(date, time)`, `lineTime()`/`lineDate()`(줄의 시각·날짜 정리).
 - **LogSearch:** `find(list, nSize, tokens, nStart, bForward, progress)` → `Result`(행, 반대쪽으로 돌아갔는지), `cancel()`, `matches()`(Message, `|` OR, 대소문자 무시).
 - **AppConfig:** `load()`/`save()`(하이라이트 6개 문자열·색상 번호·사용 여부), `loadCmds()`, `loadColors()`/`saveColors()`(하이라이트 색상 6개), `intOf`/`hexOf`/`highlightOf`(키별 기본값).
 - **LogTable:** 하이라이트 6개(`Highlight[]`, `SetHighlight(n, text, color)`), `setFilterEngine()`, 오른쪽 클릭 → `showFullLog()` 팝업, Alt+클릭 → `FilterEngine.setShowTag/RemoveTag`, `gotoBookmark()`(TreeSet, F2/Shift+F2), F3/Shift+F3 → `LogFilterMain.search()`, `LogCellRenderer`(조기 반환, 이스케이프, Font/Color 재사용, 글꼴·색 먼저 정하고 HTML은 한 번만).
@@ -185,7 +200,7 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
 
 | 파일 | 읽기/쓰기 | 주요 키 |
 |---|---|---|
-| `LogFilter.ini` | 시작할 때 읽고 종료할 때 씀 | `WORD_FIND`, `WORD_REMOVE`, `TAG_SHOW`, `TAG_REMOVE`, `PID_SHOW`, `TID_SHOW`, `HIGHLIGHT_0~5`·`HIGHLIGHT_COLOR_0~5`·`HIGHLIGHT_ON_0~5`(이전 `HIGHLIGHT`는 읽기만), `FONT_TYPE`, `INI_WIDTH/HEIGHT`, `INI_WINDOW_STATE`, `INI_COMUMN_0~8` |
+| `LogFilter.ini` | 시작할 때 읽고 종료할 때 씀 | `WORD_FIND`, `WORD_REMOVE`, `TAG_SHOW`, `TAG_REMOVE`, `PID_SHOW`, `TID_SHOW`, `TIME_FROM`·`TIME_TO`, `FIND_REGEX`·`REMOVE_REGEX`, `HISTORY_<입력창>_0~9`, `HIGHLIGHT_0~5`·`HIGHLIGHT_COLOR_0~5`·`HIGHLIGHT_ON_0~5`(이전 `HIGHLIGHT`는 읽기만), `FONT_TYPE`, `INI_WIDTH/HEIGHT`, `INI_WINDOW_STATE`, `INI_COMUMN_0~8` |
 | `LogFilterColor.ini` | 시작할 때 읽고 종료할 때 씀 | `INI_COLOR_0~8` (3=E, 4=W, 6=I, 7=D, 8=F), `INI_HIGILIGHT_COUNT`(6), `INI_HIGILIGHT_0~5` (하이라이트 색상 6개, 없으면 기본 색상) |
 | `LogFilterCmd.ini` | 읽기 전용 | `CMD_COUNT`, `CMD_n` (adb 뒤에 붙는 명령) |
 | `RecentFile.ini` | 읽기/쓰기 | 한 줄에 경로 하나 |
@@ -313,3 +328,14 @@ LogFilterMain (JFrame, 화면)  ── implements INotiEvent, FilterEngine.Liste
    | 1.14 | 메시지 검색 | Ctrl+F 검색창, Enter/F3 다음, Shift+Enter/Shift+F3 이전, 끝에서 반대쪽으로 이어서, 필터 결과 안에서도. 1GB(1,000만 줄) 끝까지 4.4초, 검색 중 화면 응답 2ms 이내. 북마크 이동은 F2 다음 / Shift+F2 이전으로 변경 |
 
    테스트: 실시간 수집(처리량·지연·내용·Pause·Clear·Stop), 하이라이트(색상·끄기·저장·이전 설정), 오른쪽 클릭 팝업(원본 줄·필터 중 줄 번호·복사·Alt), 검색(무작위 시작점 전수 비교 280회, 실제 창 키 입력), 기존 단위·기능·스트레스 테스트 모두 통과.
+10. ✅ **완료(2026-10-11) — 3단계 신규 기능 (버전마다 커밋):**
+
+   | 버전 | 기능 | 내용 |
+   |---|---|---|
+   | 1.15 | 강제 종료 | File > 강제 종료. adb 수집 + 1GB 재필터 중에도 0.93초 만에 종료, 설정 저장, 기록 파일 마지막 줄 온전 |
+   | 1.16 | 입력 기록 | 입력창별 최근 입력 10개 저장(다음 실행에도 유지), ▼·Alt+↓ 목록에서 골라 쓰기 |
+   | 1.17 | 기록 파일 나누기 | 50MB마다 다음 파일(이름_2.txt …). 100만 줄 → 첫 파일 52,428,782바이트 + _2, 화면은 100만 줄 이어서 / 60KB 제한 45개 파일로 내용·필터·검색·Clear·Pause 확인 |
+   | 1.18 | 시간 범위 필터 | 12:30 ~ 12:45:30, 10-07 23:00 ~ 10-08 01:00, 자정 넘김, 시각 없는 줄 숨김, 틀린 형식 표시 |
+   | 1.19 | 정규식 모드 | Find·Remove의 .* 토글, 대소문자 무시, 일치 구간 표시, 틀린 식 표시. 1GB 정규식 필터 4.7초 |
+
+   그 밖에(2026-10-08): 오른쪽 클릭 팝업이 실제 마우스에서 안 뜨던 문제 수정(누름/뗌 처리, Alt 판단), 팝업 가운데·하이라이트 색상, 검색어 빨간색 표시.
