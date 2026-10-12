@@ -32,6 +32,8 @@ public class StatsDialog extends JDialog
     final JLabel           m_lbMem     = new JLabel(" ");
     final GraphPanel       m_graph     = new GraphPanel();
     final CorePanel        m_cores     = new CorePanel();
+    final javax.swing.JComboBox<String> m_cbInterval = new javax.swing.JComboBox<String>();
+    boolean                m_bSyncing;
     final DefaultTableModel m_modelTop = new DefaultTableModel(new Object[]{ "PID", "CPU %", "프로세스" }, 0)
     {
         private static final long serialVersionUID = 1L;
@@ -44,13 +46,34 @@ public class StatsDialog extends JDialog
         m_stats = stats;
         m_lbSummary.setFont(m_lbSummary.getFont().deriveFont(Font.BOLD, 13f));
 
+        // 측정 주기 고르기 (1.23)
+        for(int nSec : DeviceStats.INTERVALS_SEC)
+            m_cbInterval.addItem(nSec + "초");
+        m_cbInterval.setToolTipText("장치 통계를 읽는 주기");
+        m_cbInterval.addActionListener(new java.awt.event.ActionListener()
+        {
+            public void actionPerformed(java.awt.event.ActionEvent e)
+            {
+                if(m_bSyncing || m_cbInterval.getSelectedIndex() < 0) return;
+                int nSec = DeviceStats.INTERVALS_SEC[m_cbInterval.getSelectedIndex()];
+                if(getOwner() instanceof LogFilterMain) ((LogFilterMain)getOwner()).setStatsInterval(nSec);
+                else m_stats.setInterval(nSec * 1000L);
+            }
+        });
+        JPanel jpInterval = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 0));
+        jpInterval.add(new JLabel("주기 :"));
+        jpInterval.add(m_cbInterval);
+        JPanel jpLine1 = new JPanel(new BorderLayout());
+        jpLine1.add(m_lbSummary, BorderLayout.CENTER);
+        jpLine1.add(jpInterval, BorderLayout.EAST);
+
         JPanel jpTop = new JPanel(new GridLayout(2, 1));
-        jpTop.add(m_lbSummary);
+        jpTop.add(jpLine1);
         jpTop.add(m_lbMem);
         jpTop.setBorder(BorderFactory.createEmptyBorder(6, 8, 4, 8));
 
         m_graph.setPreferredSize(new Dimension(520, 160));
-        m_graph.setBorder(BorderFactory.createTitledBorder("최근 2분 (파랑: CPU, 초록: 메모리)"));
+        syncInterval();
         m_cores.setBorder(BorderFactory.createTitledBorder("코어별 CPU"));
 
         JTable tbTop = new JTable(m_modelTop);
@@ -85,6 +108,19 @@ public class StatsDialog extends JDialog
     {
         m_stats.setWantTop(b);
         super.setVisible(b);
+    }
+
+    // 측정 주기에 맞춰 콤보 선택과 그래프 제목(최근 60회 = 주기 × 60)을 바꾼다
+    void syncInterval()
+    {
+        long nSec = m_stats.interval() / 1000;
+        m_bSyncing = true;
+        for(int i = 0; i < DeviceStats.INTERVALS_SEC.length; i++)
+            if(DeviceStats.INTERVALS_SEC[i] == nSec) m_cbInterval.setSelectedIndex(i);
+        m_bSyncing = false;
+        long nSpan = nSec * DeviceStats.HISTORY;
+        String strSpan = nSpan >= 3600 ? (nSpan / 3600) + "시간" : nSpan >= 60 ? (nSpan / 60) + "분" : nSpan + "초";
+        m_graph.setBorder(BorderFactory.createTitledBorder("최근 " + strSpan + " (" + nSec + "초마다, 파랑: CPU, 초록: 메모리)"));
     }
 
     // EDT에서 호출

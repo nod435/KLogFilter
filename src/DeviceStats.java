@@ -20,7 +20,8 @@ public class DeviceStats
         void onStats(Sample sample);        // 새 측정값 (장치가 없거나 오류면 sample.m_strError)
     }
 
-    static final long   INTERVAL_MS   = 2000;
+    static final long   INTERVAL_MS   = 2000;      // 기본 측정 주기
+    static final int[]  INTERVALS_SEC = { 1, 2, 5, 10, 30, 60 };   // 고를 수 있는 주기 (1.23)
     static final long   ADB_TIMEOUT_MS = 5000;
     static final int    HISTORY       = 60;     // 그래프용 최근 측정 수 (2초 × 60 = 2분)
     // adb 명령 (테스트용으로 -Dklogfilter.adb로 바꿀 수 있음)
@@ -58,6 +59,8 @@ public class DeviceStats
     private volatile String  m_strDevice = "";      // 측정할 장치 (비면 adb 기본 장치)
     private volatile boolean m_bRunning;
     private volatile boolean m_bWantTop;            // 상위 프로세스도 읽을지 (자세히 보기 창이 열려 있을 때)
+    private volatile long    m_nIntervalMs = INTERVAL_MS;   // 측정 주기 (1.23)
+    private volatile boolean m_bSleeping;           // 다음 측정을 기다리는 중 (이때만 깨운다: adb 실행 중에 깨우면 그 측정이 실패함)
     private Thread           m_thread;
     private long[][]         m_arPrevCpu;           // 이전 /proc/stat (전체 + 코어별) {합계, 쉼}
     final List<Sample>       m_arHistory = new ArrayList<Sample>();   // 최근 측정값 (그래프용, synchronized)
@@ -79,6 +82,14 @@ public class DeviceStats
     }
 
     void setWantTop(boolean b) { m_bWantTop = b; }
+
+    // 측정 주기를 바꾼다. 기다리는 중이면 바로 다음 측정을 한다.
+    synchronized void setInterval(long nMs)
+    {
+        m_nIntervalMs = Math.max(500, nMs);
+        if(m_thread != null && m_bSleeping) m_thread.interrupt();
+    }
+    long interval() { return m_nIntervalMs; }
     boolean isRunning()        { return m_bRunning; }
 
     synchronized void start()
@@ -100,14 +111,18 @@ public class DeviceStats
                             while(m_arHistory.size() > HISTORY) m_arHistory.remove(0);
                         }
                     m_listener.onStats(sample);
+                    m_bSleeping = true;
                     try
                     {
-                        Thread.sleep(sample.m_strError == null ? INTERVAL_MS : INTERVAL_MS * 3);   // 장치가 없으면 덜 자주
+                        // 장치가 없으면 덜 자주 (최대 10초)
+                        Thread.sleep(sample.m_strError == null ? m_nIntervalMs : Math.max(m_nIntervalMs, Math.min(m_nIntervalMs * 3, 10000)));
                     }
                     catch(InterruptedException e)
                     {
-                        break;
+                        // 주기를 바꿨거나(setInterval) 멈췄다(stop): 멈춘 게 아니면 바로 다음 측정
                     }
+                    m_bSleeping = false;
+                    Thread.interrupted();       // 남은 인터럽트 표시 지우기
                 }
             }
         }, "DeviceStats");

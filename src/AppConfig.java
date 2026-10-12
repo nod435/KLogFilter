@@ -39,6 +39,7 @@ public class AppConfig
     static final String INI_REMOVE_REGEX    = "REMOVE_REGEX";
     static final String INI_VIEW_COMPACT    = "VIEW_COMPACT";           // 화면 모드 (1.20)
     static final String INI_DEVICE_STATS    = "DEVICE_STATS";           // 장치 통계 표시 (1.21)
+    static final String INI_STATS_INTERVAL  = "DEVICE_STATS_INTERVAL";  // 장치 통계 주기(초) (1.23)
     static final String INI_COLOR_0         = "INI_COLOR_0";
     static final String INI_COLOR_1         = "INI_COLOR_1";
     static final String INI_COLOR_2         = "INI_COLOR_2";
@@ -78,6 +79,7 @@ public class AppConfig
     boolean bRemoveRegex;
     boolean bCompactView;
     boolean bDeviceStats = true;
+    int     nStatsIntervalSec = (int)(DeviceStats.INTERVAL_MS / 1000);
     // 하이라이트 입력창 6개: 문자열, 색상 번호, 사용 여부 (기본: n번 입력창은 n번 색상, 사용)
     String[]  arHighlight      = new String[LogColor.HIGHLIGHT_COUNT];
     int[]     arHighlightColor = new int[LogColor.HIGHLIGHT_COUNT];
@@ -116,6 +118,8 @@ public class AppConfig
         config.bRemoveRegex = "true".equalsIgnoreCase(p.getProperty(INI_REMOVE_REGEX, "false").trim());
         config.bCompactView = "true".equalsIgnoreCase(p.getProperty(INI_VIEW_COMPACT, "false").trim());
         config.bDeviceStats = !"false".equalsIgnoreCase(p.getProperty(INI_DEVICE_STATS, "true").trim());
+        int nInterval = intOf(p, INI_STATS_INTERVAL, config.nStatsIntervalSec);
+        config.nStatsIntervalSec = nInterval >= 1 && nInterval <= 3600 ? nInterval : config.nStatsIntervalSec;
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             // 이전 버전 설정(HIGHLIGHT 하나)은 첫 번째 입력창으로 옮긴다.
@@ -174,6 +178,7 @@ public class AppConfig
         p.setProperty(INI_REMOVE_REGEX, "" + bRemoveRegex);
         p.setProperty(INI_VIEW_COMPACT, "" + bCompactView);
         p.setProperty(INI_DEVICE_STATS, "" + bDeviceStats);
+        p.setProperty(INI_STATS_INTERVAL, "" + nStatsIntervalSec);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             p.setProperty(INI_HIGHLIGHT_ + nIndex,       arHighlight[nIndex] == null ? "" : arHighlight[nIndex]);

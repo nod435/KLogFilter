@@ -241,7 +241,22 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         viewStats.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent event) { mainFrame.showStatsDialog(); }
         });
+        // 측정 주기 (1.23)
+        JMenu viewInterval = new JMenu("장치 통계 주기");
+        javax.swing.ButtonGroup groupInterval = new javax.swing.ButtonGroup();
+        for(final int nSec : DeviceStats.INTERVALS_SEC)
+        {
+            final javax.swing.JRadioButtonMenuItem mi = new javax.swing.JRadioButtonMenuItem(nSec + "초마다");
+            mi.setSelected(mainFrame.m_deviceStats.interval() == nSec * 1000L);
+            mi.addActionListener(new ActionListener() {
+                public void actionPerformed(ActionEvent event) { mainFrame.setStatsInterval(nSec); }
+            });
+            groupInterval.add(mi);
+            viewInterval.add(mi);
+            mainFrame.m_arMiInterval.add(mi);
+        }
         view.add(mainFrame.m_miDeviceStats);
+        view.add(viewInterval);
         view.add(viewStats);
         menubar.add(view);
         mainFrame.setJMenuBar(menubar);
@@ -405,6 +420,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         applyRegexMode();
         if(config.bCompactView)
             setCompactView(true);
+        m_deviceStats.setInterval(config.nStatsIntervalSec * 1000L);
         setDeviceStats(config.bDeviceStats);
         m_tfTimeFrom.setText(config.strTimeFrom);
         m_tfTimeTo.setText(config.strTimeTo);
@@ -442,6 +458,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.bRemoveRegex = m_tbRemoveRegex.isSelected();
         m_config.bCompactView = m_bCompactView;
         m_config.bDeviceStats = m_bDeviceStats;
+        m_config.nStatsIntervalSec = (int)(m_deviceStats.interval() / 1000);
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
         m_config.strTimeTo    = m_tfTimeTo.getText();
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
@@ -478,6 +495,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.23 : 장치 통계 주기 선택 (1·2·5·10·30·60초, View 메뉴 또는 자세히 창)");
         addDesc("Version 1.22 : Time 범위에 날짜 (날짜 버튼으로 월-일 시:분:초 선택, 오른쪽 클릭 '이 줄 시각을 Time 시작/끝으로')");
         addDesc("Version 1.21 : 안드로이드 장치 통계 (상태 표시줄 오른쪽 CPU·메모리, 누르면 그래프·코어별·상위 프로세스)");
         addDesc("Version 1.20 : View 메뉴 Full / Compact 화면 (F12 전환, Compact는 로그 화면만)");
@@ -1721,12 +1739,26 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         }
     }
 
+    final List<javax.swing.JRadioButtonMenuItem> m_arMiInterval = new ArrayList<javax.swing.JRadioButtonMenuItem>();   // View > 장치 통계 주기
+
+    // 장치 통계 측정 주기(초). 메뉴·자세히 창의 선택도 맞춘다.
+    void setStatsInterval(int nSec)
+    {
+        m_deviceStats.setInterval(nSec * 1000L);
+        for(int i = 0; i < m_arMiInterval.size() && i < DeviceStats.INTERVALS_SEC.length; i++)
+            m_arMiInterval.get(i).setSelected(DeviceStats.INTERVALS_SEC[i] == nSec);
+        if(m_dlgStats != null)
+            m_dlgStats.syncInterval();
+        setStatus("장치 통계 주기 : " + nSec + "초");
+    }
+
     void showStatsDialog()
     {
         if(!m_bDeviceStats)
             setDeviceStats(true);
         if(m_dlgStats == null)
             m_dlgStats = new StatsDialog(this, m_deviceStats);
+        m_dlgStats.syncInterval();
         if(m_lastStats != null)
             m_dlgStats.update(m_lastStats);
         m_dlgStats.setVisible(true);
