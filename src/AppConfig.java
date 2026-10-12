@@ -37,6 +37,7 @@ public class AppConfig
     static final String INI_TIME_TO         = "TIME_TO";
     static final String INI_FIND_REGEX      = "FIND_REGEX";           // 정규식 모드 (1.19)
     static final String INI_REMOVE_REGEX    = "REMOVE_REGEX";
+    static final String INI_VIEW_COMPACT    = "VIEW_COMPACT";           // 화면 모드 (1.20)
     static final String INI_COLOR_0         = "INI_COLOR_0";
     static final String INI_COLOR_1         = "INI_COLOR_1";
     static final String INI_COLOR_2         = "INI_COLOR_2";
@@ -74,6 +75,7 @@ public class AppConfig
     String strTimeTo    = "";
     boolean bFindRegex;
     boolean bRemoveRegex;
+    boolean bCompactView;
     // 하이라이트 입력창 6개: 문자열, 색상 번호, 사용 여부 (기본: n번 입력창은 n번 색상, 사용)
     String[]  arHighlight      = new String[LogColor.HIGHLIGHT_COUNT];
     int[]     arHighlightColor = new int[LogColor.HIGHLIGHT_COUNT];
@@ -110,6 +112,7 @@ public class AppConfig
         config.strTimeTo    = p.getProperty(INI_TIME_TO, "");
         config.bFindRegex   = "true".equalsIgnoreCase(p.getProperty(INI_FIND_REGEX, "false").trim());
         config.bRemoveRegex = "true".equalsIgnoreCase(p.getProperty(INI_REMOVE_REGEX, "false").trim());
+        config.bCompactView = "true".equalsIgnoreCase(p.getProperty(INI_VIEW_COMPACT, "false").trim());
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             // 이전 버전 설정(HIGHLIGHT 하나)은 첫 번째 입력창으로 옮긴다.
@@ -166,6 +169,7 @@ public class AppConfig
         p.setProperty(INI_TIME_TO,      strTimeTo);
         p.setProperty(INI_FIND_REGEX,   "" + bFindRegex);
         p.setProperty(INI_REMOVE_REGEX, "" + bRemoveRegex);
+        p.setProperty(INI_VIEW_COMPACT, "" + bCompactView);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             p.setProperty(INI_HIGHLIGHT_ + nIndex,       arHighlight[nIndex] == null ? "" : arHighlight[nIndex]);

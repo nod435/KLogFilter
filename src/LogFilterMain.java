@@ -206,6 +206,32 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         file.add(fileForceExit);
 
         menubar.add(file);
+
+        // View: Full(필터·설정 화면까지) / Compact(로그 화면만), F12로 전환
+        JMenu view = new JMenu("View");
+        view.setMnemonic(KeyEvent.VK_V);
+        javax.swing.ButtonGroup groupView = new javax.swing.ButtonGroup();
+        mainFrame.m_miFullView    = new javax.swing.JRadioButtonMenuItem("Full view (필터·설정 표시)");
+        mainFrame.m_miCompactView = new javax.swing.JRadioButtonMenuItem("Compact view (로그 화면만)");
+        groupView.add(mainFrame.m_miFullView);
+        groupView.add(mainFrame.m_miCompactView);
+        mainFrame.m_miFullView.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.setCompactView(false); }
+        });
+        mainFrame.m_miCompactView.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.setCompactView(true); }
+        });
+        // F12는 창 전체 키(installSearchKeys)로 처리한다. 메뉴 단축키로도 두면 한 번에 두 번 전환되므로 이름에만 표시.
+        JMenuItem viewToggle = new JMenuItem("Full / Compact 전환    F12");
+        viewToggle.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.toggleView(); }
+        });
+        view.add(mainFrame.m_miFullView);
+        view.add(mainFrame.m_miCompactView);
+        view.addSeparator();
+        view.add(viewToggle);
+        mainFrame.syncViewMenu();
+        menubar.add(view);
         mainFrame.setJMenuBar(menubar);
 
         if(args != null && args.length > 0)
@@ -218,6 +244,39 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                 }
             });
         }
+    }
+
+    // ---- 화면 모드 (1.20) ----
+    Component                           m_optionPanel;      // 위쪽 필터·설정 영역 (Compact에서 숨김)
+    boolean                             m_bCompactView;
+    javax.swing.JRadioButtonMenuItem    m_miFullView;       // View 메뉴 (main()에서 만듦)
+    javax.swing.JRadioButtonMenuItem    m_miCompactView;
+
+    // Compact: 로그 화면만(위쪽 필터·설정 영역을 숨김). Full: 기존 화면. 필터 조건은 그대로 적용된다.
+    void setCompactView(boolean bCompact)
+    {
+        m_bCompactView = bCompact;
+        if(m_optionPanel != null)
+            m_optionPanel.setVisible(!bCompact);
+        syncViewMenu();
+        getContentPane().revalidate();
+        getContentPane().repaint();
+        // 숨겨진 입력창에 포커스가 남지 않도록 로그 테이블로
+        if(bCompact && m_tbLogTable != null)
+            m_tbLogTable.requestFocusInWindow();
+        // Compact에서는 필터 입력이 안 보이므로 필터가 걸려 있으면 알려 준다.
+        setStatus(bCompact ? "Compact view" + (m_engine.m_bUserFilter ? " — 필터 적용 중" : "") + " (F12: Full view)" : "Full view (F12: Compact view)");
+    }
+
+    void toggleView()
+    {
+        setCompactView(!m_bCompactView);
+    }
+
+    void syncViewMenu()
+    {
+        if(m_miFullView != null)    m_miFullView.setSelected(!m_bCompactView);
+        if(m_miCompactView != null) m_miCompactView.setSelected(m_bCompactView);
     }
 
     void exit()
@@ -289,7 +348,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         Container pane = getContentPane();
         pane.setLayout(new BorderLayout());
 
-        pane.add(getOptionPanel(), BorderLayout.NORTH);
+        m_optionPanel = getOptionPanel();
+        pane.add(m_optionPanel, BorderLayout.NORTH);
         pane.add(getBookmarkPanel(), BorderLayout.WEST);
         pane.add(getStatusPanel(), BorderLayout.SOUTH);
         pane.add(getTabPanel(), BorderLayout.CENTER);
@@ -330,6 +390,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tbFindRegex.setSelected(config.bFindRegex);
         m_tbRemoveRegex.setSelected(config.bRemoveRegex);
         applyRegexMode();
+        if(config.bCompactView)
+            setCompactView(true);
         m_tfTimeFrom.setText(config.strTimeFrom);
         m_tfTimeTo.setText(config.strTimeTo);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
@@ -364,6 +426,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.strShowTid   = m_tfShowTid.getText();
         m_config.bFindRegex   = m_tbFindRegex.isSelected();
         m_config.bRemoveRegex = m_tbRemoveRegex.isSelected();
+        m_config.bCompactView = m_bCompactView;
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
         m_config.strTimeTo    = m_tfTimeTo.getText();
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
@@ -400,6 +463,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.20 : View 메뉴 Full / Compact 화면 (F12 전환, Compact는 로그 화면만)");
         addDesc("Version 1.19 : Find·Remove 정규식 모드 (입력창 오른쪽 .* 버튼, 대소문자 무시)");
         addDesc("Version 1.18 : 시간 범위 필터 (Time : 시작 ~ 끝, 예: 12:30 ~ 12:45:30, 10-07 23:00 ~ 10-08 01:00)");
         addDesc("Version 1.17 : adb 기록 파일이 50MB를 넘으면 다음 파일(이름_2.txt, _3 …)에 이어서 기록, 화면은 끊김 없이 이어서 표시");
@@ -1461,6 +1525,12 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK), "SearchFocus");
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0), "SearchNext");
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, InputEvent.SHIFT_DOWN_MASK), "SearchPrevKey");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), "ToggleView");
+        am.put("ToggleView", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e) { toggleView(); }
+        });
         am.put("SearchFocus", new AbstractAction()
         {
             private static final long serialVersionUID = 1L;
@@ -1580,6 +1650,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     // Ctrl+F: 메시지 검색창으로 (입력된 검색어는 전체 선택해 바로 바꿔 칠 수 있게)
     public void setFindFocus()
     {
+        if(m_bCompactView)
+            setCompactView(false);      // 검색창이 보이도록
         m_tfSearch.requestFocus();
         m_tfSearch.selectAll();
     }
