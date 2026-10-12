@@ -244,13 +244,13 @@ figure.cls svg{max-width:100%;height:auto}
 <main>
 <header class="doc">
   <h1>KLogFilter 소스 구조 및 동작 흐름</h1>
-  <div class="meta">작성일 2026-10-02 · 생성 2026-10-12 09:23:31 · 대상 버전 LogFilter 1.19 (큰버전.중간버전.빌드날짜) · 기준 소스 <a href="https://github.com/nod435/KLogFilter">github.com/nod435/KLogFilter</a> <code>fd5e19f</code> + 로컬 변경분(<a href="#s1-diff">1.1</a>)</div>
+  <div class="meta">작성일 2026-10-02 · 생성 2026-10-12 13:10:09 · 대상 버전 LogFilter 1.26 (큰버전.중간버전.빌드날짜) · 기준 소스 <a href="https://github.com/nod435/KLogFilter">github.com/nod435/KLogFilter</a> <code>fd5e19f</code> + 로컬 변경분(<a href="#s1-diff">1.1</a>)</div>
   <p class="lead">Android <code>logcat</code> 로그를 보면서 필터링하는 Java Swing 데스크톱 툴의 클래스 구성, 실행 흐름, 문제점과 최적화 방향을 정리한 문서입니다. 동작 흐름은 시퀀스 다이어그램으로 표현했습니다.</p>
   <div class="chips">
-    <span class="chip"><b>16</b> 파일 <small>(원본 18)</small></span>
-    <span class="chip">약 <b>4,000</b> 줄 <small>(원본 4,400)</small></span>
+    <span class="chip"><b>28</b> 파일 <small>(원본 18)</small></span>
+    <span class="chip">약 <b>8,000</b> 줄 <small>(원본 4,400)</small></span>
     <span class="chip">미사용 클래스 <b>7</b>개 삭제</span>
-    <span class="chip">스레드 <b>5</b>종</span>
+    <span class="chip">스레드 <b>8</b>종</span>
     <span class="chip">발견 이슈 <b>13</b>건</span>
     <span class="chip">외부 의존성 <b>없음</b></span>
   </div>
@@ -268,10 +268,10 @@ figure.cls svg{max-width:100%;height:auto}
 <h2 id="s1"><span class="no">1</span>개요</h2>
 <ul>
   <li><b>입력:</b> 저장된 로그 파일(Open, Recent, 드래그&amp;드롭, 실행 인자)을 읽거나, <code>adb logcat</code> 출력을 실시간으로 받습니다.</li>
-  <li><b>기능:</b> 워드/태그/PID/TID/레벨 필터, 시간 범위 필터, Find·Remove 정규식 모드, 입력창별 최근 입력 10개, 하이라이트 6개(색상 선택), 메시지 검색(Ctrl+F, F3), 오른쪽 클릭 로그 전체 보기, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사</li>
+  <li><b>기능:</b> 워드/태그/PID/TID/레벨 필터, 시간 범위 필터, Find·Remove 정규식 모드, 입력창별 최근 입력 10개, 하이라이트 6개(색상 선택), 메시지 검색(Ctrl+F, F3), 오른쪽 클릭 로그 전체 보기, 북마크, 에러/북마크 인디케이터, 컬럼 숨김, 클립보드 복사, Full/Compact 화면(<kbd>F12</kbd>), 안드로이드 장치 통계(CPU·코어·메모리·CPU 온도·상위 프로세스, 이미지 복사), 수집 중 장치 재부팅 표시</li>
   <li><b>빌드 환경:</b> Eclipse Java 프로젝트이며 JavaSE-1.8(<code>.classpath</code>, 컴파일러 1.8)입니다. JDK 8(Zulu 1.8.0_382)로 빌드했습니다. 원본은 JavaSE-1.6이었습니다.</li>
   <li><b>패키지:</b> default 패키지만 사용하고, 외부 라이브러리 의존성은 없습니다.</li>
-  <li><b>버전 규칙(2026-10-06~):</b> <code>큰버전.중간버전.날짜</code>. 중간버전은 신규 기능을 추가할 때 1 올리고, 날짜는 버전을 만든(빌드한) 날짜시간 <code>yyyyMMddHHmmss</code>입니다. <code>src/AppVersion.java</code>(MAJOR·MINOR)와 <code>build.bat</code>(날짜)이 담당합니다. 현재 1.19 (1.10 대용량 파일, 1.11 adb 바로 읽기, 1.12 하이라이트 6개, 1.13 로그 전체 보기, 1.14 메시지 검색, 1.15 강제 종료, 1.16 입력 기록, 1.17 기록 파일 50MB 나누기, 1.18 시간 범위 필터, 1.19 정규식 모드).</li>
+  <li><b>버전 규칙(2026-10-06~):</b> <code>큰버전.중간버전.날짜</code>. 중간버전은 신규 기능을 추가할 때 1 올리고, 날짜는 버전을 만든(빌드한) 날짜시간 <code>yyyyMMddHHmmss</code>입니다. <code>src/AppVersion.java</code>(MAJOR·MINOR)와 <code>build.bat</code>(날짜)이 담당합니다. 현재 1.26 (1.10 대용량 파일, 1.11 adb 바로 읽기, 1.12 하이라이트 6개, 1.13 로그 전체 보기, 1.14 메시지 검색, 1.15 강제 종료, 1.16 입력 기록, 1.17 기록 파일 50MB 나누기, 1.18 시간 범위 필터, 1.19 정규식 모드, 1.20 Full/Compact 화면, 1.21 장치 통계, 1.22 시간 범위에 날짜, 1.23 통계 측정 주기, 1.24 재부팅 표시, 1.25 통계 이미지 복사, 1.26 CPU 온도).</li>
 </ul>
 <pre><code># 배포용 빌드 — dist\KLogFilter.jar (버전 날짜 자동 기록)
 build.bat
@@ -290,6 +290,13 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <div class="tbl"><table>
 <thead><tr><th>구분</th><th>파일</th><th>내용</th><th>상태</th></tr></thead>
 <tbody>
+<tr><td class="nw">CPU 온도</td><td class="nw"><code>DeviceStats</code> · <code>StatsDialog</code></td><td>2026-10-12 (1.26): 같은 adb 호출로 <code>/sys/class/thermal/thermal_zone*</code>의 이름·온도를 읽음(밀리도/도 자동, 꺼진 센서 제외). CPU 온도 = CPU 쪽 이름(cpu/soc/tsens/core 등) 센서 중 최고값, 없으면 전체 최고값. 상태 표시줄·자세히 창(센서 목록)·그래프(주황 선). 그래프 제목 범례 글자를 선 색과 같게</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">통계 이미지</td><td class="nw"><code>StatsDialog</code></td><td>2026-10-12 (1.25): 자세히 창의 "이미지로 복사"(<kbd>Ctrl</kbd>+<kbd>C</kbd>, 클립보드 이미지)·"이미지 저장…"(PNG). 요약·메모리·재부팅 기록·그래프·코어별·상위 프로세스 + 만든 시각</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">재부팅 표시</td><td class="nw"><code>LogSource</code> · <code>DeviceStats</code> · <code>LogFilterMain</code> · <code>AppConfig</code></td><td>2026-10-12 (1.24): adb 수집 중 장치 연결이 끊기면 다시 연결을 기다려 같은 기록에 이어서 수집(File &gt; 연결 끊기면 다시 연결). <code>boot_id</code>가 바뀌었으면 재부팅으로 보고 그 자리에 북마크된 표시 줄(tag <code>KLogFilter</code>, 메모 "재부팅", 추정 부팅 시각), 아니면 끊김/재연결 표시 줄만. 장치 통계도 <code>boot_id</code>로 재부팅 감지(같은 재부팅은 한 번만)</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">통계 주기</td><td class="nw"><code>DeviceStats</code> · <code>StatsDialog</code> · <code>LogFilterMain</code> · <code>AppConfig</code></td><td>2026-10-12 (1.23): View &gt; 장치 통계 주기, 자세히 창 콤보에서 1·2·5·10·30·60초. 그래프 제목은 주기 × 60회</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">날짜 넣기</td><td class="nw"><code>LogFilterMain</code> · <code>TimeRange</code></td><td>2026-10-12 (1.22): Time 입력 옆 "날짜" 버튼 → 날짜·시각 선택(MM-dd HH:mm:ss), 오른쪽 클릭 "이 줄 시각을 Time 시작으로/끝으로". <code>yyyy-MM-dd</code> 입력도 받음</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">장치 통계</td><td class="nw"><code>DeviceStats</code>(신규) · <code>StatsDialog</code>(신규) · <code>LogFilterMain</code> · <code>AppConfig</code></td><td>2026-10-12 (1.21): <code>adb shell cat /proc/stat /proc/meminfo …</code>를 주기적으로 읽어 CPU(전체·코어별)·메모리 사용률. 상태 표시줄 오른쪽에 요약, 클릭하면 자세히 창(그래프 60회, 코어별 막대, <code>top</code> 상위 프로세스). View &gt; 장치 통계 표시</td><td><span class="badge b-use">적용됨</span></td></tr>
+<tr><td class="nw">Full/Compact 화면</td><td class="nw"><code>LogFilterMain</code> · <code>AppConfig</code></td><td>2026-10-12 (1.20): View &gt; Full view / Compact view 또는 <kbd>F12</kbd>로 위쪽 필터·옵션 영역을 숨겨 로그를 넓게. 필터는 그대로 적용, 설정 <code>VIEW_COMPACT</code></td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">정규식 모드</td><td class="nw"><code>FilterEngine</code> · <code>LogTable</code> · <code>LogFilterMain</code> · <code>AppConfig</code></td><td>2026-10-11 (1.19): Find·Remove 입력창의 <code>.*</code> 토글로 입력창마다 정규식 모드(대소문자 무시, Message에서 find). 일치 구간을 빨간 굵은 글씨로 표시, 틀린 식은 입력창을 붉게·상태 표시줄에 이유·거르지 않음</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">시간 범위 필터</td><td class="nw"><code>TimeRange</code>(신규) · <code>FilterEngine</code> · <code>LogFilterMain</code> · <code>AppConfig</code></td><td>2026-10-11 (1.18): Word filter의 <code>Time : 시작 ~ 끝</code>. 12:30 / 12:30:15.500 / 10-07 12:30, 자정을 넘는 범위, 시각 없는 줄은 숨김, 틀린 형식은 붉게 표시</td><td><span class="badge b-use">적용됨</span></td></tr>
 <tr><td class="nw">기록 파일 나누기</td><td class="nw"><code>LogSource</code> · <code>FileLogStore</code></td><td>2026-10-11 (1.17): adb 기록 파일이 50MB를 넘으면 <code>이름_2.txt</code>, <code>_3</code> …에 이어서 기록(줄 단위). 목록은 파일 조각(<code>Segment</code>)을 이어 붙인 가상 위치로 끊김 없이 표시</td><td><span class="badge b-use">적용됨</span></td></tr>
@@ -322,35 +329,37 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 
 <!-- 2 -->
 <h2 id="s2"><span class="no">2</span>파일 구성</h2>
-<p>2026-10-06 대용량 파일 구조 적용 후 기준입니다. 원본의 18개 중 미사용 7개를 삭제하고 3개(<code>AppConfig</code>, <code>FilterEngine</code>, <code>LogSource</code>)를 새로 만들었습니다. <code>FilterToken</code>은 성능 개선 때, <code>LogStore</code> 등 7개는 대용량 파일 구조 때 추가했습니다.</p>
+<p>2026-10-12 1.26 기준입니다. 원본의 18개 중 미사용 7개를 삭제하고 3개(<code>AppConfig</code>, <code>FilterEngine</code>, <code>LogSource</code>)를 새로 만들었습니다. <code>FilterToken</code>은 성능 개선 때, <code>LogStore</code> 등 7개는 대용량 파일 구조, <code>LogSearch</code>는 메시지 검색, <code>InputHistory</code>·<code>TimeRange</code>는 3단계, <code>DeviceStats</code>·<code>StatsDialog</code>는 장치 통계 때 추가했습니다.</p>
 <div class="tbl"><table>
 <thead><tr><th>파일</th><th>줄 수</th><th>역할</th><th>구분</th></tr></thead>
 <tbody>
-<tr><td class="nw"><code>LogFilterMain.java</code></td><td class="num">1909<br><small style="color:var(--muted)">원본 2084</small></td><td>메인 프레임. 화면 구성과 이벤트 연결, Highlight 입력창 6개, 메시지 검색 입력·키(Ctrl+F, F3). 동작은 아래 클래스에 위임</td><td><span class="badge b-core">화면</span></td></tr>
-<tr><td class="nw"><code>FilterEngine.java</code></td><td class="num">678</td><td>현재 줄 목록(<code>LogStore</code>)과 필터 결과(<code>FilteredList</code>), 북마크·에러 위치, 필터 조건과 토큰·정규식·시간 범위, 분석·재필터 스레드(증분·병렬)</td><td><span class="badge b-core">신규 · 데이터</span></td></tr>
-<tr><td class="nw"><code>LogSource.java</code></td><td class="num">479</td><td>로그 입력: 파일 색인(LoadFile 스레드), adb 실행과 출력 바로 읽기(<code>LiveFeed</code>: 기록 파일에 쓰면서 줄 위치를 목록에 바로 추가, 50MB마다 다음 파일), 장치 목록</td><td><span class="badge b-core">신규 · 입력</span></td></tr>
+<tr><td class="nw"><code>LogFilterMain.java</code></td><td class="num">2287<br><small style="color:var(--muted)">원본 2084</small></td><td>메인 프레임. 화면 구성과 이벤트 연결, Highlight 입력창 6개, 메시지 검색 입력·키(Ctrl+F, F3), View 메뉴(Full/Compact, 장치 통계), 재부팅 기록. 동작은 아래 클래스에 위임</td><td><span class="badge b-core">화면</span></td></tr>
+<tr><td class="nw"><code>FilterEngine.java</code></td><td class="num">687</td><td>현재 줄 목록(<code>LogStore</code>)과 필터 결과(<code>FilteredList</code>), 북마크·에러 위치, 필터 조건과 토큰·정규식·시간 범위, 분석·재필터 스레드(증분·병렬)</td><td><span class="badge b-core">신규 · 데이터</span></td></tr>
+<tr><td class="nw"><code>LogSource.java</code></td><td class="num">743</td><td>로그 입력: 파일 색인(LoadFile 스레드), adb 실행과 출력 바로 읽기(<code>LiveFeed</code>: 기록 파일에 쓰면서 줄 위치를 목록에 바로 추가, 50MB마다 다음 파일), 연결이 끊기면 다시 연결·재부팅 표시 줄(1.24), 장치 목록</td><td><span class="badge b-core">신규 · 입력</span></td></tr>
 <tr><td class="nw"><code>LogStore.java</code></td><td class="num">148</td><td>줄 목록 공통 부모(추상). 지연 해석 + LRU 캐시(2만 줄), 북마크(BitSet)·메모, 최대 태그 길이, 다 읽었는지(<code>m_bComplete</code>), 원본 줄(<code>rawLine</code>)</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
 <tr><td class="nw"><code>FileLogStore.java</code></td><td class="num">383</td><td>파일 기반 줄 목록. 여러 기록 파일을 조각(<code>Segment</code>)으로 이어 읽음. 줄마다 시작 위치·길이(12바이트)만 기억하고 4MB씩 색인, <code>FileChannel</code> 위치 읽기, 화면용 주변 32KB 읽기, 실시간 수집용 <code>appendLine()</code></td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
 <tr><td class="nw"><code>MemoryLogStore.java</code></td><td class="num">44</td><td>메모리 줄 목록(시작 안내 문구)</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
 <tr><td class="nw"><code>FilteredList.java</code></td><td class="num">37</td><td>필터 결과. 통과한 줄 번호(<code>IntList</code>)만 갖고 내용은 <code>LogStore</code>에서 읽음</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
 <tr><td class="nw"><code>LogList.java</code></td><td class="num">17</td><td>화면이 보는 목록 인터페이스(<code>size</code>, <code>get</code>, <code>lineIndexOf</code>, <code>rawLine</code>)</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
 <tr><td class="nw"><code>InputHistory.java</code></td><td class="num">179</td><td>입력창 하나의 최근 입력 10개: 기록, ↑/↓, ▼·Alt+↓ 목록, 목록 지우기</td><td><span class="badge b-core">신규 · 1.16</span></td></tr>
-<tr><td class="nw"><code>TimeRange.java</code></td><td class="num">107</td><td>시간 범위 필터: 입력 해석(시각·날짜), 줄의 시각 비교, 자정 넘김</td><td><span class="badge b-core">신규 · 1.18</span></td></tr>
+<tr><td class="nw"><code>TimeRange.java</code></td><td class="num">108</td><td>시간 범위 필터: 입력 해석(시각·날짜), 줄의 시각 비교, 자정 넘김</td><td><span class="badge b-core">신규 · 1.18</span></td></tr>
+<tr><td class="nw"><code>DeviceStats.java</code></td><td class="num">442</td><td>장치 통계 측정 스레드: adb로 <code>/proc/stat</code>·<code>/proc/meminfo</code>·<code>boot_id</code>·<code>uptime</code>·온도 센서를 읽어 CPU(전체·코어별)·메모리·CPU 온도, 자세히 창이 열려 있으면 <code>top</code>. 주기 선택, 최근 60회, 재부팅 감지</td><td><span class="badge b-core">신규 · 1.21</span></td></tr>
+<tr><td class="nw"><code>StatsDialog.java</code></td><td class="num">362</td><td>장치 통계 자세히 창: 요약·메모리·온도·재부팅 기록, 그래프(CPU·메모리·온도), 코어별 막대, 상위 프로세스 표, 주기 콤보, 이미지 복사·저장</td><td><span class="badge b-core">신규 · 1.21</span></td></tr>
 <tr><td class="nw"><code>LogSearch.java</code></td><td class="num">173</td><td>메시지 검색: 보이는 목록에서 다음/이전 일치 행 찾기(끝에서 반대쪽으로 이어서), 중단 가능, 블록 읽기</td><td><span class="badge b-core">신규 · 검색</span></td></tr>
 <tr><td class="nw"><code>IntList.java</code> · <code>LongList.java</code></td><td class="num">40 · 36</td><td>뒤에만 추가하는 기본형 배열. 쓰는 스레드 하나, 읽는 스레드 여럿</td><td><span class="badge b-core">신규 · 대용량</span></td></tr>
-<tr><td class="nw"><code>AppConfig.java</code></td><td class="num">322</td><td>설정 파일(*.ini) 읽기/쓰기와 키별 기본값, 하이라이트 6개·색상 6개, 입력 기록, 시간 범위, 정규식 모드</td><td><span class="badge b-core">신규 · 설정</span></td></tr>
-<tr><td class="nw"><code>LogTable.java</code></td><td class="num">916</td><td>로그 테이블(JTable). 셀 렌더링(하이라이트 6개·색상별), 키/마우스 처리, 오른쪽 클릭 로그 전체 팝업, 복사, 북마크 이동(F2/Shift+F2), F3 검색</td><td><span class="badge b-core">화면</span></td></tr>
+<tr><td class="nw"><code>AppConfig.java</code></td><td class="num">339</td><td>설정 파일(*.ini) 읽기/쓰기와 키별 기본값, 하이라이트 6개·색상 6개, 입력 기록, 시간 범위, 정규식 모드, 화면 모드·장치 통계·다시 연결</td><td><span class="badge b-core">신규 · 설정</span></td></tr>
+<tr><td class="nw"><code>LogTable.java</code></td><td class="num">937</td><td>로그 테이블(JTable). 셀 렌더링(하이라이트 6개·색상별), 키/마우스 처리, 오른쪽 클릭 로그 전체 팝업(이 줄 시각을 Time 시작/끝으로), 복사, 북마크 이동(F2/Shift+F2), F3 검색</td><td><span class="badge b-core">화면</span></td></tr>
 <tr><td class="nw"><code>IndicatorPanel.java</code></td><td class="num">232</td><td>좌측 북마크/에러 위치 표시 바(픽셀 캐시), "북마크만/에러만 보기" 체크박스</td><td><span class="badge b-core">화면</span></td></tr>
 <tr><td class="nw"><code>LogFilterTableModel.java</code></td><td class="num">76</td><td>테이블 모델(<code>LogList</code> 참조), 컬럼 정의/폭, EDT에서 알린 행 수</td><td><span class="badge b-core">화면</span></td></tr>
 <tr><td class="nw"><code>LogCatParser.java</code></td><td class="num">230</td><td>로그 한 줄을 <code>LogInfo</code>로 파싱(threadtime · time · year · uid · brief · process · tag · kernel/dmesg)</td><td><span class="badge b-use">파싱</span></td></tr>
 <tr><td class="nw"><code>ILogParser.java</code></td><td class="num">15</td><td>파서 인터페이스</td><td><span class="badge b-use">파싱</span></td></tr>
 <tr><td class="nw"><code>LogInfo.java</code></td><td class="num">95</td><td>로그 한 줄 데이터(VO), 레벨 비트 상수, 줄 번호·레벨 int 필드</td><td><span class="badge b-use">데이터</span></td></tr>
 <tr><td class="nw"><code>FilterToken.java</code></td><td class="num">51</td><td>필터 토큰 분리, 대소문자 무시 부분 일치 판정</td><td><span class="badge b-use">유틸</span></td></tr>
-<tr><td class="nw"><code>RecentFileMenu.java</code></td><td class="num">154</td><td>최근 파일 메뉴(<code>RecentFile.ini</code>). 외부 GPL v2 코드</td><td><span class="badge b-use">화면</span></td></tr>
+<tr><td class="nw"><code>RecentFileMenu.java</code></td><td class="num">153</td><td>최근 파일 메뉴(<code>RecentFile.ini</code>). 외부 GPL v2 코드</td><td><span class="badge b-use">화면</span></td></tr>
 <tr><td class="nw"><code>LogColor.java</code></td><td class="num">24</td><td>레벨별 색상과 하이라이트 색상 6개(기본값 포함) 전역 static 값</td><td><span class="badge b-use">유틸</span></td></tr>
 <tr><td class="nw"><code>INotiEvent.java</code></td><td class="num">26</td><td>테이블/인디케이터 → 메인 프레임 이벤트 콜백 인터페이스</td><td><span class="badge b-use">화면</span></td></tr>
 <tr><td class="nw"><code>AppVersion.java</code></td><td class="num">48</td><td>버전 규칙 <code>큰버전.중간버전.날짜(yyyyMMddHHmmss)</code>. 날짜는 <code>build.bat</code>이 넣은 <code>version.properties</code>에서 읽음</td><td><span class="badge b-use">유틸</span></td></tr>
-<tr><td class="nw"><code>T.java</code></td><td class="num">67</td><td>디버그 로그 출력 유틸(<code>System.out</code>)</td><td><span class="badge b-use">유틸</span></td></tr>
+<tr><td class="nw"><code>T.java</code></td><td class="num">66</td><td>디버그 로그 출력 유틸(<code>System.out</code>)</td><td><span class="badge b-use">유틸</span></td></tr>
 </tbody></table></div>
 <p><b>삭제한 파일(7개, 2026-10-06):</b> <code>ClassTaster</code>(리플렉션 테스트 유틸), <code>TagTable</code>, <code>TagFilterTableModel</code>, <code>TagInfo</code>(생성 코드가 주석 처리된 태그 목록), <code>DevicesPanel</code>(빈 패널), <code>MouseEventHandler</code>·<code>WindowEventHandler</code>(쓰이지 않는 WindowListener). GitHub 원본과 이력에 남아 있습니다.</p>
 <!-- 3 -->
@@ -379,6 +388,13 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
     <div class="cell"><b>IndicatorPanel</b><span>북마크/에러 바 · 북마크만/에러만 체크</span></div>
     <div class="cell"><b>LogInfo</b><span>문자열 필드 9개 + 줄 번호·레벨 int + Color + m_bMarked</span></div>
   </div>
+  <div class="conn">▼ 장치 통계 (1.21~1.26) &nbsp;&nbsp; ▲ Listener 알림(onStats · onReboot) → runOnEdt()</div>
+  <div class="row">
+    <div class="cell"><b>DeviceStats</b><span>측정 스레드 · adb shell cat /proc/stat · meminfo · boot_id · uptime · thermal_zone (+ top) · 주기 1~60초 · 최근 60회 · 재부팅 감지</span></div>
+    <div class="cell"><b>StatsDialog</b><span>자세히 창 · 그래프(CPU·메모리·온도) · 코어별 막대 · 상위 프로세스 · 재부팅 기록 · 이미지 복사/저장</span></div>
+    <div class="cell"><b>LogSource.AdbTarget</b><span>adb [-s 장치] · get-state · wait-for-device · boot_id → 끊김/재연결/재부팅 표시 줄</span></div>
+    <div class="cell"><b>상태 표시줄</b><span>m_lbStats: "장치 CPU 25% · 55.1°C · MEM …" (클릭 → 자세히 창)</span></div>
+  </div>
   <div class="shared">공용: <b>FilterToken</b>(토큰 판정) · <b>LogColor</b>(static 색상) · <b>T</b>(디버그 로그) · <b>RecentFileMenu</b>(File 메뉴)</div>
 </div>
 
@@ -394,6 +410,9 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
   <li><b>메시지 검색(1.14):</b> <code>LogSearch</code>가 지금 보이는 목록(전체 또는 필터 결과)에서 찾습니다. 전체 목록은 <code>forEach</code> 블록 읽기, 필터 결과는 원본에서 촘촘하면 블록 읽기·듬성하면 행마다 읽기. 새 검색을 시작하면 이전 검색은 중단됩니다.</li>
   <li><b>기록 파일 나누기(1.17):</b> <code>LiveFeed</code>가 다음 줄이 50MB를 넘게 하면 지금 파일을 닫고 <code>이름_n.txt</code>를 엽니다. 줄 위치는 모든 파일을 이어 붙인 가상 위치이고, <code>FileLogStore</code>는 파일 조각(시작 위치·파일)을 받아 읽을 때 조각을 찾아 그 파일에서 읽습니다(경계를 넘는 블록은 나눠 읽음). Clear는 조각을 복사합니다.</li>
   <li><b>필터 추가(1.18·1.19):</b> <code>FilterEngine.accept()</code>에 시간 범위(<code>TimeRange</code>)와 정규식 판정(<code>checkFind</code>/<code>checkRemove</code>)이 더해졌습니다. 틀린 입력은 그 조건만 끄고, 오류는 입력창(붉은 배경·툴팁)과 상태 표시줄에 남깁니다.</li>
+  <li><b>화면 모드(1.20):</b> Compact는 위쪽 옵션 패널(<code>m_optionPanel</code>)만 숨깁니다. 필터 조건은 <code>FilterEngine</code>에 그대로 있으므로 계속 적용되고, 상태 표시줄에 "필터 적용 중"을 알립니다. <kbd>F12</kbd>는 루트 패널 키 바인딩 하나로만 처리합니다(메뉴 단축키와 두 번 바뀌지 않도록).</li>
+  <li><b>장치 통계(1.21~1.26):</b> <code>DeviceStats</code>가 자기 스레드에서 정한 주기(1~60초)마다 <code>adb [-s 장치] shell</code>을 한 번 실행해 <code>/proc/stat</code>(이전 값과의 차이로 전체·코어별 CPU %), <code>/proc/meminfo</code>(MemAvailable, 없으면 Free+Buffers+Cached), <code>boot_id</code>·<code>uptime</code>, 온도 센서(<code>thermal_zone*</code>)를 읽습니다. 자세히 창이 열려 있을 때만 <code>top -b -n 1 -m 10</code>을 더 실행합니다. adb 오류(장치 없음·offline·unauthorized·여러 장치)는 이유를 표시하고 주기를 늘립니다(최대 10초). adb 경로는 <code>-Dklogfilter.adb</code>로 바꿀 수 있습니다(테스트용).</li>
+  <li><b>재부팅 표시(1.24):</b> AdbProcess 스레드가 adb 출력이 끝났을 때 <code>adb get-state</code>로 장치가 끊겼는지 보고, 끊겼으면 끊김 표시 줄을 쓰고 <code>wait-for-device</code> 뒤 같은 기록 파일에 이어서 수집합니다. 다시 연결되면 <code>boot_id</code>를 비교해 바뀌었으면 재부팅 표시 줄(레벨 E, 북마크·메모 "재부팅", 추정 부팅 시각), 같으면 재연결 표시 줄을 씁니다. 장치 통계가 먼저 재부팅을 알면 <code>markReboot()</code>로 큐에 넣고 AdbProcess 스레드가 씁니다. 두 경로 모두 <code>boot_id</code>로 한 번만 표시합니다.</li>
   <li><b>입력 기록(1.16):</b> <code>InputHistory</code>가 입력창마다 붙고, <code>AppConfig</code>가 <code>HISTORY_&lt;입력창&gt;_0~9</code>로 저장합니다.</li>
   <li><b>남은 결합:</b> <code>LogTable</code>과 <code>IndicatorPanel</code>은 여전히 <code>LogFilterMain</code>의 필드(<code>m_scrollVBar</code>, <code>m_tbLogTable</code>, <code>m_engine</code>)를 직접 참조합니다. <code>LogColor</code>와 <code>LogFilterTableModel.ColWidth</code>는 public static입니다.</li>
 </ul>
@@ -486,6 +505,9 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td class="nw"><kbd>F3</kbd> / <kbd>Shift</kbd>+<kbd>F3</kbd> · <kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td class="nw"><code>LogFilterMain.search</code></td><td>검색어가 Message에 들어 있는 다음/이전 행 선택(끝에서 반대쪽으로 이어서). Enter는 검색창에서 <span class="badge b-yel">1.14</span></td></tr>
 <tr><td class="nw">▼ · <kbd>Alt</kbd>+<kbd>↓</kbd></td><td class="nw"><code>InputHistory.showPopup</code></td><td>입력창의 최근 입력 10개 목록에서 골라 쓰기, 목록 지우기 <span class="badge b-yel">1.16</span></td></tr>
 <tr><td class="nw"><code>.*</code> 토글</td><td class="nw"><code>applyRegexMode</code></td><td>Find·Remove를 정규식으로 (입력창마다) <span class="badge b-yel">1.19</span></td></tr>
+<tr><td class="nw"><kbd>F12</kbd> · View &gt; Full/Compact view</td><td class="nw"><code>setCompactView</code> · <code>toggleView</code></td><td>위쪽 필터·옵션 영역 숨기기/보이기 (필터는 계속 적용) <span class="badge b-yel">1.20</span></td></tr>
+<tr><td class="nw">상태 표시줄 통계 클릭 · View &gt; 장치 통계 자세히…</td><td class="nw"><code>showStatsDialog</code></td><td>장치 통계 자세히 창. 창에서 <kbd>Ctrl</kbd>+<kbd>C</kbd>는 통계를 이미지로 복사 <span class="badge b-yel">1.21 · 1.25</span></td></tr>
+<tr><td class="nw">"날짜" 버튼 · 오른쪽 클릭 팝업 메뉴</td><td class="nw"><code>showTimePicker</code> · <code>setTimeFromLog</code></td><td>Time 범위에 날짜·시각 넣기, 이 줄 시각을 Time 시작/끝으로 <span class="badge b-yel">1.22</span></td></tr>
 <tr><td class="nw">File &gt; 강제 종료</td><td class="nw"><code>forceExit</code></td><td>기다리지 않고 바로 종료 (설정 저장, 기록 파일 마무리) <span class="badge b-yel">1.15</span></td></tr>
 <tr><td class="nw"><kbd>F2</kbd> / <kbd>Shift</kbd>+<kbd>F2</kbd></td><td class="nw"><code>processKeyBinding</code></td><td>다음 / 이전 북마크 (이전에는 F2 이전, F3 다음) <span class="badge b-yel">1.14</span></td></tr>
 <tr><td class="nw"><kbd>Home</kbd> / <kbd>End</kbd></td><td class="nw">〃</td><td>첫 행 / 마지막 행</td></tr>
@@ -502,6 +524,15 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
   <li>1GB(1,000만 줄)를 끝까지 찾아도 약 4.4초, 찾는 동안 화면 응답은 2ms 이내입니다.</li>
 </ul>
 
+<h3 id="seq-stats">4.7.2 장치 통계 · 재부팅 표시 (1.21~1.26)</h3>
+<figure class="seq" data-seq="stats"><div class="scroll"></div><figcaption>DeviceStats 스레드가 주기마다 adb로 측정 → 상태 표시줄·자세히 창 / boot_id가 바뀌면 재부팅 기록과 수집 중인 로그에 표시 줄</figcaption></figure>
+<ul class="flow-points">
+  <li>측정은 adb 한 번(<code>cat /proc/stat /proc/meminfo boot_id uptime; for z in thermal_zone*…</code>)입니다. CPU %는 두 번째 측정부터 나옵니다(이전 값과의 차이).</li>
+  <li>CPU 온도는 이름이 CPU 쪽(cpu/soc/tsens/core/big/little/x86_pkg 등)인 센서 중 가장 높은 값, 없으면 전체 센서 중 가장 높은 값입니다. 1000 이상이면 밀리도로 보고, −50°C 이하·200°C 이상은 꺼진 센서로 보고 뺍니다.</li>
+  <li>수집 중 연결이 끊기면 AdbProcess 스레드가 다시 연결을 기다려 같은 기록에 이어서 수집하고, 재부팅이면 북마크된 표시 줄을 씁니다(File &gt; 연결 끊기면 다시 연결, 기본 켜짐).</li>
+  <li>실제 장치 대신 가짜 adb로 검증했습니다. 셋톱박스마다 <code>top</code> 형식과 센서 이름이 다를 수 있습니다.</li>
+</ul>
+
 <h3 id="seq-exit">4.8 종료</h3>
 <figure class="seq" data-seq="exit"><div class="scroll"></div><figcaption>창 닫기 → 정리 → 설정 저장 → System.exit</figcaption></figure>
 <div class="callout caution"><p>강제 종료(작업 관리자, 콘솔 종료 등)되면 <code>windowClosing</code>이 호출되지 않아 필터·창 크기 설정이 저장되지 않습니다.</p></div>
@@ -514,16 +545,17 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <tr><td class="nw"><code>FilterEngine</code></td><td class="nw"><code>FilterEngine</code></td><td class="nw">앱 전체</td><td>요청 플래그 + wait/notify로 증분 분석·전체 재필터. 목록(<code>FilteredList</code>, 맵)을 쓰는 유일한 스레드</td></tr>
 <tr><td class="nw"><code>FilterWorker-n</code></td><td class="nw"><code>FilterEngine</code></td><td class="nw">앱 전체(데몬)</td><td>코어 수 − 1개. 65,536줄 단위로 해석·판정해 결과만 돌려줌</td></tr>
 <tr><td class="nw"><code>LoadFile</code></td><td class="nw"><code>LogSource</code></td><td class="nw">파일 1개</td><td>4MB씩 줄 위치 색인 → 200ms마다 <code>notifyIndexed()</code> (새 파일을 열면 중단)</td></tr>
-<tr><td class="nw"><code>AdbProcess</code></td><td class="nw"><code>LogSource</code></td><td class="nw">Stop까지</td><td>adb stdout 읽기 → 기록 파일(64KB 버퍼) → flush 후 <code>FileLogStore.appendLine()</code> → <code>notifyAppended()</code> (<code>LiveFeed</code>), 50MB마다 다음 기록 파일 (<code>rotate()</code>)</td></tr>
+<tr><td class="nw"><code>AdbProcess</code></td><td class="nw"><code>LogSource</code></td><td class="nw">Stop까지</td><td>연결이 끊기면 다시 연결해 이어서(1.24). adb stdout 읽기 → 기록 파일(64KB 버퍼) → flush 후 <code>FileLogStore.appendLine()</code> → <code>notifyAppended()</code> (<code>LiveFeed</code>), 50MB마다 다음 기록 파일 (<code>rotate()</code>)</td></tr>
 <tr><td class="nw"><code>LogSearch</code></td><td class="nw"><code>LogFilterMain</code></td><td class="nw">검색 1회(데몬)</td><td><code>LogSearch.find()</code>로 다음/이전 일치 행 찾기 → EDT에서 선택. 새 검색을 시작하면 이전 것은 중단</td></tr>
 <tr><td class="nw"><code>AdbDevices</code></td><td class="nw"><code>LogSource</code></td><td class="nw">1회</td><td>adb devices 실행 → <code>onDevices()</code></td></tr>
+<tr><td class="nw"><code>DeviceStats</code></td><td class="nw"><code>DeviceStats</code></td><td class="nw">통계 켜져 있는 동안(데몬)</td><td>주기마다 adb로 측정 → <code>onStats()</code> · <code>onReboot()</code> (EDT 반영은 <code>LogFilterMain</code>) <span class="badge b-yel">1.21</span></td></tr>
 </tbody></table></div>
 <div class="callout"><p><b>규칙:</b> <code>FilterEngine</code>과 <code>LogSource</code>는 Swing을 직접 쓰지 않고 Listener로 알립니다. <code>LogFilterMain</code>이 <code>runOnEdt()</code>로 EDT에서 화면에 반영합니다. 공유 목록은 <code>clear()</code> 대신 새 객체로 교체하고(<code>setStore()</code>), <code>IntList</code>/<code>LongList</code>는 쓰는 스레드 하나·읽는 스레드 여럿으로 크기를 마지막에 공개하며, 테이블 모델은 EDT에서 알린 행 수(<code>syncRowCount()</code>)까지만 읽으며, 북마크/에러 맵은 <code>ConcurrentHashMap</code>입니다.</p></div>
 <!-- 5 -->
 <h2 id="s5"><span class="no">5</span>클래스별 상세</h2>
 
 <h3 id="s5-overview">5.1 전체 클래스 관계도</h3>
-<p>2026-10-06 대용량 파일 구조 적용 후의 클래스 20개(+내부 클래스) 관계를 UML 표기로 그렸습니다. 상자 위쪽 글씨는 상속하는 클래스나 역할, 아래쪽 글씨는 <code>LogFilterMain</code>이 그 객체를 담는 필드 이름입니다. 모든 클래스가 쓰는 <code>T</code>, <code>IntList</code>/<code>LongList</code>로 향하는 선과, <code>AppConfig</code>가 색상을 읽고 쓸 때 쓰는 <code>LogColor</code>로 향하는 선은 생략했습니다.</p>
+<p>1.26 기준 클래스 22개(+내부 클래스) 관계를 UML 표기로 그렸습니다. 상자 위쪽 글씨는 상속하는 클래스나 역할, 아래쪽 글씨는 <code>LogFilterMain</code>이 그 객체를 담는 필드 이름입니다. 모든 클래스가 쓰는 <code>T</code>, <code>IntList</code>/<code>LongList</code>로 향하는 선과, <code>AppConfig</code>가 색상을 읽고 쓸 때 쓰는 <code>LogColor</code>로 향하는 선은 생략했습니다.</p>
 <figure class="seq cls"><div class="scroll" id="clsOverview"></div><figcaption>LogFilterMain(화면)이 FilterEngine(데이터·필터)·LogSource(입력)·AppConfig(설정)를 소유하고 Listener로 알림을 받습니다. 화면 폭이 좁으면 비율에 맞게 축소됩니다.</figcaption></figure>
 <div class="legend" aria-label="관계 범례">
   <span><svg width="44" height="14"><line x1="1" y1="7" x2="31" y2="7" stroke="var(--ink-2)" stroke-width="1.3"/><path d="M31,1 L43,7 L31,13 z" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="1.3"/></svg>상속 (extends)</span>
@@ -569,6 +601,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <ul>
   <li><b>파일:</b> <code>parseFile()</code>이 <code>FileLogStore</code>를 만들어 엔진에 걸고, LoadFile 스레드가 <code>indexNext()</code>로 4MB씩 줄 위치를 색인하며 200ms마다 <code>notifyIndexed()</code>로 알립니다. 새 파일을 열면 현재 목록이 바뀌어 이전 스레드는 멈춥니다.</li>
   <li><b>adb(1.11):</b> <code>startProcess()</code>가 기록 파일과 그 파일의 <code>FileLogStore</code>를 만들어 엔진에 걸고, AdbProcess 스레드가 adb 출력(stderr 포함)을 한 줄씩 읽어 <code>LiveFeed</code>로 파일에 씁니다. 출력이 잠시 멈추거나 50ms마다 flush한 뒤 쓴 위치를 <code>FileLogStore.appendLine()</code>으로 목록에 바로 추가하고 <code>notifyAppended()</code>로 알립니다. 파일을 다시 읽지 않습니다. Pause 중에는 쌓아 두었다가 Resume·Stop 때 넘깁니다. Stop 직후 Run 해도 이전 스레드가 새 프로세스를 건드리지 않습니다.</li>
+  <li><b>다시 연결·재부팅 표시(1.24):</b> <code>readProcess()</code>로 한 번 수집하고, 출력이 끝나면 <code>AdbTarget.disconnected()</code>로 끊김을 확인합니다. 끊겼으면 <code>writeMarker()</code>로 표시 줄을 쓰고 <code>waitForDevice()</code> 뒤 <code>bootInfo()</code>로 재부팅을 판단해 이어서 수집합니다. 장치 통계가 알린 재부팅은 <code>markReboot()</code> 큐로 받아 AdbProcess 스레드가 <code>writePendingMarkers()</code>로 씁니다. 장치가 연결된 채 logcat만 끝나면 다시 연결하지 않고 멈춥니다.</li>
   <li><b>장치 목록:</b> <code>listDevices()</code>가 AdbDevices 스레드에서 <code>adb devices</code>를 실행하고 <code>onDevices()</code>로 알립니다.</li>
 </ul>
 
@@ -588,6 +621,13 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
   <li>검색어는 필터와 같이 <code>|</code>로 나눈 OR 조건, 대소문자 무시, Message 열 기준입니다(<code>matches()</code>).</li>
   <li>65,536행 단위로 진행률을 알리고 <code>cancel()</code>로 중단합니다. 전체 목록은 <code>forEach</code> 블록 읽기, 필터 결과는 원본 범위가 행 수의 8배 이하로 촘촘하면 블록 읽기, 아니면 행마다 읽습니다.</li>
   <li><code>LogFilterMain.search()</code>가 LogSearch 스레드에서 실행하고, EDT에서 행을 선택해 가운데로 보여준 뒤 상태 표시줄에 원래 줄 번호·행 위치를 표시합니다. 그 사이 새 검색을 시작했거나 목록이 바뀌었으면 결과를 버립니다.</li>
+</ul>
+
+<h4>DeviceStats · StatsDialog (장치 통계, 1.21~1.26)</h4>
+<ul>
+  <li><b>DeviceStats:</b> <code>start()</code>/<code>stop()</code>, <code>setDevice()</code>(장치가 바뀌면 이전 값 지움), <code>setInterval()</code>(다음 측정을 기다리는 중일 때만 깨움: adb 실행 중에 깨우면 그 측정이 끊기므로), <code>setWantTop()</code>, <code>measure()</code> → <code>Sample</code>(CPU·코어·메모리·온도·센서 목록·top·boot_id·uptime·오류), <code>checkReboot()</code>, <code>history()</code>(최근 60회). 해석은 static이라 따로 테스트합니다: <code>parseProcStat</code>·<code>applyCpu</code>·<code>parseMemInfo</code>·<code>parseThermal</code>·<code>cpuTemp</code>·<code>parseTop</code>(toybox <code>S[%CPU]</code>·이전 형식)·<code>adbError</code>.</li>
+  <li><b>StatsDialog:</b> <code>update(Sample)</code>(EDT), <code>setReboots(List)</code>(없으면 회색, 있으면 빨간색), <code>syncInterval()</code>(콤보 선택·그래프 제목, 범례 글자는 각 선 색), <code>captureImage()</code>·<code>copyImage()</code>·<code>saveImage()</code>. 내부 <code>GraphPanel</code>(CPU 파랑·메모리 초록·온도 주황, 0~100 눈금), <code>CorePanel</code>(코어별 막대 2열, 꺼진 코어 표시).</li>
+  <li><b>LogFilterMain 쪽:</b> <code>initDeviceStats()</code>(Listener), <code>setDeviceStats()</code>, <code>setStatsInterval()</code>, <code>showStatsDialog()</code>, <code>addRebootRecord()</code>(boot_id로 한 번만), 상태 표시줄 <code>m_lbStats</code>.</li>
 </ul>
 
 <h4>AppConfig (설정)</h4>
@@ -632,7 +672,7 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
 <div class="tbl"><table>
 <thead><tr><th>파일</th><th>읽기/쓰기</th><th>주요 키</th></tr></thead>
 <tbody>
-<tr><td class="nw"><code>LogFilter.ini</code></td><td class="nw">시작 시 읽기 · 종료 시 쓰기</td><td><code>WORD_FIND</code>, <code>WORD_REMOVE</code>, <code>TAG_SHOW</code>, <code>TAG_REMOVE</code>, <code>PID_SHOW</code>, <code>TID_SHOW</code>, <code>TIME_FROM</code>·<code>TIME_TO</code>, <code>FIND_REGEX</code>·<code>REMOVE_REGEX</code>, <code>HISTORY_&lt;입력창&gt;_0~9</code>, <code>HIGHLIGHT</code>, <code>FONT_TYPE</code>, <code>INI_WIDTH/HEIGHT</code>, <code>INI_WINDOW_STATE</code>, <code>INI_COMUMN_0~8</code></td></tr>
+<tr><td class="nw"><code>LogFilter.ini</code></td><td class="nw">시작 시 읽기 · 종료 시 쓰기</td><td><code>WORD_FIND</code>, <code>WORD_REMOVE</code>, <code>TAG_SHOW</code>, <code>TAG_REMOVE</code>, <code>PID_SHOW</code>, <code>TID_SHOW</code>, <code>TIME_FROM</code>·<code>TIME_TO</code>, <code>FIND_REGEX</code>·<code>REMOVE_REGEX</code>, <code>HISTORY_&lt;입력창&gt;_0~9</code>, <code>VIEW_COMPACT</code>, <code>DEVICE_STATS</code>·<code>DEVICE_STATS_INTERVAL</code>(초), <code>AUTO_RECONNECT</code>, <code>HIGHLIGHT</code>, <code>FONT_TYPE</code>, <code>INI_WIDTH/HEIGHT</code>, <code>INI_WINDOW_STATE</code>, <code>INI_COMUMN_0~8</code></td></tr>
 <tr><td class="nw"><code>LogFilterColor.ini</code></td><td class="nw">시작 시 읽기 · 종료 시 쓰기</td><td><code>INI_COLOR_0~8</code>(3=E, 4=W, 6=I, 7=D, 8=F), <code>INI_HIGILIGHT_COUNT</code>, <code>INI_HIGILIGHT_n</code></td></tr>
 <tr><td class="nw"><code>LogFilterCmd.ini</code></td><td class="nw">읽기 전용</td><td><code>CMD_COUNT</code>, <code>CMD_n</code>(adb 뒤에 붙는 명령)</td></tr>
 <tr><td class="nw"><code>RecentFile.ini</code></td><td class="nw">읽기/쓰기</td><td>한 줄에 경로 하나</td></tr>
@@ -779,6 +819,19 @@ java -cp bin LogFilterMain [로그파일]</code></pre>
         <tr><td class="nw">1.19</td><td class="nw">정규식 모드</td><td>Find·Remove의 .* 토글, 대소문자 무시, 일치 구간 표시, 틀린 식 표시. 1GB 정규식 필터 4.7초</td></tr>
       </tbody></table></div>
     그 밖에(2026-10-08): 오른쪽 클릭 팝업이 실제 마우스에서 안 뜨던 문제 수정(누름/뗌 처리, Alt 판단), 팝업 가운데·하이라이트 색상, 검색어 빨간색 표시.</li>
+  <li><span class="badge b-use">✔ 완료 2026-10-12</span> <b>4단계 신규 기능 (버전마다 커밋):</b>
+    <div class="tbl"><table>
+      <thead><tr><th>버전</th><th>기능</th><th>내용</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">1.20</td><td class="nw">Full / Compact 화면</td><td>View 메뉴 또는 F12로 위쪽 필터·옵션 영역 숨기기/보이기, 필터는 계속 적용, 설정 저장</td></tr>
+        <tr><td class="nw">1.21</td><td class="nw">안드로이드 장치 통계</td><td>상태 표시줄에 장치 CPU·메모리, 자세히 창(그래프·코어별·상위 프로세스). 장치 없음·offline·unauthorized·여러 장치 안내</td></tr>
+        <tr><td class="nw">1.22</td><td class="nw">시간 범위에 날짜</td><td>"날짜" 버튼으로 날짜·시각 선택, 오른쪽 클릭으로 그 줄 시각을 시작/끝으로</td></tr>
+        <tr><td class="nw">1.23</td><td class="nw">통계 측정 주기</td><td>1·2·5·10·30·60초 선택(메뉴·자세히 창), 그래프 범위 = 주기 × 60</td></tr>
+        <tr><td class="nw">1.24</td><td class="nw">재부팅 표시</td><td>수집 중 연결이 끊기면 다시 연결해 이어서 수집, 재부팅이면 그 자리에 북마크된 표시 줄. 장치 통계도 boot_id로 감지</td></tr>
+        <tr><td class="nw">1.25</td><td class="nw">통계 이미지</td><td>자세히 창을 이미지로 클립보드 복사(Ctrl+C)·PNG 저장</td></tr>
+        <tr><td class="nw">1.26</td><td class="nw">CPU 온도</td><td>thermal_zone 센서로 CPU 온도, 상태 표시줄·자세히 창·그래프(주황), 범례 글자 색 = 선 색</td></tr>
+      </tbody></table></div>
+    테스트: 실제 장치 대신 가짜 adb(/proc 출력, top, 온도 센서, offline·none·multi·unauthorized, 끊김·재부팅)로 확인. 화면 모드·F12 한 번만 전환, 통계 해석·측정·주기 변경·재부팅 감지(수집·통계 두 경로, 한 번만 표시)·이미지(클립보드·PNG·크기·그래프 색)·온도(단위·센서 고르기·없을 때) 모두 통과, 기존 단위·기능·스트레스 테스트 통과. 실제 셋톱박스에서의 /proc·top·센서 이름은 아직 확인하지 않았습니다.</li>
 </ol>
 </main>
 </div>
@@ -1037,6 +1090,34 @@ search: {
     {end:1}
   ]
 },
+stats: {
+  p: [
+    {id:'user', label:'사용자', kind:'actor'},
+    {id:'frame', label:'LogFilterMain', sub:'EDT · 상태 표시줄'},
+    {id:'dlg', label:'StatsDialog', sub:'자세히 창'},
+    {id:'stats', label:'DeviceStats', sub:'측정 스레드', kind:'thread'},
+    {id:'adb', label:'adb shell', sub:'외부 프로세스', kind:'ext'},
+    {id:'src', label:'LogSource', sub:'AdbProcess 스레드', kind:'thread'}
+  ],
+  s: [
+    {m:['user','frame','View > 장치 통계 표시 (기본 켜짐)']},
+    {m:['frame','stats','m_deviceStats.start() → new Thread'], t:'async'},
+    {f:'loop', l:'주기마다 (1~60초, 오류면 늘림)', o:['frame','src']},
+    {m:['stats','adb','cat /proc/stat /proc/meminfo boot_id uptime; thermal_zone* (창이 열려 있으면 + top)']},
+    {m:['adb','stats','출력 / 오류(장치 없음·offline·unauthorized·여러 장치)'], t:'ret'},
+    {s:['stats','measure(): CPU·코어(이전 값과 차이), 메모리, CPU 온도 → Sample']},
+    {m:['stats','frame','onStats(sample) → runOnEdt: 상태 표시줄 요약'], t:'async'},
+    {m:['frame','dlg','열려 있으면 update(sample): 그래프·코어·top·온도']},
+    {f:'opt', l:'checkReboot(): boot_id가 바뀜', o:['frame','src']},
+    {m:['stats','frame','onReboot(sample) → addRebootRecord() (boot_id로 한 번만)'], t:'async'},
+    {m:['frame','src','markReboot(bootId, uptime) → 큐'], t:'async'},
+    {s:['src','writePendingMarkers(): 북마크된 재부팅 표시 줄 (수집 중일 때)']},
+    {end:1},
+    {end:1},
+    {m:['user','dlg','이미지로 복사 (Ctrl+C) / 이미지 저장…']},
+    {s:['dlg','captureImage() → 클립보드 이미지 / PNG']}
+  ]
+},
 exit: {
   p: [
     {id:'user', label:'사용자', kind:'actor'},
@@ -1284,7 +1365,9 @@ const CLS_NODES = {
   Filtered:   {name:'FilteredList', c:3, r:4, stereo:'필터 결과', sub:'통과한 줄 번호 (IntList)'},
   FileStore:  {name:'FileLogStore', c:1, r:5, stereo:'파일 위치 색인 (대용량)', sub:'LongList · IntList · FileChannel'},
   MemStore:   {name:'MemoryLogStore', c:2, r:5, stereo:'시작 안내 문구', sub:'ArrayList<String>'},
-  Search:     {name:'LogSearch', c:4, r:0, kind:'core', stereo:'메시지 검색 (1.14)', sub:'m_search · LogSearch 스레드'}
+  Search:     {name:'LogSearch', c:4, r:0, kind:'core', stereo:'메시지 검색 (1.14)', sub:'m_search · LogSearch 스레드'},
+  Stats:      {name:'DeviceStats', c:3, r:6, kind:'core', stereo:'장치 통계 (1.21) · 측정 스레드', sub:'m_deviceStats'},
+  Dialog:     {name:'StatsDialog', c:4, r:6, stereo:'extends JDialog · 자세히 창', sub:'m_dlgStats'}
 };
 const CLS_EDGES = [
   {f:'Main', t:'Noti', type:'impl'},
@@ -1316,7 +1399,9 @@ const CLS_EDGES = [
   {f:'Renderer', t:'Token', type:'dep'},
   {f:'Renderer', t:'Color', type:'dep', label:'COLOR_HIGHLIGHT[6]', lp:0.22},
   {f:'Parser', t:'Color', type:'dep', label:'레벨 색상'},
-  {f:'Parser', t:'Info', type:'dep', label:'«create» parseLog()', via:[[4,3.55],[1.25,3.55]], lp:0.5}
+  {f:'Parser', t:'Info', type:'dep', label:'«create» parseLog()', via:[[4,3.55],[1.25,3.55]], lp:0.5},
+  {f:'Main', t:'Stats', type:'comp', label:'m_deviceStats · onStats/onReboot', via:[[2.5,0.3],[2.5,6]], lp:0.93},
+  {f:'Dialog', t:'Stats', type:'assoc', label:'m_stats'}
 ];
 /* ---------------------------------------------------------------
  * 5.2 클래스별 구조
@@ -1356,7 +1441,10 @@ const UML = [
     ['~','m_search : LogSearch','l','진행 중인 검색 (새 검색이면 이전 것 cancel)'],
     ['~','m_tfTimeFrom · m_tfTimeTo : JTextField, m_chkEnableTime : JCheckBox','l','시간 범위 (1.18)'],
     ['~','m_tbFindRegex · m_tbRemoveRegex : JToggleButton','l','정규식 모드 (1.19)'],
-    ['~','m_mapHistory : Map<String, InputHistory>','l','입력창별 최근 입력 (1.16)']
+    ['~','m_mapHistory : Map<String, InputHistory>','l','입력창별 최근 입력 (1.16)'],
+    ['~','m_bCompactView : boolean, m_optionPanel : JPanel, m_miFullView · m_miCompactView','l','화면 모드 (1.20)'],
+    ['~','m_deviceStats : DeviceStats, m_dlgStats : StatsDialog, m_lbStats : JLabel','l','장치 통계 (1.21)'],
+    ['~','m_arReboot : List<String>, m_setRebootId : Set<String>','l','재부팅 기록 (1.24)']
   ],
   methods:[
     ['§','진입 · 생명주기'],
@@ -1373,6 +1461,10 @@ const UML = [
     ['~','forceExit(boolean bConfirm) : void','l','File > 강제 종료 (1.15)'],
     ['~','installInputHistory(comp, key) · withHistory(comp[, extra])','l','입력 기록·▼ 버튼 (1.16)'],
     ['~','applyTimeRange() · applyRegexMode() · showRegexErrors() · inputErrors()','l','시간 범위·정규식, 오류 표시 (1.18·1.19)'],
+    ['~','setCompactView(boolean) · toggleView() · syncViewMenu()','l','Full/Compact, F12 (1.20)'],
+    ['~','initDeviceStats() · setDeviceStats(boolean) · setStatsInterval(int) · showStatsDialog()','l','장치 통계 (1.21·1.23)'],
+    ['~','addRebootRecord(bootId, info) · onReboot(String, String)','l','재부팅 기록 (1.24)'],
+    ['~','showTimePicker(…) · setTimeFromLog(…)','l','Time에 날짜 넣기 (1.22)'],
     ['~','addChangeListener() · setDnDListener() : void'],
     ['~','installUndoRedo(JTextComponent) : void'],
     ['~','installInputHistory(JTextComponent) : void','l','필터·하이라이트 입력창 ↑/↓'],
@@ -1438,7 +1530,7 @@ const UML = [
     { name:'ChunkResult', rel:'private static class', fields:[['~','errors · accepted · flags : IntList','','청크 하나의 결과 (flags: 북마크·에러 비트)'],['~','nEnd · nReached : int','','중단되면 nReached < nEnd']], methods:[]}
   ]
 },
-{ name:'LogSource', rel:'2026-10-06 추가 (S1) · 1.11 adb 바로 읽기', file:'LogSource.java · 479줄',
+{ name:'LogSource', rel:'2026-10-06 추가 (S1) · 1.11 adb 바로 읽기', file:'LogSource.java · 743줄',
   fields:[
     ['~','DEVICES_CMD = "adb devices" : String','s'],
     ['~','m_engine : FilterEngine, m_parser : ILogParser, m_listener : Listener'],
@@ -1456,6 +1548,10 @@ const UML = [
     ['~','startNoOutputWatch(…) · reportProcessEnd(…)','l','adb 무출력 경고 · 종료 안내'],
     ['~','stopProcess() · setPause(boolean) · isRunning()','','Resume·Stop 때 쌓인 줄 publish()'],
     ['~','listDevices() : void','','AdbDevices 스레드'],
+    ['~','readProcess(cmd, feed, …) · writeMarker(feed, text, memo) · writeRebootMarker(…)','l','다시 연결·표시 줄 (1.24)'],
+    ['~','markReboot(bootId, uptime) · writePendingMarkers(feed)','l','장치 통계가 알린 재부팅 (1.24)'],
+    ['~','m_bAutoReconnect : boolean, m_strBootId · m_strMarkedBootId : String','l'],
+    ['~','parseBootInfo(String) : String[]','s'],
     ['~','makeFilename() : String · charsetOf(boolean) : Charset','s']
   ],
   inner:[
@@ -1471,6 +1567,43 @@ const UML = [
 { name:'TimeRange', rel:'1.18 시간 범위', file:'TimeRange.java · 107줄',
   fields:[['~','m_strFrom · m_strTo : String','','비교 키 MM-dd HH:mm:ss.SSS 또는 HH:mm:ss.SSS'],['~','m_bFromDate · m_bToDate : boolean']],
   methods:[['~','parse(String from, String to) : TimeRange','s','틀리면 IllegalArgumentException'],['~','accept(String date, String time) : boolean','','자정 넘김, 시각 없는 줄은 false'],['~','lineTime · lineDate(String) : String','s','줄의 시각·날짜 정리']]
+},
+{ name:'DeviceStats', rel:'1.21 장치 통계 · 1.23 주기 · 1.24 재부팅 · 1.26 온도', file:'DeviceStats.java · 442줄',
+  fields:[
+    ['~','INTERVAL_MS = 2000, INTERVALS_SEC = {1,2,5,10,30,60}, HISTORY = 60, ADB_TIMEOUT_MS = 5000','s'],
+    ['~','ADB = -Dklogfilter.adb (기본 adb) : String','s','테스트용 바꾸기'],
+    ['-','volatile m_strDevice : String, m_bWantTop · m_bSleeping : boolean, m_nIntervalMs : long'],
+    ['-','m_arPrevCpu : long[][], m_strPrevBootId : String','','CPU 차이 계산 · 재부팅 비교'],
+    ['~','m_arHistory : List<Sample>','','최근 60회 (그래프)']
+  ],
+  methods:[
+    ['~','start() · stop() · isRunning()'],
+    ['~','setDevice(String) · setWantTop(boolean) · setInterval(long) · interval()'],
+    ['~','measure() : Sample','','adb 한 번 + (창이 열려 있으면) top'],
+    ['~','checkReboot(Sample) : boolean','','boot_id (없으면 uptime)'],
+    ['~','history() : List<Sample>'],
+    ['~','parseProcStat · applyCpu · usage · parseMemInfo · parseTop','s'],
+    ['~','parseThermal(String) : List<String[]> · cpuTemp(List) : double','s','온도 (1.26)'],
+    ['~','adbError · errorOf(String) : String','s','장치 없음·offline·unauthorized·여러 장치']
+  ],
+  inner:[
+    { name:'Sample', rel:'static class', fields:[['~','m_dCpu, m_arCore[], m_nMemTotalKb · m_nMemAvailKb, m_arTop'],['~','m_dTemp, m_arThermal','','CPU 온도 °C (없으면 -1), 센서 {이름, °C}'],['~','m_strBootId · m_strUptime · m_strError · m_nTime']], methods:[['~','summary() · memUsedPercent()']]},
+    { name:'Listener', rel:'«interface»', fields:[], methods:[['+','onStats(Sample) · onReboot(Sample)','a']]}
+  ]
+},
+{ name:'StatsDialog', rel:'1.21 자세히 창 · 1.25 이미지 · 1.26 온도', file:'StatsDialog.java · 362줄',
+  fields:[
+    ['~','COLOR_CPU · COLOR_MEM · COLOR_TEMP : Color','s','파랑 · 초록 · 주황'],
+    ['~','m_stats : DeviceStats'],
+    ['~','m_lbSummary · m_lbMem · m_lbTemp · m_lbReboot : JLabel, m_cbInterval : JComboBox'],
+    ['~','m_graph : GraphPanel, m_cores : CorePanel, m_modelTop : DefaultTableModel'],
+    ['~','m_jpCapture : JPanel','','이미지로 만들 영역']
+  ],
+  methods:[
+    ['~','update(Sample) · setReboots(List<String>)','','EDT'],
+    ['~','syncInterval() · legend(Color, String)','','그래프 제목, 범례 글자 색 = 선 색'],
+    ['~','captureImage() · copyImage() · saveImage()','','클립보드 이미지 · PNG (Ctrl+C)']
+  ]
 },
 { name:'LogSearch', rel:'1.14 메시지 검색', file:'LogSearch.java · 173줄',
   fields:[['~','CHUNK_ROWS = 65536 : int','s','진행률·중단 단위'],['-','volatile m_bCancel : boolean']],
@@ -1545,7 +1678,7 @@ const UML = [
 { name:'IntList · LongList', kind:'util', stereo:'«collection»', rel:'', file:'IntList.java · 40줄, LongList.java · 36줄',
   fields:[['-','volatile m_arValue : int[] / long[], volatile m_nSize : int']],
   methods:[['+','add(v) · get(i) · size()','','뒤에만 추가. 쓰기 하나·읽기 여럿 (값을 쓴 뒤 크기 공개)']]
-},{ name:'AppConfig', rel:'2026-10-06 추가 (S1, S9)', file:'AppConfig.java · 322줄',
+},{ name:'AppConfig', rel:'2026-10-06 추가 (S1, S9)', file:'AppConfig.java · 339줄',
   fields:[
     ['~','INI_FILE · INI_FILE_CMD · INI_FILE_COLOR · INI_* : String','s','ini 파일·키 이름'],
     ['~','DEFAULT_WIDTH/HEIGHT, MIN_WIDTH/HEIGHT : int','s'],

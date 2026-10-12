@@ -7,6 +7,9 @@ Android `logcat` 로그를 보면서 필터링하는 Java Swing 데스크톱 툴
 - 워드 / 태그 / PID / TID / 레벨 필터 (`|`로 OR 조건, 대소문자 무시)
 - 하이라이트(여러 색), 북마크(메모 포함), 북마크·에러 위치 인디케이터
 - 컬럼 숨기기, 선택 행·셀 복사, 드래그&드롭으로 파일 열기
+- Full / Compact 화면 (View 메뉴, <kbd>F12</kbd>): 위쪽 필터 영역을 숨겨 로그를 넓게 봅니다.
+- 안드로이드 장치 통계: 상태 표시줄에 장치 CPU·CPU 온도·메모리, 클릭하면 그래프·코어별·상위 프로세스(이미지로 복사·저장). 측정 주기는 View > 장치 통계 주기
+- 수집 중 장치가 재부팅되면 다시 연결해 이어서 수집하고, 재부팅 시점에 북마크된 표시 줄을 넣습니다.
 
 ## 빌드와 실행
 
@@ -46,10 +49,11 @@ dist\KLogFilter.bat [로그파일]   → 실행 (또는 java -jar dist\KLogFilte
 | 동작 | 방법 |
 |---|---|
 | 북마크 토글 | 더블클릭 또는 <kbd>Ctrl</kbd>+<kbd>F2</kbd> (Mark 컬럼에서 메모 입력) |
-| 북마크 이동 | <kbd>F2</kbd> 이전 / <kbd>F3</kbd> 다음 |
+| 북마크 이동 | <kbd>F2</kbd> 다음 / <kbd>Shift</kbd>+<kbd>F2</kbd> 이전 |
+| 메시지 검색 | <kbd>Ctrl</kbd>+<kbd>F</kbd> 검색창, <kbd>F3</kbd> 다음 / <kbd>Shift</kbd>+<kbd>F3</kbd> 이전 |
+| Full / Compact 화면 | <kbd>F12</kbd> |
 | 태그 필터에 추가 | Tag 셀에서 <kbd>Alt</kbd>+좌클릭(Show) / <kbd>Alt</kbd>+우클릭(Remove) |
 | 복사 | <kbd>Ctrl</kbd>+<kbd>C</kbd>: 선택 행의 보이는 컬럼 / 우클릭: 셀 하나 |
-| Find 입력창으로 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 필터 입력 되돌리기 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> |
 | 최근 필터 입력 불러오기 | 필터 입력창에서 <kbd>↑</kbd> / <kbd>↓</kbd> (Enter나 포커스 이동 때 기록, 최근 10개) |
 | 북마크만 / 에러만 보기 | 왼쪽 인디케이터 위의 체크박스 |
@@ -74,9 +78,10 @@ dist\KLogFilter.bat [로그파일]   → 실행 (또는 java -jar dist\KLogFilte
 | `LogSource` | 파일 파싱, adb 실시간 수집, 장치 목록 |
 | `AppConfig` | 설정 파일 읽기/쓰기 |
 | `LogTable` / `LogFilterTableModel` / `IndicatorPanel` | 로그 테이블, 모델, 북마크/에러 바 |
+| `DeviceStats` / `StatsDialog` | 장치 통계 측정 / 자세히 창 |
 | `LogCatParser` / `LogInfo` | 로그 한 줄 파싱 / 데이터 |
 
-동작 흐름(시퀀스 다이어그램), 클래스 구조, 수정 이력은 [docs/SOURCE_STRUCTURE_20261012092331.html](docs/SOURCE_STRUCTURE_20261012092331.html)에 정리되어 있습니다(브라우저로 열기). Markdown 요약본은 [docs/SOURCE_STRUCTURE_20261012092331.md](docs/SOURCE_STRUCTURE_20261012092331.md)입니다. 문서 파일 이름 끝의 숫자는 생성 시각(`yyyyMMddHHmmss`)이며, 문서를 다시 만들 때마다 새 시각으로 바뀝니다.
+동작 흐름(시퀀스 다이어그램), 클래스 구조, 수정 이력은 [docs/SOURCE_STRUCTURE_20261012131009.html](docs/SOURCE_STRUCTURE_20261012131009.html)에 정리되어 있습니다(브라우저로 열기). Markdown 요약본은 [docs/SOURCE_STRUCTURE_20261012131009.md](docs/SOURCE_STRUCTURE_20261012131009.md)입니다. 문서 파일 이름 끝의 숫자는 생성 시각(`yyyyMMddHHmmss`)이며, 문서를 다시 만들 때마다 새 시각으로 바뀝니다.
 
 ## 라이선스 참고
 
