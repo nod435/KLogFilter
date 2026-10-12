@@ -68,7 +68,7 @@ public class StatsDialog extends JDialog
         jpLine1.add(m_lbSummary, BorderLayout.CENTER);
         jpLine1.add(jpInterval, BorderLayout.EAST);
 
-        m_lbReboot.setForeground(new Color(0xC62828));
+        m_lbReboot.setForeground(Color.GRAY);
         JPanel jpTop = new JPanel(new GridLayout(3, 1));
         jpTop.add(jpLine1);
         jpTop.add(m_lbMem);
@@ -92,8 +92,34 @@ public class StatsDialog extends JDialog
         jpCenter.add(m_cores, BorderLayout.CENTER);
         jpCenter.add(spTop, BorderLayout.SOUTH);
 
-        getContentPane().add(jpTop, BorderLayout.NORTH);
-        getContentPane().add(jpCenter, BorderLayout.CENTER);
+        // 아래: 통계를 이미지로 복사·저장 (1.25)
+        javax.swing.JButton btnCopy = new javax.swing.JButton("이미지로 복사");
+        btnCopy.setToolTipText("지금 보이는 통계를 이미지로 클립보드에 복사 (Ctrl+C) — 메일·메신저·문서에 붙여넣기");
+        btnCopy.addActionListener(new java.awt.event.ActionListener()
+        {
+            public void actionPerformed(java.awt.event.ActionEvent e) { copyImage(); }
+        });
+        javax.swing.JButton btnSave = new javax.swing.JButton("이미지 저장…");
+        btnSave.setToolTipText("지금 보이는 통계를 PNG 파일로 저장");
+        btnSave.addActionListener(new java.awt.event.ActionListener()
+        {
+            public void actionPerformed(java.awt.event.ActionEvent e) { saveImage(); }
+        });
+        JPanel jpBottom = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 4));
+        jpBottom.add(btnCopy);
+        jpBottom.add(btnSave);
+        getRootPane().getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_C, java.awt.event.InputEvent.CTRL_DOWN_MASK), "CopyImage");
+        getRootPane().getActionMap().put("CopyImage", new javax.swing.AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(java.awt.event.ActionEvent e) { copyImage(); }
+        });
+
+        m_jpCapture = new JPanel(new BorderLayout());
+        m_jpCapture.add(jpTop, BorderLayout.NORTH);
+        m_jpCapture.add(jpCenter, BorderLayout.CENTER);
+        getContentPane().add(m_jpCapture, BorderLayout.CENTER);
+        getContentPane().add(jpBottom, BorderLayout.SOUTH);
         pack();
         setLocationRelativeTo(owner);
 
@@ -113,12 +139,74 @@ public class StatsDialog extends JDialog
         super.setVisible(b);
     }
 
+    JPanel m_jpCapture;     // 이미지로 만들 영역 (버튼 줄 제외)
+
+    // 통계 영역을 이미지로 (아래에 만든 시각을 적는다)
+    java.awt.image.BufferedImage captureImage()
+    {
+        int w = m_jpCapture.getWidth(), h = m_jpCapture.getHeight();
+        int nFooter = 18;
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(Math.max(1, w), Math.max(1, h + nFooter), java.awt.image.BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = img.createGraphics();
+        g.setColor(getBackground());
+        g.fillRect(0, 0, img.getWidth(), img.getHeight());
+        m_jpCapture.paint(g);
+        g.setColor(Color.GRAY);
+        g.setFont(m_lbMem.getFont());
+        g.drawString("KLogFilter 장치 통계 · " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date()), 8, h + 13);
+        g.dispose();
+        return img;
+    }
+
+    void copyImage()
+    {
+        final java.awt.image.BufferedImage img = captureImage();
+        java.awt.datatransfer.Transferable t = new java.awt.datatransfer.Transferable()
+        {
+            public java.awt.datatransfer.DataFlavor[] getTransferDataFlavors() { return new java.awt.datatransfer.DataFlavor[]{ java.awt.datatransfer.DataFlavor.imageFlavor }; }
+            public boolean isDataFlavorSupported(java.awt.datatransfer.DataFlavor f) { return java.awt.datatransfer.DataFlavor.imageFlavor.equals(f); }
+            public Object getTransferData(java.awt.datatransfer.DataFlavor f) throws java.awt.datatransfer.UnsupportedFlavorException
+            {
+                if(!isDataFlavorSupported(f)) throw new java.awt.datatransfer.UnsupportedFlavorException(f);
+                return img;
+            }
+        };
+        java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(t, null);
+        setTitle("장치 통계 — 이미지를 클립보드에 복사했습니다");
+    }
+
+    // 저장할 파일 이름 (테스트에서 대화상자 없이 쓰려면 지정)
+    java.io.File m_fileSaveOverride;
+
+    void saveImage()
+    {
+        java.io.File file = m_fileSaveOverride;
+        if(file == null)
+        {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setSelectedFile(new java.io.File("DeviceStats_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date()) + ".png"));
+            if(chooser.showSaveDialog(this) != javax.swing.JFileChooser.APPROVE_OPTION) return;
+            file = chooser.getSelectedFile();
+            if(!file.getName().toLowerCase().endsWith(".png")) file = new java.io.File(file.getPath() + ".png");
+        }
+        try
+        {
+            javax.imageio.ImageIO.write(captureImage(), "png", file);
+            setTitle("장치 통계 — 저장했습니다 : " + file.getName());
+        }
+        catch(java.io.IOException e)
+        {
+            javax.swing.JOptionPane.showMessageDialog(this, "이미지를 저장할 수 없습니다 : " + e.getMessage());
+        }
+    }
+
     // 재부팅 기록 (최근 3개, 전체는 툴팁)
     void setReboots(List<String> arReboot)
     {
         List<String> ar;
         synchronized(arReboot) { ar = new ArrayList<String>(arReboot); }
-        if(ar.isEmpty()) { m_lbReboot.setText("재부팅: 감지된 것 없음"); m_lbReboot.setToolTipText(null); return; }
+        if(ar.isEmpty()) { m_lbReboot.setText("재부팅: 감지된 것 없음"); m_lbReboot.setForeground(Color.GRAY); m_lbReboot.setToolTipText(null); return; }
+        m_lbReboot.setForeground(new Color(0xC62828));
         StringBuilder sb = new StringBuilder("재부팅 " + ar.size() + "회 : ");
         for(int i = Math.max(0, ar.size() - 3); i < ar.size(); i++) sb.append(i > Math.max(0, ar.size() - 3) ? " / " : "").append(ar.get(i));
         m_lbReboot.setText(sb.toString());

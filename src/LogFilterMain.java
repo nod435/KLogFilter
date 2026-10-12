@@ -506,6 +506,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.25 : 장치 통계를 이미지로 복사·저장 (자세히 창의 버튼, Ctrl+C)");
         addDesc("Version 1.24 : 수집 중 장치 재부팅 표시 (연결이 끊기면 다시 연결해 이어서 수집, 재부팅 시점에 북마크된 표시 줄)");
         addDesc("Version 1.23 : 장치 통계 주기 선택 (1·2·5·10·30·60초, View 메뉴 또는 자세히 창)");
         addDesc("Version 1.22 : Time 범위에 날짜 (날짜 버튼으로 월-일 시:분:초 선택, 오른쪽 클릭 '이 줄 시각을 Time 시작/끝으로')");
@@ -1804,7 +1805,6 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             m_arMiInterval.get(i).setSelected(DeviceStats.INTERVALS_SEC[i] == nSec);
         if(m_dlgStats != null)
             m_dlgStats.syncInterval();
-        m_dlgStats.setReboots(m_arReboot);
         setStatus("장치 통계 주기 : " + nSec + "초");
     }
 
