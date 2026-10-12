@@ -30,6 +30,7 @@ public class StatsDialog extends JDialog
     final DeviceStats      m_stats;
     final JLabel           m_lbSummary = new JLabel(" ");
     final JLabel           m_lbMem     = new JLabel(" ");
+    final JLabel           m_lbReboot  = new JLabel("재부팅: 감지된 것 없음");
     final GraphPanel       m_graph     = new GraphPanel();
     final CorePanel        m_cores     = new CorePanel();
     final javax.swing.JComboBox<String> m_cbInterval = new javax.swing.JComboBox<String>();
@@ -67,9 +68,11 @@ public class StatsDialog extends JDialog
         jpLine1.add(m_lbSummary, BorderLayout.CENTER);
         jpLine1.add(jpInterval, BorderLayout.EAST);
 
-        JPanel jpTop = new JPanel(new GridLayout(2, 1));
+        m_lbReboot.setForeground(new Color(0xC62828));
+        JPanel jpTop = new JPanel(new GridLayout(3, 1));
         jpTop.add(jpLine1);
         jpTop.add(m_lbMem);
+        jpTop.add(m_lbReboot);
         jpTop.setBorder(BorderFactory.createEmptyBorder(6, 8, 4, 8));
 
         m_graph.setPreferredSize(new Dimension(520, 160));
@@ -108,6 +111,18 @@ public class StatsDialog extends JDialog
     {
         m_stats.setWantTop(b);
         super.setVisible(b);
+    }
+
+    // 재부팅 기록 (최근 3개, 전체는 툴팁)
+    void setReboots(List<String> arReboot)
+    {
+        List<String> ar;
+        synchronized(arReboot) { ar = new ArrayList<String>(arReboot); }
+        if(ar.isEmpty()) { m_lbReboot.setText("재부팅: 감지된 것 없음"); m_lbReboot.setToolTipText(null); return; }
+        StringBuilder sb = new StringBuilder("재부팅 " + ar.size() + "회 : ");
+        for(int i = Math.max(0, ar.size() - 3); i < ar.size(); i++) sb.append(i > Math.max(0, ar.size() - 3) ? " / " : "").append(ar.get(i));
+        m_lbReboot.setText(sb.toString());
+        m_lbReboot.setToolTipText("<html>" + String.join("<br>", ar) + "</html>");
     }
 
     // 측정 주기에 맞춰 콤보 선택과 그래프 제목(최근 60회 = 주기 × 60)을 바꾼다

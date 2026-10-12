@@ -200,8 +200,17 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             }
         });
 
+        // 수집 중 장치 연결이 끊기면(재부팅 등) 다시 연결을 기다려 이어서 수집하고 재부팅을 표시 (1.24)
+        mainFrame.m_miAutoReconnect = new javax.swing.JCheckBoxMenuItem("장치 연결이 끊기면 자동 다시 연결 (재부팅 표시)");
+        mainFrame.m_miAutoReconnect.setSelected(mainFrame.m_source.m_bAutoReconnect);
+        mainFrame.m_miAutoReconnect.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.m_source.m_bAutoReconnect = mainFrame.m_miAutoReconnect.isSelected(); }
+        });
+
         file.add(fileOpen);
         file.add(m_recentMenu);
+        file.addSeparator();
+        file.add(mainFrame.m_miAutoReconnect);
         file.addSeparator();
         file.add(fileForceExit);
 
@@ -422,6 +431,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             setCompactView(true);
         m_deviceStats.setInterval(config.nStatsIntervalSec * 1000L);
         setDeviceStats(config.bDeviceStats);
+        m_source.m_bAutoReconnect = config.bAutoReconnect;
         m_tfTimeFrom.setText(config.strTimeFrom);
         m_tfTimeTo.setText(config.strTimeTo);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
@@ -458,6 +468,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.bRemoveRegex = m_tbRemoveRegex.isSelected();
         m_config.bCompactView = m_bCompactView;
         m_config.bDeviceStats = m_bDeviceStats;
+        m_config.bAutoReconnect = m_source.m_bAutoReconnect;
         m_config.nStatsIntervalSec = (int)(m_deviceStats.interval() / 1000);
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
         m_config.strTimeTo    = m_tfTimeTo.getText();
@@ -495,6 +506,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.24 : 수집 중 장치 재부팅 표시 (연결이 끊기면 다시 연결해 이어서 수집, 재부팅 시점에 북마크된 표시 줄)");
         addDesc("Version 1.23 : 장치 통계 주기 선택 (1·2·5·10·30·60초, View 메뉴 또는 자세히 창)");
         addDesc("Version 1.22 : Time 범위에 날짜 (날짜 버튼으로 월-일 시:분:초 선택, 오른쪽 클릭 '이 줄 시각을 Time 시작/끝으로')");
         addDesc("Version 1.21 : 안드로이드 장치 통계 (상태 표시줄 오른쪽 CPU·메모리, 누르면 그래프·코어별·상위 프로세스)");
@@ -625,6 +637,12 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
     public void onDataChanged(int nMode)    { refreshTable(nMode); }
     // 필터·로딩이 끝났다는 알림에 입력 오류(틀린 정규식·시각)를 덧붙여, 오류가 "Complete"에 가려지지 않게 한다.
+    // LogSource.Listener: 수집 중 재연결하면서 재부팅을 확인했다
+    public void onReboot(String strBootId, String strInfo)
+    {
+        addRebootRecord(strBootId, strInfo);
+    }
+
     public void onStatus(String strText)
     {
         String strError = inputErrors();
@@ -1695,6 +1713,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     StatsDialog                     m_dlgStats;
     boolean                         m_bDeviceStats;
     javax.swing.JCheckBoxMenuItem   m_miDeviceStats;    // View 메뉴 (main()에서 만듦)
+    javax.swing.JCheckBoxMenuItem   m_miAutoReconnect;  // File 메뉴 (1.24)
     volatile DeviceStats.Sample     m_lastStats;
 
     void initDeviceStats()
@@ -1715,6 +1734,42 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                             m_dlgStats.update(sample);
                     }
                 });
+            }
+
+            // 장치 통계가 재부팅을 알아챘다: 기록하고, 수집 중이면 로그에 표시 줄을 넣는다
+            public void onReboot(DeviceStats.Sample sample)
+            {
+                String strInfo = "";
+                try
+                {
+                    long nUptimeMs = (long)(Double.parseDouble(sample.m_strUptime) * 1000);
+                    strInfo = "(부팅 시각 약 " + new java.text.SimpleDateFormat("MM-dd HH:mm:ss").format(new java.util.Date(System.currentTimeMillis() - nUptimeMs)) + ")";
+                }
+                catch(Exception e) { }
+                addRebootRecord(sample.m_strBootId, strInfo);
+                m_source.markReboot(sample.m_strBootId, sample.m_strUptime);
+            }
+        });
+    }
+
+    // 재부팅 기록 (자세히 창에 보임)
+    final List<String> m_arReboot = java.util.Collections.synchronizedList(new ArrayList<String>());
+    final java.util.Set<String> m_setRebootId = new java.util.HashSet<String>();
+
+    void addRebootRecord(String strBootId, final String strInfo)
+    {
+        // 수집과 장치 통계가 같은 재부팅을 둘 다 알릴 수 있다: 같은 boot_id는 한 번만
+        synchronized(m_arReboot)
+        {
+            if(strBootId != null && !m_setRebootId.add(strBootId)) return;
+            m_arReboot.add("감지 " + new java.text.SimpleDateFormat("MM-dd HH:mm:ss").format(new java.util.Date()) + "  " + strInfo);
+        }
+        runOnEdt(new Runnable()
+        {
+            public void run()
+            {
+                setStatus("장치 재부팅 감지 " + strInfo + (m_source.isRunning() ? " : 로그에 표시했습니다 (F2로 이동)" : ""));
+                if(m_dlgStats != null) m_dlgStats.setReboots(m_arReboot);
             }
         });
     }
@@ -1749,6 +1804,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             m_arMiInterval.get(i).setSelected(DeviceStats.INTERVALS_SEC[i] == nSec);
         if(m_dlgStats != null)
             m_dlgStats.syncInterval();
+        m_dlgStats.setReboots(m_arReboot);
         setStatus("장치 통계 주기 : " + nSec + "초");
     }
 
@@ -1759,6 +1815,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         if(m_dlgStats == null)
             m_dlgStats = new StatsDialog(this, m_deviceStats);
         m_dlgStats.syncInterval();
+        m_dlgStats.setReboots(m_arReboot);
         if(m_lastStats != null)
             m_dlgStats.update(m_lastStats);
         m_dlgStats.setVisible(true);

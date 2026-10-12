@@ -18,6 +18,8 @@ public class DeviceStats
     public interface Listener
     {
         void onStats(Sample sample);        // 새 측정값 (장치가 없거나 오류면 sample.m_strError)
+        // 장치 재부팅을 알아챘다 (boot_id가 바뀜, 1.24)
+        default void onReboot(Sample sample) { }
     }
 
     static final long   INTERVAL_MS   = 2000;      // 기본 측정 주기
@@ -37,6 +39,8 @@ public class DeviceStats
         long     m_nMemTotalKb, m_nMemAvailKb;
         List<String[]> m_arTop = new ArrayList<String[]>();   // {PID, CPU%, 이름} 상위 프로세스 (자세히 보기 중일 때만)
         long     m_nTime = System.currentTimeMillis();
+        String   m_strBootId;               // /proc/sys/kernel/random/boot_id (재부팅하면 바뀜)
+        String   m_strUptime;               // /proc/uptime 첫 값 (초)
 
         double memUsedPercent()
         {
@@ -63,6 +67,8 @@ public class DeviceStats
     private volatile boolean m_bSleeping;           // 다음 측정을 기다리는 중 (이때만 깨운다: adb 실행 중에 깨우면 그 측정이 실패함)
     private Thread           m_thread;
     private long[][]         m_arPrevCpu;           // 이전 /proc/stat (전체 + 코어별) {합계, 쉼}
+    private String           m_strPrevBootId;       // 이전 측정의 boot_id (장치가 바뀌면 지움)
+    private double           m_dPrevUptime = -1;
     final List<Sample>       m_arHistory = new ArrayList<Sample>();   // 최근 측정값 (그래프용, synchronized)
 
     public DeviceStats(Listener listener)
@@ -77,6 +83,8 @@ public class DeviceStats
         {
             m_strDevice = s;
             m_arPrevCpu = null;                     // 장치가 바뀌면 처음부터
+            m_strPrevBootId = null;
+            m_dPrevUptime = -1;
             synchronized(m_arHistory) { m_arHistory.clear(); }
         }
     }
@@ -111,6 +119,8 @@ public class DeviceStats
                             while(m_arHistory.size() > HISTORY) m_arHistory.remove(0);
                         }
                     m_listener.onStats(sample);
+                    if((sample.m_strBootId != null || sample.m_strError == null) && checkReboot(sample))
+                        m_listener.onReboot(sample);
                     m_bSleeping = true;
                     try
                     {
@@ -138,6 +148,21 @@ public class DeviceStats
         m_arPrevCpu = null;
     }
 
+    // boot_id가 바뀌었거나(없으면 uptime이 줄었으면) 재부팅. 장치가 잠시 안 보였다가 돌아와도 비교한다.
+    boolean checkReboot(Sample sample)
+    {
+        boolean bReboot = false;
+        double dUptime = -1;
+        try { if(sample.m_strUptime != null) dUptime = Double.parseDouble(sample.m_strUptime); } catch(NumberFormatException e) { }
+        if(sample.m_strBootId != null && m_strPrevBootId != null)
+            bReboot = !sample.m_strBootId.equals(m_strPrevBootId);
+        else if(sample.m_strBootId == null && dUptime >= 0 && m_dPrevUptime >= 0)
+            bReboot = dUptime + 1 < m_dPrevUptime;
+        if(sample.m_strBootId != null) m_strPrevBootId = sample.m_strBootId;
+        if(dUptime >= 0) m_dPrevUptime = dUptime;
+        return bReboot;
+    }
+
     List<Sample> history()
     {
         synchronized(m_arHistory) { return new ArrayList<Sample>(m_arHistory); }
@@ -148,13 +173,17 @@ public class DeviceStats
     {
         Sample sample = new Sample();
         sample.m_strDevice = m_strDevice;
-        String[] out = runAdb("cat", "/proc/stat", "/proc/meminfo");
+        String[] out = runAdb("cat", "/proc/stat", "/proc/meminfo", "/proc/sys/kernel/random/boot_id", "/proc/uptime");
         if(out[1] != null)
         {
             sample.m_strError = out[1];
             m_arPrevCpu = null;
             return sample;
         }
+        // 재부팅 확인용 boot_id·uptime은 CPU 정보를 못 읽어도 따로 쓴다
+        String[] boot = LogSource.parseBootInfo(out[0]);
+        sample.m_strBootId = boot[0];
+        sample.m_strUptime = boot[1];
         long[][] arCpu = parseProcStat(out[0]);
         if(arCpu.length == 0)
         {

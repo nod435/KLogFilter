@@ -3,6 +3,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
@@ -27,6 +28,8 @@ public class LogSource
         void onTitle(String strTitle);
         void onProcessStopped();
         void onDevices(List<Object> arItem);
+        // 수집 중 장치 재부팅을 감지했다 (1.24)
+        default void onReboot(String strBootId, String strInfo) { }
     }
 
     static final String  DEVICES_CMD = "adb devices";
@@ -170,8 +173,10 @@ public class LogSource
         int                m_nFileCount = 1;
         final ArrayList<long[]> m_arBatch   = new ArrayList<long[]>();  // 쓰고 아직 flush하지 않은 줄 {위치, 길이}
         final ArrayList<String> m_arBatchStr = new ArrayList<String>();
+        final ArrayList<String> m_arBatchMemo = new ArrayList<String>();   // 표시 줄이면 북마크 메모, 아니면 null
         final ArrayList<long[]> m_arReady   = new ArrayList<long[]>();  // flush했고 화면에 넘길 줄 (Pause 중에는 쌓임)
         final ArrayList<String> m_arReadyStr = new ArrayList<String>();
+        final ArrayList<String> m_arReadyMemo = new ArrayList<String>();
         long               m_nLastFlush = System.currentTimeMillis();
 
         LiveFeed(File file) throws IOException
@@ -183,6 +188,12 @@ public class LogSource
         // AdbProcess 스레드: 한 줄을 파일 버퍼에 쓴다.
         void write(String strLine) throws IOException
         {
+            writeMarked(strLine, null);
+        }
+
+        // 표시 줄: strMemo가 있으면 화면에 넘길 때 북마크하고 메모를 단다
+        void writeMarked(String strLine, String strMemo) throws IOException
+        {
             byte[] arByte = strLine.getBytes(ADB_CHARSET);
             // 이 줄을 쓰면 최대 크기를 넘으면 다음 파일로 (줄 중간에서 나누지 않음)
             if(m_nFileBytes > 0 && m_nFileBytes + arByte.length + 2 > LIVE_ROTATE_BYTES)
@@ -192,6 +203,7 @@ public class LogSource
             m_out.write('\n');
             m_arBatch.add(new long[]{ m_nWritten, arByte.length });
             m_arBatchStr.add(strLine);
+            m_arBatchMemo.add(strMemo);
             m_nWritten   += arByte.length + 2;
             m_nFileBytes += arByte.length + 2;
         }
@@ -231,9 +243,11 @@ public class LogSource
             {
                 m_arReady.addAll(m_arBatch);
                 m_arReadyStr.addAll(m_arBatchStr);
+                m_arReadyMemo.addAll(m_arBatchMemo);
             }
             m_arBatch.clear();
             m_arBatchStr.clear();
+            m_arBatchMemo.clear();
             publish();
         }
 
@@ -250,11 +264,14 @@ public class LogSource
                 {
                     long[] ar = m_arReady.get(i);
                     store.appendLine(ar[0], (int)ar[1], m_arReadyStr.get(i));
+                    if(m_arReadyMemo.get(i) != null)
+                        m_engine.markNewLine(store, store.size() - 1, m_arReadyMemo.get(i));
                 }
                 m_engine.notifyAppended();
             }
             m_arReady.clear();
             m_arReadyStr.clear();
+            m_arReadyMemo.clear();
         }
 
         void close()
@@ -321,62 +338,309 @@ public class LogSource
                 final int[]    nLines   = { 0 };
                 final String[] lastLine = { "" };
                 Process process = null;
-                try
+                Thread current = Thread.currentThread();
+                // adb 명령이면 장치에 따로 물어볼 수 있다 (재연결·재부팅 확인용). adb가 아니면 null.
+                final AdbTarget target = AdbTarget.of(strCmd);
+                if(target != null)
                 {
-                    T.d("cmd = " + strCmd);
-                    // stderr도 함께 받아 기록한다. (adb 오류 메시지 확인 + stderr 버퍼가 차서 멈추는 일 방지)
-                    ProcessBuilder pb = new ProcessBuilder(strCmd.trim().split("\\s+"));
-                    pb.redirectErrorStream(true);
-                    process = pb.start();
-                    m_process = process;
-                    m_listener.onStatus("adb 실행 중 : " + strCmd);
-                    startNoOutputWatch(process, nLines);
-
-                    try(BufferedReader stdOut = new BufferedReader(new InputStreamReader(process.getInputStream(), ADB_CHARSET), LIVE_BUFFER))
-                    {
-                        while(true)
-                        {
-                            // 지금 읽을 출력이 없으면(곧 기다리게 되면) 쓴 줄을 먼저 화면에 넘긴다.
-                            // 출력이 몰려 올 때는 LIVE_PUBLISH_MS마다 묶어서 넘긴다.
-                            if(!stdOut.ready() || feed.due())
-                                feed.flush();
-                            String s = stdOut.readLine();
-                            if(s == null)
-                                break;
-                            if(s.trim().length() == 0)
-                                continue;
-                            // adb가 장치를 못 찾으면 이 문구만 출력하고 계속 기다린다. 로그로 세지 않고 바로 알린다.
-                            if(s.startsWith("- waiting for device"))
-                                m_listener.onStatus("장치를 기다리는 중 : 장치가 연결되어 있지 않거나 offline 상태입니다. Stop 후 Device OK로 상태를 확인하세요.");
-                            else
-                                nLines[0]++;
-                            lastLine[0] = s;
-                            feed.write(s);
-                        }
-                    }
+                    String[] boot = target.bootInfo();
+                    m_strBootId = boot[0];
                 }
-                catch(Exception e)
+                while(true)
                 {
-                    // Stop하면 프로세스가 끝나 읽기가 실패할 수 있다.
-                    if(m_thProcess == Thread.currentThread())
+                    process = readProcess(strCmd, feed, nLines, lastLine);
+                    if(m_thProcess != current)
+                        break;                              // Stop
+                    // 장치 연결이 끊겨 adb가 끝났으면(재부팅 등) 다시 연결을 기다려 이어서 수집한다.
+                    if(target == null || !m_bAutoReconnect || !target.disconnected())
+                        break;                              // 정상 종료 (예: logcat -d)
+                    writeMarker(feed, "-------- 장치 연결이 끊겼습니다 : 다시 연결을 기다립니다 --------", null);
+                    m_listener.onStatus("장치 연결이 끊겼습니다 : 다시 연결되면 이어서 수집합니다 (Stop으로 중단)");
+                    if(!target.waitForDevice(LogSource.this) || m_thProcess != current)
+                        break;
+                    String[] boot = target.bootInfo();
+                    boolean bRebooted = boot[0] != null && m_strBootId != null && !boot[0].equals(m_strBootId);
+                    if(bRebooted && !boot[0].equals(m_strMarkedBootId))
                     {
-                        T.e("e = " + e);
-                        m_listener.onStatus("adb error : " + e.getMessage());
+                        m_strMarkedBootId = boot[0];
+                        writeRebootMarker(feed, boot);
                     }
+                    else if(bRebooted)
+                        writePendingMarkers(feed);      // 장치 통계가 먼저 알아채 표시를 넣기로 했다
+                    else
+                        writeMarker(feed, "-------- 장치가 다시 연결되었습니다 (재부팅은 확인되지 않음) --------", null);
+                    if(boot[0] != null) m_strBootId = boot[0];
+                    m_listener.onStatus(bRebooted ? "장치 재부팅 감지 : 이어서 수집합니다 (F2로 표시 위치 이동)" : "장치가 다시 연결되었습니다 : 이어서 수집합니다");
                 }
                 feed.close();
                 // 그 사이 Stop 후 다시 Run 했다면 새 프로세스를 건드리지 않는다.
-                if(m_thProcess == Thread.currentThread())
+                if(m_thProcess == current)
                 {
                     // 사용자가 Stop하지 않았는데 adb가 끝났다: 오류 메시지(마지막 줄)를 상태 표시줄에 보여준다.
                     reportProcessEnd(process, nLines[0], lastLine[0]);
                     stopProcess();
                 }
-            }
-        }, "AdbProcess");
+            }        }, "AdbProcess");
         m_thProcess.start();
     }
 
+    volatile boolean m_bAutoReconnect = true;   // 장치 연결이 끊기면 다시 연결을 기다려 이어서 수집 (1.24)
+    volatile String  m_strBootId;               // 수집 중인 장치의 boot_id (재부팅하면 바뀜)
+    volatile String  m_strMarkedBootId;         // 이미 재부팅 표시를 넣은(또는 넣기로 한) boot_id
+
+    // adb 프로세스 하나를 실행해 출력이 끝날 때까지 기록한다. 실행한 프로세스를 돌려준다.
+    Process readProcess(String strCmd, LiveFeed feed, int[] nLines, String[] lastLine)
+    {
+        Process process = null;
+        try
+        {
+            T.d("cmd = " + strCmd);
+            // stderr도 함께 받아 기록한다. (adb 오류 메시지 확인 + stderr 버퍼가 차서 멈추는 일 방지)
+            ProcessBuilder pb = new ProcessBuilder(strCmd.trim().split("\\s+"));
+            pb.redirectErrorStream(true);
+            process = pb.start();
+            m_process = process;
+            m_listener.onStatus("adb 실행 중 : " + strCmd);
+            startNoOutputWatch(process, nLines);
+
+            try(BufferedReader stdOut = new BufferedReader(new InputStreamReader(process.getInputStream(), ADB_CHARSET), LIVE_BUFFER))
+            {
+                while(true)
+                {
+                    writePendingMarkers(feed);
+                    // 지금 읽을 출력이 없으면(곧 기다리게 되면) 쓴 줄을 먼저 화면에 넘긴다.
+                    // 출력이 몰려 올 때는 LIVE_PUBLISH_MS마다 묶어서 넘긴다.
+                    if(!stdOut.ready() || feed.due())
+                        feed.flush();
+                    String s = stdOut.readLine();
+                    if(s == null)
+                        break;
+                    if(s.trim().length() == 0)
+                        continue;
+                    // adb가 장치를 못 찾으면 이 문구만 출력하고 계속 기다린다. 로그로 세지 않고 바로 알린다.
+                    if(s.startsWith("- waiting for device"))
+                        m_listener.onStatus("장치를 기다리는 중 : 장치가 연결되어 있지 않거나 offline 상태입니다. Stop 후 Device OK로 상태를 확인하세요.");
+                    else
+                        nLines[0]++;
+                    lastLine[0] = s;
+                    feed.write(s);
+                }
+            }
+            process.waitFor();
+        }
+        catch(Exception e)
+        {
+            // Stop하면 프로세스가 끝나 읽기가 실패할 수 있다.
+            if(m_process == process)
+            {
+                T.e("e = " + e);
+                m_listener.onStatus("adb error : " + e.getMessage());
+            }
+        }
+        try
+        {
+            feed.flush();
+        }
+        catch(IOException e)
+        {
+            T.e(e);
+        }
+        return process;
+    }
+
+    static final String MARKER_TAG = "KLogFilter";
+
+    // 표시 줄(logcat threadtime 형식)을 기록 파일에 쓰고 바로 화면에 넘긴다. strMemo가 있으면 북마크하고 메모를 단다.
+    void writeMarker(LiveFeed feed, String strText, String strMemo)
+    {
+        String strNow = new SimpleDateFormat("MM-dd HH:mm:ss.SSS").format(new Date());
+        String strLine = strNow + "     0     0 " + (strMemo != null ? "E" : "W") + " " + MARKER_TAG + ": " + strText;
+        try
+        {
+            feed.writeMarked(strLine, strMemo);
+            feed.flush();
+        }
+        catch(IOException e)
+        {
+            T.e(e);
+        }
+    }
+
+    // 재부팅 표시 줄 (부팅 시각 = 지금 - uptime)
+    void writeRebootMarker(LiveFeed feed, String[] boot)
+    {
+        String strBoot = "";
+        if(boot[1] != null)
+        {
+            long nUptimeMs = (long)(Double.parseDouble(boot[1]) * 1000);
+            strBoot = String.format(" (부팅 시각 약 %s, 부팅 후 %d초)", new SimpleDateFormat("MM-dd HH:mm:ss").format(new Date(System.currentTimeMillis() - nUptimeMs)), nUptimeMs / 1000);
+        }
+        writeMarker(feed, "======== 장치 재부팅 감지" + strBoot + " ========", "재부팅");
+        if(boot[0] != null) m_strBootId = boot[0];
+        m_listener.onReboot(boot[0], strBoot.trim());
+    }
+
+    // 장치 통계가 재부팅을 먼저 알아챈 경우: 수집 중이면 표시 줄을 넣는다 (같은 부팅은 한 번만)
+    final List<String[]> m_arPendingMarker = java.util.Collections.synchronizedList(new ArrayList<String[]>());
+    void markReboot(String strBootId, String strUptime)
+    {
+        if(m_feed == null || strBootId == null || strBootId.equals(m_strBootId) || strBootId.equals(m_strMarkedBootId))
+            return;
+        m_strMarkedBootId = strBootId;
+        m_arPendingMarker.add(new String[]{ strBootId, strUptime });
+    }
+
+    // AdbProcess 스레드: 다른 곳에서 요청한 재부팅 표시를 쓴다
+    void writePendingMarkers(LiveFeed feed)
+    {
+        while(!m_arPendingMarker.isEmpty())
+        {
+            String[] boot = m_arPendingMarker.remove(0);
+            writeRebootMarker(feed, boot);
+        }
+    }
+
+    /**
+     * 수집 명령이 adb일 때, 같은 장치에 따로 물어보는 명령 (adb [-s 시리얼] …).
+     * adb 경로는 명령의 첫 단어(또는 -Dklogfilter.adb로 정한 명령, 테스트용).
+     */
+    static class AdbTarget
+    {
+        final List<String> m_arPrefix;
+
+        AdbTarget(List<String> arPrefix) { m_arPrefix = arPrefix; }
+
+        static AdbTarget of(String strCmd)
+        {
+            String strCmdTrim = strCmd.trim();
+            List<String> arPrefix = new ArrayList<String>();
+            String strRest;
+            String strOverride = System.getProperty("klogfilter.adb");
+            if(strOverride != null && strCmdTrim.startsWith(strOverride.trim()))
+            {
+                for(String t : strOverride.trim().split("\\s+")) arPrefix.add(t);
+                strRest = strCmdTrim.substring(strOverride.trim().length()).trim();
+            }
+            else
+            {
+                String[] ar = strCmdTrim.split("\\s+", 2);
+                String strExe = new File(ar[0]).getName().toLowerCase();
+                if(!strExe.equals("adb") && !strExe.equals("adb.exe"))
+                    return null;
+                arPrefix.add(ar[0]);
+                strRest = ar.length > 1 ? ar[1] : "";
+            }
+            String[] arRest = strRest.split("\\s+");
+            if(arRest.length >= 2 && arRest[0].equals("-s"))
+            {
+                arPrefix.add("-s");
+                arPrefix.add(arRest[1]);
+            }
+            return new AdbTarget(arPrefix);
+        }
+
+        // 명령 실행 → 출력 (시간 초과·실패면 null)
+        String run(long nTimeoutMs, String... arArgs)
+        {
+            List<String> arCmd = new ArrayList<String>(m_arPrefix);
+            for(String s : arArgs) arCmd.add(s);
+            Process p = null;
+            try
+            {
+                ProcessBuilder pb = new ProcessBuilder(arCmd);
+                pb.redirectErrorStream(true);
+                p = pb.start();
+                final Process proc = p;
+                final StringBuilder sb = new StringBuilder();
+                Thread reader = new Thread(new Runnable()
+                {
+                    public void run()
+                    {
+                        try(BufferedReader r = new BufferedReader(new InputStreamReader(proc.getInputStream(), ADB_CHARSET)))
+                        {
+                            String s;
+                            while((s = r.readLine()) != null) synchronized(sb) { sb.append(s).append('\n'); }
+                        }
+                        catch(IOException e) { }
+                    }
+                }, "AdbQuery");
+                reader.setDaemon(true);
+                reader.start();
+                if(!p.waitFor(nTimeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS))
+                {
+                    p.destroy();
+                    return null;
+                }
+                reader.join(1000);
+                synchronized(sb) { return sb.toString(); }
+            }
+            catch(Exception e)
+            {
+                if(p != null) p.destroy();
+                return null;
+            }
+        }
+
+        // 장치가 연결되어 있지 않은지 (adb get-state가 device가 아님). 끊기는 중일 수 있어 잠시 뒤 한 번 더 본다.
+        boolean disconnected()
+        {
+            for(int i = 0; i < 2; i++)
+            {
+                String s = run(5000, "get-state");
+                if(s == null || !s.trim().equals("device"))
+                    return true;
+                try { Thread.sleep(1500); } catch(InterruptedException e) { return false; }
+            }
+            return false;
+        }
+
+        // 장치가 다시 연결될 때까지 기다린다 (adb wait-for-device). Stop하면 false.
+        boolean waitForDevice(LogSource source)
+        {
+            List<String> arCmd = new ArrayList<String>(m_arPrefix);
+            arCmd.add("wait-for-device");
+            try
+            {
+                ProcessBuilder pb = new ProcessBuilder(arCmd);
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+                source.m_process = p;                 // Stop하면 이 프로세스를 끝낸다
+                Thread current = Thread.currentThread();
+                try(InputStream in = p.getInputStream()) { while(in.read() >= 0) { } }
+                p.waitFor();
+                return source.m_thProcess == current && p.exitValue() == 0;
+            }
+            catch(Exception e)
+            {
+                return false;
+            }
+        }
+
+        // {boot_id, uptime 초} (읽을 수 없으면 null)
+        String[] bootInfo()
+        {
+            String s = run(5000, "shell", "cat", "/proc/sys/kernel/random/boot_id", "/proc/uptime");
+            return parseBootInfo(s);
+        }
+    }
+
+    static final java.util.regex.Pattern BOOT_ID = java.util.regex.Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+    static final java.util.regex.Pattern UPTIME  = java.util.regex.Pattern.compile("^(\\d+(?:\\.\\d+)?)\\s+\\d+(?:\\.\\d+)?$");
+
+    // cat boot_id uptime 출력 → {boot_id, uptime}
+    static String[] parseBootInfo(String strOut)
+    {
+        String[] result = { null, null };
+        if(strOut == null) return result;
+        for(String strLine : strOut.split("\n"))
+        {
+            String s = strLine.trim();
+            if(BOOT_ID.matcher(s).matches()) result[0] = s.toLowerCase();
+            java.util.regex.Matcher m = UPTIME.matcher(s);
+            if(m.matches()) result[1] = m.group(1);
+        }
+        return result;
+    }
     static final int NO_OUTPUT_WARN_MS = 5000;
 
     // adb가 일정 시간 아무것도 출력하지 않으면 경고한다. (offline 장치에서는 adb logcat이 오류 없이 멈춰 있음)

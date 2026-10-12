@@ -207,6 +207,15 @@ public class FilterEngine
         }
     }
 
+    // 새로 추가한 줄을 북마크하고 메모를 단다 (재부팅 표시 줄 등, 1.24). 그 목록이 지금 목록일 때만.
+    void markNewLine(LogStore store, int nLine, String strMemo)
+    {
+        if(store != m_store || nLine < 0 || nLine >= store.size()) return;
+        store.setMarked(nLine, true);
+        store.setMemo(nLine, strMemo);
+        m_hmBookmarkAll.put(nLine, nLine);     // 필터 결과의 북마크는 분석할 때 표시를 보고 넣는다
+    }
+
     void setBookmark(int nLine, String strBookmark)
     {
         LogStore store = m_store;
