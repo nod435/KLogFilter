@@ -44,6 +44,9 @@ public class AppConfig
     static final String INI_STATS_DURATION  = "DEVICE_STATS_DURATION";  // 장치 통계 측정 시간(분), 0 = 계속 (1.27)
     static final String INI_STATS_EXCEL_AUTO = "DEVICE_STATS_EXCEL_AUTO"; // 측정 완료 시 엑셀 자동 저장 (1.28)
     static final String INI_STATS_GRAPH_CORES = "DEVICE_STATS_GRAPH_CORES"; // 그래프에 코어별 CPU 선 (1.29)
+    static final String INI_STATS_GRAPH_CPU  = "DEVICE_STATS_GRAPH_CPU";    // 자세히 창에 CPU 표시 (1.30)
+    static final String INI_STATS_GRAPH_MEM  = "DEVICE_STATS_GRAPH_MEM";    // 자세히 창에 메모리 표시 (1.30)
+    static final String INI_STATS_GRAPH_TEMP = "DEVICE_STATS_GRAPH_TEMP";   // 자세히 창에 온도 표시 (1.30)
     static final String INI_COLOR_0         = "INI_COLOR_0";
     static final String INI_COLOR_1         = "INI_COLOR_1";
     static final String INI_COLOR_2         = "INI_COLOR_2";
@@ -88,6 +91,7 @@ public class AppConfig
     int     nStatsDurationMin = 0;
     boolean bStatsExcelAuto = true;     // 측정 완료 시 엑셀 자동 저장 (1.28)
     boolean bStatsGraphCores = false;   // 그래프에 코어별 CPU 선 (1.29)
+    boolean bStatsGraphCpu = true, bStatsGraphMem = true, bStatsGraphTemp = true;   // 자세히 창 표시 항목 (1.30)
     // 하이라이트 입력창 6개: 문자열, 색상 번호, 사용 여부 (기본: n번 입력창은 n번 색상, 사용)
     String[]  arHighlight      = new String[LogColor.HIGHLIGHT_COUNT];
     int[]     arHighlightColor = new int[LogColor.HIGHLIGHT_COUNT];
@@ -133,6 +137,9 @@ public class AppConfig
         config.nStatsDurationMin = nDuration >= 0 && nDuration <= StatsDurationDialog.MAX_HOURS * 60 + 59 ? nDuration : 0;
         config.bStatsExcelAuto = !"false".equalsIgnoreCase(p.getProperty(INI_STATS_EXCEL_AUTO, "true").trim());
         config.bStatsGraphCores = "true".equalsIgnoreCase(p.getProperty(INI_STATS_GRAPH_CORES, "false").trim());
+        config.bStatsGraphCpu  = !"false".equalsIgnoreCase(p.getProperty(INI_STATS_GRAPH_CPU, "true").trim());
+        config.bStatsGraphMem  = !"false".equalsIgnoreCase(p.getProperty(INI_STATS_GRAPH_MEM, "true").trim());
+        config.bStatsGraphTemp = !"false".equalsIgnoreCase(p.getProperty(INI_STATS_GRAPH_TEMP, "true").trim());
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             // 이전 버전 설정(HIGHLIGHT 하나)은 첫 번째 입력창으로 옮긴다.
@@ -195,6 +202,9 @@ public class AppConfig
         p.setProperty(INI_STATS_DURATION, "" + nStatsDurationMin);
         p.setProperty(INI_STATS_EXCEL_AUTO, "" + bStatsExcelAuto);
         p.setProperty(INI_STATS_GRAPH_CORES, "" + bStatsGraphCores);
+        p.setProperty(INI_STATS_GRAPH_CPU, "" + bStatsGraphCpu);
+        p.setProperty(INI_STATS_GRAPH_MEM, "" + bStatsGraphMem);
+        p.setProperty(INI_STATS_GRAPH_TEMP, "" + bStatsGraphTemp);
         p.setProperty(INI_AUTO_RECONNECT, "" + bAutoReconnect);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {

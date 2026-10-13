@@ -460,6 +460,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_bStatsExcelAuto = config.bStatsExcelAuto;
         if(m_miStatsExcelAuto != null) m_miStatsExcelAuto.setSelected(m_bStatsExcelAuto);
         m_bStatsGraphCores = config.bStatsGraphCores;
+        m_bStatsGraphCpu  = config.bStatsGraphCpu;
+        m_bStatsGraphMem  = config.bStatsGraphMem;
+        m_bStatsGraphTemp = config.bStatsGraphTemp;
         setDeviceStats(config.bDeviceStats);
         m_source.m_bAutoReconnect = config.bAutoReconnect;
         m_tfTimeFrom.setText(config.strTimeFrom);
@@ -501,6 +504,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.nStatsDurationMin = m_nStatsDurationMin;
         m_config.bStatsExcelAuto = m_bStatsExcelAuto;
         m_config.bStatsGraphCores = m_bStatsGraphCores;
+        m_config.bStatsGraphCpu  = m_bStatsGraphCpu;
+        m_config.bStatsGraphMem  = m_bStatsGraphMem;
+        m_config.bStatsGraphTemp = m_bStatsGraphTemp;
         m_config.bAutoReconnect = m_source.m_bAutoReconnect;
         m_config.nStatsIntervalSec = (int)(m_deviceStats.interval() / 1000);
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
@@ -539,6 +545,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.30 : 장치 통계 자세히 창의 CPU·메모리·온도 표시 켜고 끄기 (표시 : 체크박스, 그래프 선과 안내 줄·코어별 막대)");
         addDesc("Version 1.29 : 장치 통계 그래프에 코어별 CPU 선 (자세히 창의 '코어별' 체크)");
         addDesc("Version 1.28 : 장치 통계를 엑셀 파일로 저장 (자세히 창·View 메뉴, 측정 완료 시 자동 저장 — 시각·CPU·메모리·온도·코어별·상위 프로세스)");
         addDesc("Version 1.27 : 장치 통계 측정 시간 설정 (View > 장치 통계 측정 시간…, 정한 시간이 지나면 측정을 멈춤)");
@@ -1813,6 +1820,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     }
 
     boolean                         m_bStatsGraphCores;         // 자세히 창 그래프에 코어별 CPU 선 (1.29, 자세히 창의 체크박스가 바꿈)
+    boolean                         m_bStatsGraphCpu = true, m_bStatsGraphMem = true, m_bStatsGraphTemp = true;   // 자세히 창 표시 항목 (1.30)
 
     // ---- 장치 통계 엑셀 저장 (1.28) ----
     boolean                         m_bStatsExcelAuto = true;   // 측정 완료 시 자동 저장
@@ -1951,7 +1959,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         if(m_dlgStats == null)
         {
             m_dlgStats = new StatsDialog(this, m_deviceStats);
-            m_dlgStats.setShowCores(m_bStatsGraphCores, false);
+            m_dlgStats.setShow(m_bStatsGraphCpu, m_bStatsGraphMem, m_bStatsGraphTemp, m_bStatsGraphCores);
         }
         m_dlgStats.syncInterval();
         m_dlgStats.setReboots(m_arReboot);

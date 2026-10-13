@@ -4,7 +4,6 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.GridLayout;
 import java.awt.RenderingHints;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -39,6 +38,10 @@ public class StatsDialog extends JDialog
     final CorePanel        m_cores     = new CorePanel();
     final javax.swing.JComboBox<String> m_cbInterval = new javax.swing.JComboBox<String>();
     final javax.swing.JCheckBox m_chkCores = new javax.swing.JCheckBox("코어별");    // 그래프에 코어별 선 (1.29)
+    // CPU·메모리·온도 표시 켜고 끄기: 그래프 선과 그 안내 줄(메모리·온도 줄, CPU는 코어별 막대) (1.30)
+    final javax.swing.JCheckBox m_chkCpu  = new javax.swing.JCheckBox("CPU", true);
+    final javax.swing.JCheckBox m_chkMem  = new javax.swing.JCheckBox("메모리", true);
+    final javax.swing.JCheckBox m_chkTemp = new javax.swing.JCheckBox("온도", true);
     boolean                m_bSyncing;
     final DefaultTableModel m_modelTop = new DefaultTableModel(new Object[]{ "PID", "CPU %", "프로세스" }, 0)
     {
@@ -66,11 +69,20 @@ public class StatsDialog extends JDialog
                 else m_stats.setInterval(nSec * 1000L);
             }
         });
-        JPanel jpInterval = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 0));
-        // 그래프에 코어별 CPU 선 (1.29)
+        // 표시 항목 줄 (1.30): CPU·메모리·온도, 코어별 선(1.29). 요약 줄이 잘리지 않게 따로 한 줄
+        JPanel jpShow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 0));
+        jpShow.add(new JLabel("표시 :"));
+        m_chkCpu.setToolTipText("CPU 사용률: 그래프의 파란 선과 코어별 CPU 막대");
+        m_chkMem.setToolTipText("메모리: 그래프의 초록 선과 메모리 줄");
+        m_chkTemp.setToolTipText("CPU 온도: 그래프의 주황 선과 온도 줄");
         m_chkCores.setToolTipText("그래프에 cpu0, cpu1, … 코어별 사용률 선도 그리기");
-        m_chkCores.addActionListener(e -> setShowCores(m_chkCores.isSelected(), true));
-        jpInterval.add(m_chkCores);
+        for(javax.swing.JCheckBox chk : new javax.swing.JCheckBox[]{ m_chkCpu, m_chkMem, m_chkTemp, m_chkCores })
+        {
+            chk.setMargin(new java.awt.Insets(0, 0, 0, 0));
+            chk.addActionListener(e -> applyShow(true));
+            jpShow.add(chk);
+        }
+        JPanel jpInterval = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 0));
         jpInterval.add(new JLabel("주기 :"));
         jpInterval.add(m_cbInterval);
         // 측정 시간 (1.27)
@@ -84,12 +96,21 @@ public class StatsDialog extends JDialog
         jpLine1.add(jpInterval, BorderLayout.EAST);
 
         m_lbReboot.setForeground(Color.GRAY);
-        JPanel jpTop = new JPanel(new GridLayout(5, 1));
-        jpTop.add(jpLine1);
-        jpTop.add(m_lbPeriod);
-        jpTop.add(m_lbMem);
-        jpTop.add(m_lbTemp);
-        jpTop.add(m_lbReboot);
+        // 세로 상자: 메모리·온도 줄을 숨기면 그 자리가 없어진다 (GridLayout은 숨겨도 칸이 남음)
+        JPanel jpTop = new JPanel();
+        jpTop.setLayout(new javax.swing.BoxLayout(jpTop, javax.swing.BoxLayout.Y_AXIS));
+        int nLine = Math.max(jpInterval.getPreferredSize().height, m_lbPeriod.getPreferredSize().height + 4);
+        for(java.awt.Component c : new java.awt.Component[]{ jpLine1, m_lbPeriod, m_lbMem, m_lbTemp, m_lbReboot, jpShow })
+        {
+            if(c instanceof javax.swing.JComponent)
+            {
+                ((javax.swing.JComponent)c).setAlignmentX(LEFT_ALIGNMENT);
+                // 안내 줄은 높이를 맞추고, 요약 줄·표시 줄(패널)은 폭을 내용대로 두어 요약이 잘리지 않게 한다
+                if(c instanceof JLabel) c.setPreferredSize(new Dimension(520, nLine));
+                c.setMaximumSize(new Dimension(Integer.MAX_VALUE, nLine));
+            }
+            jpTop.add(c);
+        }
         jpTop.setBorder(BorderFactory.createEmptyBorder(6, 8, 4, 8));
 
         m_graph.setPreferredSize(new Dimension(520, 160));
@@ -273,15 +294,45 @@ public class StatsDialog extends JDialog
         m_lbReboot.setToolTipText("<html>" + String.join("<br>", ar) + "</html>");
     }
 
-    // 그래프에 코어별 선을 그릴지 (1.29). bNotify면 주 창에 알려 설정에 저장한다.
+    // 그래프에 코어별 선을 그릴지 (1.29)
     void setShowCores(boolean b, boolean bNotify)
     {
         m_chkCores.setSelected(b);
-        m_graph.setShowCores(b);
-        m_graph.setPreferredSize(new Dimension(520, b ? 180 : 160));    // 범례가 두 줄이 되는 만큼
+        applyShow(bNotify);
+    }
+
+    // 표시 항목을 한 번에 정한다 (주 창이 설정에서 읽어 넘김, 1.30)
+    void setShow(boolean bCpu, boolean bMem, boolean bTemp, boolean bCores)
+    {
+        m_chkCpu.setSelected(bCpu);
+        m_chkMem.setSelected(bMem);
+        m_chkTemp.setSelected(bTemp);
+        m_chkCores.setSelected(bCores);
+        applyShow(false);
+    }
+
+    // 체크박스 상태를 그래프·안내 줄·코어별 막대에 적용한다. bNotify면 주 창에 알려 설정에 저장한다. (1.30)
+    void applyShow(boolean bNotify)
+    {
+        boolean bCpu = m_chkCpu.isSelected(), bMem = m_chkMem.isSelected(), bTemp = m_chkTemp.isSelected(), bCores = m_chkCores.isSelected();
+        m_graph.m_bCpu = bCpu;
+        m_graph.m_bMem = bMem;
+        m_graph.m_bTemp = bTemp;
+        m_graph.setShowCores(bCores);
+        m_lbMem.setVisible(bMem);
+        m_lbTemp.setVisible(bTemp);
+        m_cores.setVisible(bCpu);
+        m_graph.setPreferredSize(new Dimension(520, bCores ? 180 : 160));    // 범례가 두 줄이 되는 만큼
         syncInterval();
+        if(bNotify && getOwner() instanceof LogFilterMain)
+        {
+            LogFilterMain main = (LogFilterMain)getOwner();
+            main.m_bStatsGraphCpu = bCpu;
+            main.m_bStatsGraphMem = bMem;
+            main.m_bStatsGraphTemp = bTemp;
+            main.m_bStatsGraphCores = bCores;
+        }
         if(isVisible()) pack();
-        if(bNotify && getOwner() instanceof LogFilterMain) ((LogFilterMain)getOwner()).m_bStatsGraphCores = b;
     }
 
     // 측정 주기에 맞춰 콤보 선택과 그래프 제목(최근 60회 = 주기 × 60)을 바꾼다
@@ -293,10 +344,15 @@ public class StatsDialog extends JDialog
             if(DeviceStats.INTERVALS_SEC[i] == nSec) m_cbInterval.setSelectedIndex(i);
         m_bSyncing = false;
         long nSpan = nSec * DeviceStats.HISTORY;
-        String strSpan = nSpan >= 3600 ? (nSpan / 3600) + "시간" : nSpan >= 60 ? (nSpan / 60) + "분" : nSpan + "초";
+        String strSpan = "최근 " + (nSpan >= 3600 ? (nSpan / 3600) + "시간" : nSpan >= 60 ? (nSpan / 60) + "분" : nSpan + "초");
         // 범례 글자는 각 선과 같은 색
-        StringBuilder sb = new StringBuilder("<html>최근 " + strSpan + " (" + nSec + "초마다, "
-            + legend(COLOR_CPU, "파랑: CPU %") + ", " + legend(COLOR_MEM, "초록: 메모리 %") + ", " + legend(COLOR_TEMP, "주황: CPU 온도 °C") + ")");
+        List<String> arLegend = new ArrayList<String>();
+        if(m_graph.m_bCpu)  arLegend.add(legend(COLOR_CPU, "파랑: CPU %"));
+        if(m_graph.m_bMem)  arLegend.add(legend(COLOR_MEM, "초록: 메모리 %"));
+        if(m_graph.m_bTemp) arLegend.add(legend(COLOR_TEMP, "주황: CPU 온도 °C"));
+        if(arLegend.isEmpty() && !m_graph.m_bCores) arLegend.add("표시할 항목 없음");
+        StringBuilder sb = new StringBuilder("<html>" + strSpan + " (" + nSec + "초마다"
+            + (arLegend.isEmpty() ? "" : ", " + String.join(", ", arLegend)) + ")");
         if(m_graph.m_bCores)
         {
             int nCores = m_graph.coreCount();
@@ -368,6 +424,7 @@ public class StatsDialog extends JDialog
         private static final long serialVersionUID = 1L;
         List<DeviceStats.Sample> m_arHistory = new ArrayList<DeviceStats.Sample>();
         boolean m_bCores;       // 코어별 선도 그린다 (1.29)
+        boolean m_bCpu = true, m_bMem = true, m_bTemp = true;   // 어떤 선을 그릴지 (1.30)
 
         void setHistory(List<DeviceStats.Sample> ar) { m_arHistory = ar; repaint(); }
         void setShowCores(boolean b) { m_bCores = b; repaint(); }
@@ -408,9 +465,9 @@ public class StatsDialog extends JDialog
                     drawLine(g, x0, y0, w, h, 3 + i);
                 g.setStroke(stroke);
             }
-            drawLine(g, x0, y0, w, h, 0);
-            drawLine(g, x0, y0, w, h, 1);
-            drawLine(g, x0, y0, w, h, 2);
+            if(m_bCpu)  drawLine(g, x0, y0, w, h, 0);
+            if(m_bMem)  drawLine(g, x0, y0, w, h, 1);
+            if(m_bTemp) drawLine(g, x0, y0, w, h, 2);
         }
 
         // nKind: 0 CPU %, 1 메모리 %, 2 온도 °C (같은 0~100 눈금), 3 이상은 코어 (nKind - 3) 사용률 %
