@@ -9,6 +9,7 @@ Android `logcat` 로그를 보면서 필터링하는 Java Swing 데스크톱 툴
 - 컬럼 숨기기, 선택 행·셀 복사, 드래그&드롭으로 파일 열기
 - Full / Compact 화면 (View 메뉴, <kbd>F12</kbd>): 위쪽 필터 영역을 숨겨 로그를 넓게 봅니다.
 - 안드로이드 장치 통계: 상태 표시줄에 장치 CPU·CPU 온도·메모리, 클릭하면 그래프·코어별·상위 프로세스(이미지로 복사·저장). 측정 주기는 View > 장치 통계 주기, 측정할 시간(계속 / 몇 시간 뒤 멈춤)은 View > 장치 통계 측정 시간…
+- 장치 통계 엑셀 저장: 측정을 켠 뒤의 전체 기록(시각·CPU·메모리·CPU 온도·코어별·센서별·재부팅/오류 비고, 상위 프로세스, 측정 정보)을 `.xlsx`로 저장. 자세히 창의 "엑셀로 저장…" 또는 View > 장치 통계 엑셀 저장…, 정한 측정 시간이 끝나면 실행 폴더에 `DeviceStats_날짜_시각.xlsx`로 자동 저장(View > 측정 완료 시 엑셀 자동 저장으로 끄기). 외부 라이브러리 없이 씁니다.
 - 수집 중 장치가 재부팅되면 다시 연결해 이어서 수집하고, 재부팅 시점에 북마크된 표시 줄을 넣습니다.
 
 ## 빌드와 실행
@@ -79,6 +80,7 @@ dist\KLogFilter.bat [로그파일]   → 실행 (또는 java -jar dist\KLogFilte
 | `AppConfig` | 설정 파일 읽기/쓰기 |
 | `LogTable` / `LogFilterTableModel` / `IndicatorPanel` | 로그 테이블, 모델, 북마크/에러 바 |
 | `DeviceStats` / `StatsDialog` / `StatsDurationDialog` | 장치 통계 측정 / 자세히 창 / 측정 시간 설정 창 |
+| `StatsExcel` / `XlsxWriter` | 장치 통계 기록 → 엑셀 시트 구성 / 외부 라이브러리 없는 .xlsx 기록기 |
 | `LogCatParser` / `LogInfo` | 로그 한 줄 파싱 / 데이터 |
 
 동작 흐름(시퀀스 다이어그램), 클래스 구조, 수정 이력은 [docs/SOURCE_STRUCTURE_20261012134216.html](docs/SOURCE_STRUCTURE_20261012134216.html)에 정리되어 있습니다(브라우저로 열기). Markdown 요약본은 [docs/SOURCE_STRUCTURE_20261012134216.md](docs/SOURCE_STRUCTURE_20261012134216.md)입니다. 문서 파일 이름 끝의 숫자는 생성 시각(`yyyyMMddHHmmss`)이며, 문서를 다시 만들 때마다 새 시각으로 바뀝니다.

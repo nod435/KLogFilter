@@ -28,6 +28,7 @@ public class DeviceStats
     static final int[]  INTERVALS_SEC = { 1, 2, 5, 10, 30, 60 };   // 고를 수 있는 주기 (1.23)
     static final long   ADB_TIMEOUT_MS = 5000;
     static final int    HISTORY       = 60;     // 그래프용 최근 측정 수 (2초 × 60 = 2분)
+    static final int    RECORD_MAX    = 200000; // 엑셀 저장용 전체 기록 상한 (넘으면 오래된 것부터 버림, 1초 주기로 약 55시간) (1.28)
     // adb 명령 (테스트용으로 -Dklogfilter.adb로 바꿀 수 있음)
     static final String ADB = System.getProperty("klogfilter.adb", "adb");
 
@@ -45,6 +46,7 @@ public class DeviceStats
         String   m_strUptime;               // /proc/uptime 첫 값 (초)
         double   m_dTemp = -1;              // CPU 온도 °C (못 읽으면 -1) (1.26)
         List<String[]> m_arThermal = new ArrayList<String[]>();   // 온도 센서 {이름, °C}
+        boolean  m_bReboot;                 // 이 측정에서 장치 재부팅을 알아챘다 (엑셀 비고용, 1.28)
 
         double memUsedPercent()
         {
@@ -79,6 +81,7 @@ public class DeviceStats
     private String           m_strPrevBootId;       // 이전 측정의 boot_id (장치가 바뀌면 지움)
     private double           m_dPrevUptime = -1;
     final List<Sample>       m_arHistory = new ArrayList<Sample>();   // 최근 측정값 (그래프용, synchronized)
+    final List<Sample>       m_arRecord  = new ArrayList<Sample>();   // 측정을 켠 뒤의 전체 기록, 오류 측정 포함 (엑셀 저장용, synchronized) (1.28)
 
     public DeviceStats(Listener listener)
     {
@@ -95,8 +98,10 @@ public class DeviceStats
             m_strPrevBootId = null;
             m_dPrevUptime = -1;
             synchronized(m_arHistory) { m_arHistory.clear(); }
+            synchronized(m_arRecord)  { m_arRecord.clear(); }
         }
     }
+    String device() { return m_strDevice; }
 
     void setWantTop(boolean b) { m_bWantTop = b; }
 
@@ -140,6 +145,7 @@ public class DeviceStats
         m_bRunning = true;
         m_nStartTime = System.currentTimeMillis();
         m_nFinishTime = 0;
+        synchronized(m_arRecord) { m_arRecord.clear(); }     // 새 측정: 엑셀 기록은 처음부터
         m_thread = new Thread(new Runnable()
         {
             public void run()
@@ -151,14 +157,20 @@ public class DeviceStats
                     if(finishIfDue(me)) break;
                     Sample sample = measure();
                     if(m_thread != me) break;
+                    sample.m_bReboot = (sample.m_strBootId != null || sample.m_strError == null) && checkReboot(sample);
                     if(sample.m_strError == null)
                         synchronized(m_arHistory)
                         {
                             m_arHistory.add(sample);
                             while(m_arHistory.size() > HISTORY) m_arHistory.remove(0);
                         }
+                    synchronized(m_arRecord)
+                    {
+                        m_arRecord.add(sample);
+                        if(m_arRecord.size() > RECORD_MAX) m_arRecord.subList(0, m_arRecord.size() - RECORD_MAX).clear();
+                    }
                     m_listener.onStats(sample);
-                    if((sample.m_strBootId != null || sample.m_strError == null) && checkReboot(sample))
+                    if(sample.m_bReboot)
                         m_listener.onReboot(sample);
                     // 장치가 없으면 덜 자주 (최대 10초). 측정 시간이 끝나는 시각을 넘겨 자지 않는다.
                     long nSleep = sample.m_strError == null ? m_nIntervalMs : Math.max(m_nIntervalMs, Math.min(m_nIntervalMs * 3, 10000));
@@ -261,6 +273,17 @@ public class DeviceStats
     List<Sample> history()
     {
         synchronized(m_arHistory) { return new ArrayList<Sample>(m_arHistory); }
+    }
+
+    // 측정을 켠 뒤의 전체 기록 (엑셀 저장용, 1.28)
+    List<Sample> record()
+    {
+        synchronized(m_arRecord) { return new ArrayList<Sample>(m_arRecord); }
+    }
+
+    int recordSize()
+    {
+        synchronized(m_arRecord) { return m_arRecord.size(); }
     }
 
     // 한 번 측정한다 (adb 실행)

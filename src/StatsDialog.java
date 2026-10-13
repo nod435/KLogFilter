@@ -117,7 +117,15 @@ public class StatsDialog extends JDialog
         {
             public void actionPerformed(java.awt.event.ActionEvent e) { saveImage(); }
         });
+        // 측정 전체 기록을 엑셀 파일로 (1.28)
+        javax.swing.JButton btnExcel = new javax.swing.JButton("엑셀로 저장…");
+        btnExcel.setToolTipText("측정을 켠 뒤의 전체 기록을 엑셀 파일(.xlsx)로 저장 — 시각·CPU·메모리·온도·코어별·상위 프로세스");
+        btnExcel.addActionListener(new java.awt.event.ActionListener()
+        {
+            public void actionPerformed(java.awt.event.ActionEvent e) { saveExcel(); }
+        });
         JPanel jpBottom = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 4));
+        jpBottom.add(btnExcel);
         jpBottom.add(btnCopy);
         jpBottom.add(btnSave);
         getRootPane().getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_C, java.awt.event.InputEvent.CTRL_DOWN_MASK), "CopyImage");
@@ -221,11 +229,37 @@ public class StatsDialog extends JDialog
         }
     }
 
+    List<String> m_arReboot = new ArrayList<String>();     // 정보 시트에 넣을 재부팅 기록
+
+    // 측정 전체 기록을 엑셀 파일로 저장 (1.28). 주 창이 있으면 주 창의 저장(상태 표시줄 안내)으로.
+    void saveExcel()
+    {
+        if(getOwner() instanceof LogFilterMain) { ((LogFilterMain)getOwner()).saveStatsExcel(this); return; }
+        java.io.File file = m_fileSaveOverride;
+        if(file == null)
+        {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setSelectedFile(new java.io.File(StatsExcel.defaultFileName(System.currentTimeMillis())));
+            if(chooser.showSaveDialog(this) != javax.swing.JFileChooser.APPROVE_OPTION) return;
+            file = StatsExcel.withExt(chooser.getSelectedFile());
+        }
+        try
+        {
+            int n = StatsExcel.write(file, m_stats, m_arReboot);
+            setTitle("장치 통계 — 엑셀로 저장했습니다 (" + n + "회 측정) : " + file.getName());
+        }
+        catch(java.io.IOException e)
+        {
+            javax.swing.JOptionPane.showMessageDialog(this, "엑셀 파일을 저장할 수 없습니다 : " + e.getMessage());
+        }
+    }
+
     // 재부팅 기록 (최근 3개, 전체는 툴팁)
     void setReboots(List<String> arReboot)
     {
         List<String> ar;
         synchronized(arReboot) { ar = new ArrayList<String>(arReboot); }
+        m_arReboot = ar;
         if(ar.isEmpty()) { m_lbReboot.setText("재부팅: 감지된 것 없음"); m_lbReboot.setForeground(Color.GRAY); m_lbReboot.setToolTipText(null); return; }
         m_lbReboot.setForeground(new Color(0xC62828));
         StringBuilder sb = new StringBuilder("재부팅 " + ar.size() + "회 : ");

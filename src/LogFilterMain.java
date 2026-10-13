@@ -269,10 +269,29 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         viewDuration.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent event) { mainFrame.showStatsDurationDialog(); }
         });
+        // 엑셀 저장 (1.28)
+        JMenuItem viewExcel = new JMenuItem("장치 통계 엑셀 저장…");
+        viewExcel.setToolTipText("측정을 켠 뒤의 전체 기록을 엑셀 파일(.xlsx)로 저장");
+        viewExcel.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.saveStatsExcel(mainFrame); }
+        });
+        mainFrame.m_miStatsExcelAuto = new javax.swing.JCheckBoxMenuItem("측정 완료 시 엑셀 자동 저장");
+        mainFrame.m_miStatsExcelAuto.setToolTipText("정한 측정 시간이 끝나면 전체 기록을 실행 폴더에 DeviceStats_날짜_시각.xlsx로 저장");
+        mainFrame.m_miStatsExcelAuto.setSelected(mainFrame.m_bStatsExcelAuto);
+        mainFrame.m_miStatsExcelAuto.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event)
+            {
+                mainFrame.m_bStatsExcelAuto = mainFrame.m_miStatsExcelAuto.isSelected();
+                mainFrame.setStatus("장치 통계: 측정 완료 시 엑셀 자동 저장 " + (mainFrame.m_bStatsExcelAuto ? "켬" : "끔"));
+            }
+        });
         view.add(mainFrame.m_miDeviceStats);
         view.add(viewInterval);
         view.add(viewDuration);
         view.add(viewStats);
+        view.addSeparator();
+        view.add(viewExcel);
+        view.add(mainFrame.m_miStatsExcelAuto);
         menubar.add(view);
         mainFrame.setJMenuBar(menubar);
 
@@ -438,6 +457,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_deviceStats.setInterval(config.nStatsIntervalSec * 1000L);
         m_nStatsDurationMin = config.nStatsDurationMin;
         m_deviceStats.setDuration(m_nStatsDurationMin * 60000L);
+        m_bStatsExcelAuto = config.bStatsExcelAuto;
+        if(m_miStatsExcelAuto != null) m_miStatsExcelAuto.setSelected(m_bStatsExcelAuto);
         setDeviceStats(config.bDeviceStats);
         m_source.m_bAutoReconnect = config.bAutoReconnect;
         m_tfTimeFrom.setText(config.strTimeFrom);
@@ -477,6 +498,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.bCompactView = m_bCompactView;
         m_config.bDeviceStats = m_bDeviceStats || m_bStatsFinished;     // 측정 시간이 끝나 멈췄어도 다음 실행에는 다시 측정
         m_config.nStatsDurationMin = m_nStatsDurationMin;
+        m_config.bStatsExcelAuto = m_bStatsExcelAuto;
         m_config.bAutoReconnect = m_source.m_bAutoReconnect;
         m_config.nStatsIntervalSec = (int)(m_deviceStats.interval() / 1000);
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
@@ -515,6 +537,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.28 : 장치 통계를 엑셀 파일로 저장 (자세히 창·View 메뉴, 측정 완료 시 자동 저장 — 시각·CPU·메모리·온도·코어별·상위 프로세스)");
         addDesc("Version 1.27 : 장치 통계 측정 시간 설정 (View > 장치 통계 측정 시간…, 정한 시간이 지나면 측정을 멈춤)");
         addDesc("Version 1.26 : 장치 통계에 CPU 온도 (thermal_zone 센서, 상태 표시줄·자세히 창·그래프)");
         addDesc("Version 1.25 : 장치 통계를 이미지로 복사·저장 (자세히 창의 버튼, Ctrl+C)");
@@ -1777,12 +1800,59 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                         String strTime = DeviceStats.durationText(nEndTime - nStartTime);
                         m_lbStats.setText("장치 통계 측정 완료 (" + strTime + ", ~" + new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(nEndTime)) + ")");
                         m_lbStats.setForeground(new Color(0x2E7D32));
-                        setStatus("장치 통계: 정한 시간(" + strTime + ") 측정을 마쳤습니다 — 상태 표시줄의 통계를 누르면 마지막 결과, View > 장치 통계 표시로 다시 시작");
+                        String strSaved = m_bStatsExcelAuto ? autoSaveStatsExcel(nEndTime) : "";
+                        setStatus("장치 통계: 정한 시간(" + strTime + ") 측정을 마쳤습니다" + strSaved + " — 상태 표시줄의 통계를 누르면 마지막 결과, View > 장치 통계 표시로 다시 시작");
                         if(m_dlgStats != null) m_dlgStats.updatePeriod();
                     }
                 });
             }
         });
+    }
+
+    // ---- 장치 통계 엑셀 저장 (1.28) ----
+    boolean                         m_bStatsExcelAuto = true;   // 측정 완료 시 자동 저장
+    javax.swing.JCheckBoxMenuItem   m_miStatsExcelAuto;         // View 메뉴 (main()에서 만듦)
+
+    // 측정 전체 기록을 엑셀 파일로. 파일 이름을 묻고, 결과는 상태 표시줄(자세히 창에서 불렀으면 창 제목에도)
+    void saveStatsExcel(Component parent)
+    {
+        if(m_deviceStats.recordSize() == 0)
+        {
+            setStatus("장치 통계: 저장할 기록이 없습니다 — View > 장치 통계 표시로 측정을 켜세요");
+            return;
+        }
+        javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+        chooser.setDialogTitle("장치 통계 엑셀 저장");
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("엑셀 파일 (*.xlsx)", "xlsx"));
+        chooser.setSelectedFile(new File(StatsExcel.defaultFileName(System.currentTimeMillis())));
+        if(chooser.showSaveDialog(parent) != javax.swing.JFileChooser.APPROVE_OPTION) return;
+        File file = StatsExcel.withExt(chooser.getSelectedFile());
+        try
+        {
+            int n = StatsExcel.write(file, m_deviceStats, m_arReboot);
+            setStatus("장치 통계: 엑셀로 저장했습니다 (" + n + "회 측정) : " + file.getPath());
+            if(parent instanceof StatsDialog) ((StatsDialog)parent).setTitle("장치 통계 — 엑셀로 저장했습니다 : " + file.getName());
+        }
+        catch(java.io.IOException e)
+        {
+            javax.swing.JOptionPane.showMessageDialog(parent, "엑셀 파일을 저장할 수 없습니다 : " + e.getMessage());
+        }
+    }
+
+    // 측정 완료 때 실행 폴더에 자동 저장. 상태 표시줄에 덧붙일 문구를 돌려준다.
+    String autoSaveStatsExcel(long nEndTime)
+    {
+        if(m_deviceStats.recordSize() == 0) return "";
+        File file = new File(StatsExcel.defaultFileName(nEndTime));
+        try
+        {
+            int n = StatsExcel.write(file, m_deviceStats, m_arReboot);
+            return ", 엑셀 저장 " + file.getAbsolutePath() + " (" + n + "회 측정)";
+        }
+        catch(java.io.IOException e)
+        {
+            return ", 엑셀 저장 실패: " + e.getMessage();
+        }
     }
 
     // 재부팅 기록 (자세히 창에 보임)
