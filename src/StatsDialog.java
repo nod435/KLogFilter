@@ -38,6 +38,7 @@ public class StatsDialog extends JDialog
     final GraphPanel       m_graph     = new GraphPanel();
     final CorePanel        m_cores     = new CorePanel();
     final javax.swing.JComboBox<String> m_cbInterval = new javax.swing.JComboBox<String>();
+    final javax.swing.JCheckBox m_chkCores = new javax.swing.JCheckBox("코어별");    // 그래프에 코어별 선 (1.29)
     boolean                m_bSyncing;
     final DefaultTableModel m_modelTop = new DefaultTableModel(new Object[]{ "PID", "CPU %", "프로세스" }, 0)
     {
@@ -66,6 +67,10 @@ public class StatsDialog extends JDialog
             }
         });
         JPanel jpInterval = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 0));
+        // 그래프에 코어별 CPU 선 (1.29)
+        m_chkCores.setToolTipText("그래프에 cpu0, cpu1, … 코어별 사용률 선도 그리기");
+        m_chkCores.addActionListener(e -> setShowCores(m_chkCores.isSelected(), true));
+        jpInterval.add(m_chkCores);
         jpInterval.add(new JLabel("주기 :"));
         jpInterval.add(m_cbInterval);
         // 측정 시간 (1.27)
@@ -268,6 +273,17 @@ public class StatsDialog extends JDialog
         m_lbReboot.setToolTipText("<html>" + String.join("<br>", ar) + "</html>");
     }
 
+    // 그래프에 코어별 선을 그릴지 (1.29). bNotify면 주 창에 알려 설정에 저장한다.
+    void setShowCores(boolean b, boolean bNotify)
+    {
+        m_chkCores.setSelected(b);
+        m_graph.setShowCores(b);
+        m_graph.setPreferredSize(new Dimension(520, b ? 180 : 160));    // 범례가 두 줄이 되는 만큼
+        syncInterval();
+        if(isVisible()) pack();
+        if(bNotify && getOwner() instanceof LogFilterMain) ((LogFilterMain)getOwner()).m_bStatsGraphCores = b;
+    }
+
     // 측정 주기에 맞춰 콤보 선택과 그래프 제목(최근 60회 = 주기 × 60)을 바꾼다
     void syncInterval()
     {
@@ -279,9 +295,23 @@ public class StatsDialog extends JDialog
         long nSpan = nSec * DeviceStats.HISTORY;
         String strSpan = nSpan >= 3600 ? (nSpan / 3600) + "시간" : nSpan >= 60 ? (nSpan / 60) + "분" : nSpan + "초";
         // 범례 글자는 각 선과 같은 색
-        m_graph.setBorder(BorderFactory.createTitledBorder("<html>최근 " + strSpan + " (" + nSec + "초마다, "
-            + legend(COLOR_CPU, "파랑: CPU %") + ", " + legend(COLOR_MEM, "초록: 메모리 %") + ", " + legend(COLOR_TEMP, "주황: CPU 온도 °C") + ")</html>"));
+        StringBuilder sb = new StringBuilder("<html>최근 " + strSpan + " (" + nSec + "초마다, "
+            + legend(COLOR_CPU, "파랑: CPU %") + ", " + legend(COLOR_MEM, "초록: 메모리 %") + ", " + legend(COLOR_TEMP, "주황: CPU 온도 °C") + ")");
+        if(m_graph.m_bCores)
+        {
+            int nCores = m_graph.coreCount();
+            sb.append("<br>코어별: ");
+            for(int i = 0; i < nCores; i++)
+                sb.append(i > 0 ? ", " : "").append(legend(coreColor(i), "cpu" + i));
+            if(nCores == 0) sb.append("(측정 대기 중)");
+        }
+        m_graph.setBorder(BorderFactory.createTitledBorder(sb.append("</html>").toString()));
     }
+
+    // 코어별 선 색 (코어가 많으면 되풀이)
+    static final Color[] COLOR_CORES = { new Color(0x8E24AA), new Color(0x00897B), new Color(0xD81B60), new Color(0x6D4C41),
+                                         new Color(0x3949AB), new Color(0x827717), new Color(0x0097A7), new Color(0x546E7A) };
+    static Color coreColor(int i) { return COLOR_CORES[i % COLOR_CORES.length]; }
 
     static String legend(Color c, String strText)
     {
@@ -296,7 +326,10 @@ public class StatsDialog extends JDialog
         if(sample.m_strError == null && sample.m_nMemTotalKb > 0)
             m_lbMem.setText(String.format("메모리: 사용 %,d MB / 전체 %,d MB, 사용 가능 %,d MB",
                 (sample.m_nMemTotalKb - sample.m_nMemAvailKb) / 1024, sample.m_nMemTotalKb / 1024, sample.m_nMemAvailKb / 1024));
+        int nCoresBefore = m_graph.coreCount();
         m_graph.setHistory(m_stats.history());
+        if(m_graph.m_bCores && m_graph.coreCount() != nCoresBefore)
+            syncInterval();         // 코어 수를 알게 되면 범례에 cpu0, cpu1 … 표시
         updatePeriod();
         if(sample.m_strError == null)
         {
@@ -334,15 +367,26 @@ public class StatsDialog extends JDialog
     {
         private static final long serialVersionUID = 1L;
         List<DeviceStats.Sample> m_arHistory = new ArrayList<DeviceStats.Sample>();
+        boolean m_bCores;       // 코어별 선도 그린다 (1.29)
 
         void setHistory(List<DeviceStats.Sample> ar) { m_arHistory = ar; repaint(); }
+        void setShowCores(boolean b) { m_bCores = b; repaint(); }
+
+        // 기록에 있는 가장 많은 코어 수
+        int coreCount()
+        {
+            int n = 0;
+            for(DeviceStats.Sample s : m_arHistory) n = Math.max(n, s.m_arCore.length);
+            return n;
+        }
 
         protected void paintComponent(Graphics g0)
         {
             super.paintComponent(g0);
             Graphics2D g = (Graphics2D)g0;
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            int x0 = 40, y0 = 30, w = getWidth() - x0 - 14, h = getHeight() - y0 - 14;
+            // 제목(범례)이 두 줄이면 테두리가 높아지므로 그 아래부터 그린다
+            int x0 = 40, y0 = Math.max(30, getInsets().top + 8), w = getWidth() - x0 - 14, h = getHeight() - y0 - 14;
             g.setColor(Color.WHITE);
             g.fillRect(x0, y0, w, h);
             g.setColor(new Color(0xDDDDDD));
@@ -354,21 +398,38 @@ public class StatsDialog extends JDialog
                 g.drawString(p + "%", 4, y + 4);
                 g.setColor(new Color(0xDDDDDD));
             }
+            // 코어별 선은 가늘게 먼저 그려 전체 CPU·메모리·온도 선이 위에 오게 한다
+            if(m_bCores)
+            {
+                java.awt.Stroke stroke = g.getStroke();
+                g.setStroke(new java.awt.BasicStroke(1f));
+                int nCores = coreCount();
+                for(int i = 0; i < nCores; i++)
+                    drawLine(g, x0, y0, w, h, 3 + i);
+                g.setStroke(stroke);
+            }
             drawLine(g, x0, y0, w, h, 0);
             drawLine(g, x0, y0, w, h, 1);
             drawLine(g, x0, y0, w, h, 2);
         }
 
-        // nKind: 0 CPU %, 1 메모리 %, 2 온도 °C (같은 0~100 눈금)
+        // nKind: 0 CPU %, 1 메모리 %, 2 온도 °C (같은 0~100 눈금), 3 이상은 코어 (nKind - 3) 사용률 %
         void drawLine(Graphics2D g, int x0, int y0, int w, int h, int nKind)
         {
-            g.setColor(nKind == 0 ? COLOR_CPU : nKind == 1 ? COLOR_MEM : COLOR_TEMP);
+            g.setColor(nKind == 0 ? COLOR_CPU : nKind == 1 ? COLOR_MEM : nKind == 2 ? COLOR_TEMP : coreColor(nKind - 3));
             int nPrevX = -1, nPrevY = -1;
             int n = DeviceStats.HISTORY;
             List<DeviceStats.Sample> ar = m_arHistory;
             for(int i = 0; i < ar.size(); i++)
             {
-                double v = nKind == 0 ? ar.get(i).m_dCpu : nKind == 1 ? ar.get(i).memUsedPercent() : Math.min(100, ar.get(i).m_dTemp);
+                double v;
+                if(nKind >= 3)
+                {
+                    double[] arCore = ar.get(i).m_arCore;
+                    v = nKind - 3 < arCore.length ? arCore[nKind - 3] : -1;      // 꺼진 코어·없는 코어는 끊김
+                }
+                else
+                    v = nKind == 0 ? ar.get(i).m_dCpu : nKind == 1 ? ar.get(i).memUsedPercent() : Math.min(100, ar.get(i).m_dTemp);
                 if(v < 0) { nPrevX = -1; continue; }
                 int x = x0 + w * (n - ar.size() + i) / (n - 1);
                 int y = y0 + h - (int)(h * v / 100);

@@ -459,6 +459,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_deviceStats.setDuration(m_nStatsDurationMin * 60000L);
         m_bStatsExcelAuto = config.bStatsExcelAuto;
         if(m_miStatsExcelAuto != null) m_miStatsExcelAuto.setSelected(m_bStatsExcelAuto);
+        m_bStatsGraphCores = config.bStatsGraphCores;
         setDeviceStats(config.bDeviceStats);
         m_source.m_bAutoReconnect = config.bAutoReconnect;
         m_tfTimeFrom.setText(config.strTimeFrom);
@@ -499,6 +500,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.bDeviceStats = m_bDeviceStats || m_bStatsFinished;     // 측정 시간이 끝나 멈췄어도 다음 실행에는 다시 측정
         m_config.nStatsDurationMin = m_nStatsDurationMin;
         m_config.bStatsExcelAuto = m_bStatsExcelAuto;
+        m_config.bStatsGraphCores = m_bStatsGraphCores;
         m_config.bAutoReconnect = m_source.m_bAutoReconnect;
         m_config.nStatsIntervalSec = (int)(m_deviceStats.interval() / 1000);
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
@@ -537,6 +539,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.29 : 장치 통계 그래프에 코어별 CPU 선 (자세히 창의 '코어별' 체크)");
         addDesc("Version 1.28 : 장치 통계를 엑셀 파일로 저장 (자세히 창·View 메뉴, 측정 완료 시 자동 저장 — 시각·CPU·메모리·온도·코어별·상위 프로세스)");
         addDesc("Version 1.27 : 장치 통계 측정 시간 설정 (View > 장치 통계 측정 시간…, 정한 시간이 지나면 측정을 멈춤)");
         addDesc("Version 1.26 : 장치 통계에 CPU 온도 (thermal_zone 센서, 상태 표시줄·자세히 창·그래프)");
@@ -1809,6 +1812,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         });
     }
 
+    boolean                         m_bStatsGraphCores;         // 자세히 창 그래프에 코어별 CPU 선 (1.29, 자세히 창의 체크박스가 바꿈)
+
     // ---- 장치 통계 엑셀 저장 (1.28) ----
     boolean                         m_bStatsExcelAuto = true;   // 측정 완료 시 자동 저장
     javax.swing.JCheckBoxMenuItem   m_miStatsExcelAuto;         // View 메뉴 (main()에서 만듦)
@@ -1944,7 +1949,10 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         if(!m_bDeviceStats && !m_bStatsFinished)
             setDeviceStats(true);
         if(m_dlgStats == null)
+        {
             m_dlgStats = new StatsDialog(this, m_deviceStats);
+            m_dlgStats.setShowCores(m_bStatsGraphCores, false);
+        }
         m_dlgStats.syncInterval();
         m_dlgStats.setReboots(m_arReboot);
         if(m_lastStats != null)
