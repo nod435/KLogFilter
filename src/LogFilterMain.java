@@ -241,57 +241,14 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         view.add(viewToggle);
         mainFrame.syncViewMenu();
         view.addSeparator();
-        mainFrame.m_miDeviceStats = new javax.swing.JCheckBoxMenuItem("장치 통계 표시 (CPU·메모리)");
-        mainFrame.m_miDeviceStats.setSelected(mainFrame.m_bDeviceStats);
-        mainFrame.m_miDeviceStats.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent event) { mainFrame.setDeviceStats(mainFrame.m_miDeviceStats.isSelected()); }
+        // 장치 통계 창 보기/숨기기 (1.34): 주기·측정 시간·엑셀 저장·자동 저장은 모두 창 안에서 다룬다
+        mainFrame.m_miStatsView = new JMenuItem("장치 통계 보기");
+        mainFrame.m_miStatsView.setToolTipText("장치 CPU·메모리·온도 통계 창 — 창 안에서 주기·측정 시간을 정하고 '측정 시작'");
+        mainFrame.m_miStatsView.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.toggleStatsDialog(); }
         });
-        JMenuItem viewStats = new JMenuItem("장치 통계 자세히…");
-        viewStats.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent event) { mainFrame.showStatsDialog(); }
-        });
-        // 측정 주기 (1.23)
-        JMenu viewInterval = new JMenu("장치 통계 주기");
-        javax.swing.ButtonGroup groupInterval = new javax.swing.ButtonGroup();
-        for(final int nSec : DeviceStats.INTERVALS_SEC)
-        {
-            final javax.swing.JRadioButtonMenuItem mi = new javax.swing.JRadioButtonMenuItem(nSec + "초마다");
-            mi.setSelected(mainFrame.m_deviceStats.interval() == nSec * 1000L);
-            mi.addActionListener(new ActionListener() {
-                public void actionPerformed(ActionEvent event) { mainFrame.setStatsInterval(nSec); }
-            });
-            groupInterval.add(mi);
-            viewInterval.add(mi);
-            mainFrame.m_arMiInterval.add(mi);
-        }
-        // 측정 시간 (1.27)
-        JMenuItem viewDuration = new JMenuItem("장치 통계 측정 시간…");
-        viewDuration.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent event) { mainFrame.showStatsDurationDialog(); }
-        });
-        // 엑셀 저장 (1.28)
-        JMenuItem viewExcel = new JMenuItem("장치 통계 엑셀 저장…");
-        viewExcel.setToolTipText("측정을 켠 뒤의 전체 기록을 엑셀 파일(.xlsx)로 저장");
-        viewExcel.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent event) { mainFrame.saveStatsExcel(mainFrame); }
-        });
-        mainFrame.m_miStatsExcelAuto = new javax.swing.JCheckBoxMenuItem("측정 완료 시 엑셀 자동 저장");
-        mainFrame.m_miStatsExcelAuto.setToolTipText("정한 측정 시간이 끝나면 전체 기록을 실행 폴더에 DeviceStats_날짜_시각.xlsx로 저장");
-        mainFrame.m_miStatsExcelAuto.setSelected(mainFrame.m_bStatsExcelAuto);
-        mainFrame.m_miStatsExcelAuto.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent event)
-            {
-                mainFrame.m_bStatsExcelAuto = mainFrame.m_miStatsExcelAuto.isSelected();
-                mainFrame.setStatus("장치 통계: 측정 완료 시 엑셀 자동 저장 " + (mainFrame.m_bStatsExcelAuto ? "켬" : "끔"));
-            }
-        });
-        view.add(mainFrame.m_miDeviceStats);
-        view.add(viewInterval);
-        view.add(viewDuration);
-        view.add(viewStats);
-        view.addSeparator();
-        view.add(viewExcel);
-        view.add(mainFrame.m_miStatsExcelAuto);
+        view.add(mainFrame.m_miStatsView);
+        mainFrame.updateStatsViewMenu();
         menubar.add(view);
         mainFrame.setJMenuBar(menubar);
 
@@ -458,12 +415,12 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_nStatsDurationMin = config.nStatsDurationMin;
         m_deviceStats.setDuration(m_nStatsDurationMin * 60000L);
         m_bStatsExcelAuto = config.bStatsExcelAuto;
-        if(m_miStatsExcelAuto != null) m_miStatsExcelAuto.setSelected(m_bStatsExcelAuto);
+        if(m_dlgStats != null) m_dlgStats.setExcelAuto(m_bStatsExcelAuto);
         m_bStatsGraphCores = config.bStatsGraphCores;
         m_bStatsGraphCpu  = config.bStatsGraphCpu;
         m_bStatsGraphMem  = config.bStatsGraphMem;
         m_bStatsGraphTemp = config.bStatsGraphTemp;
-        setDeviceStats(config.bDeviceStats);
+        // 장치 통계의 기본은 측정 안 함: 자세히 창의 "측정 시작"을 눌러야 시작한다 (설정 파일의 DEVICE_STATS로 자동 시작하지 않음, 1.33)
         m_source.m_bAutoReconnect = config.bAutoReconnect;
         m_tfTimeFrom.setText(config.strTimeFrom);
         m_tfTimeTo.setText(config.strTimeTo);
@@ -500,7 +457,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.bFindRegex   = m_tbFindRegex.isSelected();
         m_config.bRemoveRegex = m_tbRemoveRegex.isSelected();
         m_config.bCompactView = m_bCompactView;
-        m_config.bDeviceStats = m_bDeviceStats || m_bStatsFinished;     // 측정 시간이 끝나 멈췄어도 다음 실행에는 다시 측정
+        m_config.bDeviceStats = m_bDeviceStats;     // 기록용. 다음 실행에서 자동 시작하지는 않는다 (1.33)
         m_config.nStatsDurationMin = m_nStatsDurationMin;
         m_config.bStatsExcelAuto = m_bStatsExcelAuto;
         m_config.bStatsGraphCores = m_bStatsGraphCores;
@@ -545,6 +502,10 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.35 : 엑셀 저장에 '그래프' 시트 (CPU·메모리·온도 꺾은선 차트, 코어별 선이 켜져 있으면 코어별 차트도 — 셀을 참조하는 실제 엑셀 차트)");
+        addDesc("Version 1.34 : View 메뉴를 '장치 통계 보기/숨기기' 하나로 (주기·측정 시간·엑셀 저장·자동 저장은 통계 창 안에서)");
+        addDesc("Version 1.33 : 장치 통계 자세히 창에 측정 시작·종료 버튼 (기본은 측정 안 함 — 옵션을 정하고 '측정 시작', 종료하면 마지막 결과를 남김)");
+        addDesc("Version 1.32 : 장치 통계 측정 중에는 주기·측정 시간 설정을 흐리게 잠그고, 측정을 끄거나 끝나면 다시 켬");
         addDesc("Version 1.31 : 장치 통계 그래프를 측정 전체 기록으로 (시간 눈금, 가로 스크롤 바·마우스 휠로 구간 이동, 간격 1·2·4·8px, 재부팅·오류 표시)");
         addDesc("Version 1.30 : 장치 통계 자세히 창의 CPU·메모리·온도 표시 켜고 끄기 (표시 : 체크박스, 그래프 선과 안내 줄·코어별 막대)");
         addDesc("Version 1.29 : 장치 통계 그래프에 코어별 CPU 선 (자세히 창의 '코어별' 체크)");
@@ -1124,8 +1085,6 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_chkEnableRemoveTag.setSelected(true);
         m_chkEnableShowPid.setSelected(true);
         m_chkEnableShowTid.setSelected(true);
-        m_chkEnableTime = new JCheckBox();
-        m_chkEnableTime.setSelected(true);
 
         m_tfFindWord    = new JTextField();
         m_tfRemoveWord  = new JTextField();
@@ -1133,13 +1092,6 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_tfRemoveTag   = new JTextField();
         m_tfShowPid     = new JTextField();
         m_tfShowTid     = new JTextField();
-        m_tfTimeFrom    = new JTextField();
-        m_tfTimeTo      = new JTextField();
-        String strTimeTip = "시간 범위 (비우면 제한 없음). 예: 12:30, 12:30:15.500, 10-07 12:30, 2026-10-07 12:30 — 날짜 버튼으로 날짜·시각 선택, 로그 줄 오른쪽 클릭으로도 설정. 날짜 없이 시작이 끝보다 늦으면 자정을 넘는 범위";
-        m_tfTimeFrom.setToolTipText("시작 시각 — " + strTimeTip);
-        m_tfTimeTo.setToolTipText("끝 시각 — " + strTimeTip);
-        installUndoRedo(m_tfTimeFrom);
-        installUndoRedo(m_tfTimeTo);
 
         // 필터 편집창에 Ctrl+Z 백업(실행취소) 기능 추가
         installUndoRedo(m_tfFindWord);
@@ -1156,12 +1108,10 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         installInputHistory(m_tfRemoveTag,  "REMOVE_TAG");
         installInputHistory(m_tfShowPid,    "PID");
         installInputHistory(m_tfShowTid,    "TID");
-        installInputHistory(m_tfTimeFrom,   "TIME_FROM");
-        installInputHistory(m_tfTimeTo,     "TIME_TO");
 
         JPanel jpMain = new JPanel(new BorderLayout());
 
-        JPanel jpWordFilter = new JPanel(new GridLayout(3, 1));
+        JPanel jpWordFilter = new JPanel(new GridLayout(2, 1));
         jpWordFilter.setBorder(BorderFactory.createTitledBorder("Word filter"));
 
         JPanel jpFind = new JPanel(new BorderLayout());
@@ -1178,22 +1128,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpRemove.add(checkAndLabel(m_chkEnableRemove, remove), BorderLayout.WEST);
         jpRemove.add(withHistory(m_tfRemoveWord, m_tbRemoveRegex), BorderLayout.CENTER);
 
-        // 시간 범위: [체크박스][Time :][시작 ▼] ~ [끝 ▼]
-        JPanel jpTime = new JPanel(new BorderLayout());
-        JLabel time = new JLabel();
-        time.setText("Time :  ");
-        jpTime.add(checkAndLabel(m_chkEnableTime, time), BorderLayout.WEST);
-        JPanel jpTimeTo = new JPanel(new BorderLayout());
-        jpTimeTo.add(new JLabel(" ~ "), BorderLayout.WEST);
-        jpTimeTo.add(withHistory(m_tfTimeTo, createTimePickerButton(m_tfTimeTo, false)), BorderLayout.CENTER);
-        JPanel jpTimeFields = new JPanel(new GridLayout(1, 2, 2, 0));
-        jpTimeFields.add(withHistory(m_tfTimeFrom, createTimePickerButton(m_tfTimeFrom, true)));
-        jpTimeFields.add(jpTimeTo);
-        jpTime.add(jpTimeFields, BorderLayout.CENTER);
-
         jpWordFilter.add(jpFind);
         jpWordFilter.add(jpRemove);
-        jpWordFilter.add(jpTime);
 
         jpMain.add(jpWordFilter, BorderLayout.NORTH);
 
@@ -1225,7 +1161,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpRemoveTag.add(withHistory(m_tfRemoveTag), BorderLayout.CENTER);
 
         // 라벨을 모두 가장 긴 라벨 폭으로 맞추고 오른쪽 정렬해, 입력창이 같은 위치에서 시작하게 한다.
-        alignLabels(find, remove, time, pid, tid, show, removeTag);
+        alignLabels(find, remove, pid, tid, show, removeTag);
 
         jpTagFilter.add(jpPid);
         jpTagFilter.add(jpTid);
@@ -1408,12 +1344,46 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpShowColumn.add(checkRow(m_chkClmBookmark, m_chkClmLine, m_chkClmDate, m_chkClmTime, m_chkClmLogLV));
         jpShowColumn.add(checkRow(m_chkClmPid, m_chkClmThread, m_chkClmTag, m_chkClmMessage));
 
-        // 두 묶음 모두 위쪽에 붙인다 (남는 높이에 줄 간격이 벌어지지 않도록)
+        // 세 묶음(Log filter, Show column, Time) 모두 위쪽에 붙인다 (남는 높이에 줄 간격이 벌어지지 않도록)
+        JPanel jpTimeHolder = new JPanel(new BorderLayout());
+        jpTimeHolder.add(getTimePanel(), BorderLayout.NORTH);
+        JPanel jpStack = new JPanel(new BorderLayout());
+        jpStack.add(jpShowColumn, BorderLayout.NORTH);
+        jpStack.add(jpTimeHolder, BorderLayout.CENTER);
         JPanel jpNorth = new JPanel(new BorderLayout());
         jpNorth.add(jpMain.getComponent(0), BorderLayout.NORTH);
-        jpNorth.add(jpShowColumn, BorderLayout.CENTER);
+        jpNorth.add(jpStack, BorderLayout.CENTER);
         jpMain.add(jpNorth, BorderLayout.NORTH);
         return jpMain;
+    }
+
+    // 시간 범위 필터 (1.18): 오른쪽 Show column 아래에 작게 — [체크][시작 날짜 ▼] ~ [끝 날짜 ▼]
+    Component getTimePanel()
+    {
+        m_chkEnableTime = new JCheckBox();
+        m_chkEnableTime.setSelected(true);
+        m_chkEnableTime.setToolTipText("시간 범위 필터 사용");
+        m_tfTimeFrom = new JTextField(7);
+        m_tfTimeTo   = new JTextField(7);
+        String strTimeTip = "시간 범위 (비우면 제한 없음). 예: 12:30, 12:30:15.500, 10-07 12:30, 2026-10-07 12:30 — 날짜 버튼으로 날짜·시각 선택, 로그 줄 오른쪽 클릭으로도 설정. 날짜 없이 시작이 끝보다 늦으면 자정을 넘는 범위";
+        m_tfTimeFrom.setToolTipText("시작 시각 — " + strTimeTip);
+        m_tfTimeTo.setToolTipText("끝 시각 — " + strTimeTip);
+        installUndoRedo(m_tfTimeFrom);
+        installUndoRedo(m_tfTimeTo);
+        installInputHistory(m_tfTimeFrom, "TIME_FROM");
+        installInputHistory(m_tfTimeTo,   "TIME_TO");
+
+        JPanel jpTime = new JPanel(new BorderLayout());
+        jpTime.setBorder(BorderFactory.createTitledBorder("Time"));
+        jpTime.add(m_chkEnableTime, BorderLayout.WEST);
+        JPanel jpTimeTo = new JPanel(new BorderLayout());
+        jpTimeTo.add(new JLabel(" ~ "), BorderLayout.WEST);
+        jpTimeTo.add(withHistory(m_tfTimeTo, createTimePickerButton(m_tfTimeTo, false)), BorderLayout.CENTER);
+        JPanel jpTimeFields = new JPanel(new GridLayout(1, 2, 2, 0));
+        jpTimeFields.add(withHistory(m_tfTimeFrom, createTimePickerButton(m_tfTimeFrom, true)));
+        jpTimeFields.add(jpTimeTo);
+        jpTime.add(jpTimeFields, BorderLayout.CENTER);
+        return jpTime;
     }
 
     // 체크박스 한 줄 (왼쪽 정렬)
@@ -1740,7 +1710,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         // 오른쪽: 장치 통계 요약 (누르면 자세히)
         m_lbStats = new JLabel(" ");
         m_lbStats.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
-        m_lbStats.setToolTipText("안드로이드 장치 CPU·메모리 (2초마다). 누르면 자세히 — View > 장치 통계 표시로 끄고 켜기");
+        m_lbStats.setToolTipText("안드로이드 장치 CPU·메모리·온도. 누르면 통계 창 (View > 장치 통계 보기)");
         m_lbStats.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
         m_lbStats.addMouseListener(new java.awt.event.MouseAdapter()
         {
@@ -1758,7 +1728,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     DeviceStats                     m_deviceStats;
     StatsDialog                     m_dlgStats;
     boolean                         m_bDeviceStats;
-    javax.swing.JCheckBoxMenuItem   m_miDeviceStats;    // View 메뉴 (main()에서 만듦)
+    JMenuItem                       m_miStatsView;      // View > 장치 통계 보기/숨기기 (main()에서 만듦, 1.34)
     javax.swing.JCheckBoxMenuItem   m_miAutoReconnect;  // File 메뉴 (1.24)
     volatile DeviceStats.Sample     m_lastStats;
 
@@ -1807,13 +1777,13 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                         if(!m_bDeviceStats) return;
                         m_bDeviceStats = false;
                         m_bStatsFinished = true;
-                        if(m_miDeviceStats != null) m_miDeviceStats.setSelected(false);
                         String strTime = DeviceStats.durationText(nEndTime - nStartTime);
                         m_lbStats.setText("장치 통계 측정 완료 (" + strTime + ", ~" + new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(nEndTime)) + ")");
                         m_lbStats.setForeground(new Color(0x2E7D32));
                         String strSaved = m_bStatsExcelAuto ? autoSaveStatsExcel(nEndTime) : "";
-                        setStatus("장치 통계: 정한 시간(" + strTime + ") 측정을 마쳤습니다" + strSaved + " — 상태 표시줄의 통계를 누르면 마지막 결과, View > 장치 통계 표시로 다시 시작");
+                        setStatus("장치 통계: 정한 시간(" + strTime + ") 측정을 마쳤습니다" + strSaved + " — 상태 표시줄의 통계를 누르면 마지막 결과, 통계 창의 '측정 시작'으로 다시 시작");
                         if(m_dlgStats != null) m_dlgStats.updatePeriod();
+                        updateStatsSettingsEnabled();       // 측정이 끝났으니 설정을 다시 켠다 (1.32)
                     }
                 });
             }
@@ -1825,14 +1795,14 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
     // ---- 장치 통계 엑셀 저장 (1.28) ----
     boolean                         m_bStatsExcelAuto = true;   // 측정 완료 시 자동 저장
-    javax.swing.JCheckBoxMenuItem   m_miStatsExcelAuto;         // View 메뉴 (main()에서 만듦)
+    // 자동 저장 켜고 끄기는 통계 창의 체크박스 (1.34)
 
     // 측정 전체 기록을 엑셀 파일로. 파일 이름을 묻고, 결과는 상태 표시줄(자세히 창에서 불렀으면 창 제목에도)
     void saveStatsExcel(Component parent)
     {
         if(m_deviceStats.recordSize() == 0)
         {
-            setStatus("장치 통계: 저장할 기록이 없습니다 — View > 장치 통계 표시로 측정을 켜세요");
+            setStatus("장치 통계: 저장할 기록이 없습니다 — 통계 창의 '측정 시작'으로 측정을 켜세요");
             return;
         }
         javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
@@ -1843,8 +1813,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         File file = StatsExcel.withExt(chooser.getSelectedFile());
         try
         {
-            int n = StatsExcel.write(file, m_deviceStats, m_arReboot);
-            setStatus("장치 통계: 엑셀로 저장했습니다 (" + n + "회 측정) : " + file.getPath());
+            int n = StatsExcel.write(file, m_deviceStats, m_arReboot, m_bStatsGraphCores);
+            setStatus("장치 통계: 엑셀로 저장했습니다 (" + n + "회 측정, 그래프 시트 포함) : " + file.getPath());
             if(parent instanceof StatsDialog) ((StatsDialog)parent).setTitle("장치 통계 — 엑셀로 저장했습니다 : " + file.getName());
         }
         catch(java.io.IOException e)
@@ -1860,7 +1830,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         File file = new File(StatsExcel.defaultFileName(nEndTime));
         try
         {
-            int n = StatsExcel.write(file, m_deviceStats, m_arReboot);
+            int n = StatsExcel.write(file, m_deviceStats, m_arReboot, m_bStatsGraphCores);
             return ", 엑셀 저장 " + file.getAbsolutePath() + " (" + n + "회 측정)";
         }
         catch(java.io.IOException e)
@@ -1896,7 +1866,6 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         m_bDeviceStats = bOn;
         m_bStatsFinished = false;
-        if(m_miDeviceStats != null) m_miDeviceStats.setSelected(bOn);
         m_deviceStats.setDevice(m_strSelectedDevice);
         if(bOn)
         {
@@ -1908,9 +1877,78 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         {
             m_deviceStats.stop();
             m_lbStats.setText(" ");
-            if(m_dlgStats != null) m_dlgStats.setVisible(false);
         }
         if(m_dlgStats != null) m_dlgStats.updatePeriod();
+        updateStatsSettingsEnabled();
+    }
+
+    // ---- 자세히 창의 측정 시작·종료 (1.33) ----
+
+    void startStatsMeasurement()
+    {
+        if(m_bDeviceStats) return;
+        setDeviceStats(true);
+        long nDeadline = m_deviceStats.deadline();
+        setStatus("장치 통계: 측정을 시작했습니다 — " + (m_deviceStats.interval() / 1000) + "초마다, "
+            + (nDeadline > 0 ? DeviceStats.durationText(m_deviceStats.duration()) + " 동안 (" + DeviceStats.timeText(nDeadline) + "에 멈춤)" : "종료할 때까지 계속"));
+    }
+
+    // 측정을 멈추되 창은 그대로 두고 마지막 결과와 기록을 남긴다 (정한 시간이 끝났을 때와 같은 마무리)
+    void stopStatsMeasurement()
+    {
+        if(!m_bDeviceStats) return;
+        long nStart = m_deviceStats.startTime();
+        m_deviceStats.stop();
+        long nEnd = m_deviceStats.finishTime() > 0 ? m_deviceStats.finishTime() : System.currentTimeMillis();
+        m_bDeviceStats = false;
+        m_bStatsFinished = true;
+        String strTime = DeviceStats.durationText(nEnd - nStart);
+        m_lbStats.setText("장치 통계 측정 종료 (" + strTime + ", ~" + new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(nEnd)) + ")");
+        m_lbStats.setForeground(new Color(0x2E7D32));
+        String strSaved = m_bStatsExcelAuto ? autoSaveStatsExcel(nEnd) : "";
+        setStatus("장치 통계: 측정을 종료했습니다 (" + strTime + ")" + strSaved);
+        if(m_dlgStats != null) m_dlgStats.updatePeriod();
+        updateStatsSettingsEnabled();
+    }
+
+    // ---- 측정 중 설정 잠금 (1.32) ----
+    JMenu     m_menuStatsInterval;      // (1.34에서 메뉴에서 뺌: 통계 창에서만 정한다. null이면 건너뜀)
+    JMenuItem m_miStatsDuration;
+
+    // ---- View > 장치 통계 보기/숨기기 (1.34) ----
+
+    // 창이 숨겨져 있으면 "보기", 보이면 "숨기기"
+    void updateStatsViewMenu()
+    {
+        if(m_miStatsView == null) return;
+        boolean bVisible = m_dlgStats != null && m_dlgStats.isVisible();
+        m_miStatsView.setText(bVisible ? "장치 통계 숨기기" : "장치 통계 보기");
+    }
+
+    void toggleStatsDialog()
+    {
+        if(m_dlgStats != null && m_dlgStats.isVisible())
+            m_dlgStats.setVisible(false);       // 측정 중이면 측정은 계속, 창만 숨김
+        else
+            showStatsDialog();
+        updateStatsViewMenu();
+    }
+
+    // 측정 중에는 주기·측정 시간을 못 바꾸게 메뉴와 자세히 창의 설정을 흐리게 하고, 멈추거나 끝나면 다시 켠다
+    void updateStatsSettingsEnabled()
+    {
+        boolean bEnabled = !m_bDeviceStats;
+        if(m_menuStatsInterval != null)
+        {
+            m_menuStatsInterval.setEnabled(bEnabled);
+            m_menuStatsInterval.setToolTipText(bEnabled ? null : "측정 중에는 바꿀 수 없습니다 — '측정 종료'를 누르거나 측정이 끝나면 바꿀 수 있음");
+        }
+        if(m_miStatsDuration != null)
+        {
+            m_miStatsDuration.setEnabled(bEnabled);
+            m_miStatsDuration.setToolTipText(bEnabled ? null : "측정 중에는 바꿀 수 없습니다 — '측정 종료'를 누르거나 측정이 끝나면 바꿀 수 있음");
+        }
+        if(m_dlgStats != null) m_dlgStats.setSettingsEnabled(bEnabled);
     }
 
     // ---- 장치 통계 측정 시간 (1.27) ----
@@ -1922,14 +1960,18 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         m_nStatsDurationMin = Math.max(0, nMin);
         m_deviceStats.setDuration(m_nStatsDurationMin * 60000L);
+        // 측정을 켜지는 않는다: "측정 시작"을 누를 때부터 잰다 (1.33). 측정 중에는 설정이 잠겨 있어 보통 여기 오지 않는다.
         if(m_bDeviceStats)
             m_deviceStats.restartPeriod();
-        else
-            setDeviceStats(true);
         if(m_dlgStats != null) m_dlgStats.updatePeriod();
-        setStatus(m_nStatsDurationMin > 0
-            ? "장치 통계: 지금부터 " + DeviceStats.durationText(m_nStatsDurationMin * 60000L) + " 동안 측정합니다 (" + DeviceStats.timeText(m_deviceStats.deadline()) + "에 멈춤)"
-            : "장치 통계: 시간 제한 없이 계속 측정합니다");
+        if(m_bDeviceStats)
+            setStatus(m_nStatsDurationMin > 0
+                ? "장치 통계: 지금부터 " + DeviceStats.durationText(m_nStatsDurationMin * 60000L) + " 동안 측정합니다 (" + DeviceStats.timeText(m_deviceStats.deadline()) + "에 멈춤)"
+                : "장치 통계: 시간 제한 없이 계속 측정합니다");
+        else
+            setStatus(m_nStatsDurationMin > 0
+                ? "장치 통계: 측정 시간 " + DeviceStats.durationText(m_nStatsDurationMin * 60000L) + " — 자세히 창의 '측정 시작'을 누르면 그때부터 잽니다"
+                : "장치 통계: 측정 시간 제한 없음 — '측정 종료'를 누를 때까지 계속 (자세히 창의 '측정 시작'으로 시작)");
     }
 
     void showStatsDurationDialog()
@@ -1954,20 +1996,21 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
     void showStatsDialog()
     {
-        // 측정 시간이 끝나 멈춘 뒤에는 다시 켜지 않고 마지막 결과를 보여 준다
-        if(!m_bDeviceStats && !m_bStatsFinished)
-            setDeviceStats(true);
+        // 창을 열어도 측정을 자동으로 시작하지 않는다: 주기·측정 시간·표시를 정한 뒤 "측정 시작" (1.33)
         if(m_dlgStats == null)
         {
             m_dlgStats = new StatsDialog(this, m_deviceStats);
             m_dlgStats.setShow(m_bStatsGraphCpu, m_bStatsGraphMem, m_bStatsGraphTemp, m_bStatsGraphCores);
+            m_dlgStats.setExcelAuto(m_bStatsExcelAuto);
         }
+        updateStatsSettingsEnabled();
         m_dlgStats.syncInterval();
         m_dlgStats.setReboots(m_arReboot);
         if(m_lastStats != null)
             m_dlgStats.update(m_lastStats);
         m_dlgStats.setVisible(true);
         m_dlgStats.toFront();
+        updateStatsViewMenu();
     }
 
     Component getTabPanel()

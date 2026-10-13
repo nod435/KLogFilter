@@ -85,7 +85,7 @@ public class AppConfig
     boolean bFindRegex;
     boolean bRemoveRegex;
     boolean bCompactView;
-    boolean bDeviceStats = true;
+    boolean bDeviceStats = false;       // 기본은 측정 안 함 (1.33). 시작 때 자동 측정에 쓰지 않고 기록만 한다
     boolean bAutoReconnect = true;
     int     nStatsIntervalSec = (int)(DeviceStats.INTERVAL_MS / 1000);
     int     nStatsDurationMin = 0;
@@ -129,7 +129,7 @@ public class AppConfig
         config.bFindRegex   = "true".equalsIgnoreCase(p.getProperty(INI_FIND_REGEX, "false").trim());
         config.bRemoveRegex = "true".equalsIgnoreCase(p.getProperty(INI_REMOVE_REGEX, "false").trim());
         config.bCompactView = "true".equalsIgnoreCase(p.getProperty(INI_VIEW_COMPACT, "false").trim());
-        config.bDeviceStats = !"false".equalsIgnoreCase(p.getProperty(INI_DEVICE_STATS, "true").trim());
+        config.bDeviceStats = "true".equalsIgnoreCase(p.getProperty(INI_DEVICE_STATS, "false").trim());
         config.bAutoReconnect = !"false".equalsIgnoreCase(p.getProperty(INI_AUTO_RECONNECT, "true").trim());
         int nInterval = intOf(p, INI_STATS_INTERVAL, config.nStatsIntervalSec);
         config.nStatsIntervalSec = nInterval >= 1 && nInterval <= 3600 ? nInterval : config.nStatsIntervalSec;

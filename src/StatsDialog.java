@@ -41,6 +41,11 @@ public class StatsDialog extends JDialog
     boolean                m_bSyncingScroll;
     final CorePanel        m_cores     = new CorePanel();
     final javax.swing.JComboBox<String> m_cbInterval = new javax.swing.JComboBox<String>();
+    final javax.swing.JButton m_btnDuration = new javax.swing.JButton("측정 시간…");   // 1.27
+    final javax.swing.JCheckBox m_chkExcelAuto = new javax.swing.JCheckBox("완료 시 자동 저장", true);   // 1.34
+    final javax.swing.JButton m_btnStart = new javax.swing.JButton("측정 시작");       // 1.33
+    final javax.swing.JButton m_btnStop  = new javax.swing.JButton("측정 종료");
+    static final String TIP_LOCKED = " — 측정 중에는 바꿀 수 없습니다 ('측정 종료'를 누르거나 측정이 끝나면 바꿀 수 있음)";
     final javax.swing.JCheckBox m_chkCores = new javax.swing.JCheckBox("코어별");    // 그래프에 코어별 선 (1.29)
     // CPU·메모리·온도 표시 켜고 끄기: 그래프 선과 그 안내 줄(메모리·온도 줄, CPU는 코어별 막대) (1.30)
     final javax.swing.JCheckBox m_chkCpu  = new javax.swing.JCheckBox("CPU", true);
@@ -79,22 +84,29 @@ public class StatsDialog extends JDialog
         m_chkCpu.setToolTipText("CPU 사용률: 그래프의 파란 선과 코어별 CPU 막대");
         m_chkMem.setToolTipText("메모리: 그래프의 초록 선과 메모리 줄");
         m_chkTemp.setToolTipText("CPU 온도: 그래프의 주황 선과 온도 줄");
-        m_chkCores.setToolTipText("그래프에 cpu0, cpu1, … 코어별 사용률 선도 그리기");
-        for(javax.swing.JCheckBox chk : new javax.swing.JCheckBox[]{ m_chkCpu, m_chkMem, m_chkTemp, m_chkCores })
+        m_chkCores.setToolTipText("그래프에 cpu0, cpu1, … 코어별 사용률 선도 그리기 (CPU를 켰을 때만)");
+        for(javax.swing.JCheckBox chk : new javax.swing.JCheckBox[]{ m_chkCpu, m_chkCores, m_chkMem, m_chkTemp })
         {
             chk.setMargin(new java.awt.Insets(0, 0, 0, 0));
             chk.addActionListener(e -> applyShow(true));
-            jpShow.add(chk);
         }
+        // CPU (코어별) 메모리 온도 — 코어별은 CPU의 하위 옵션이라 괄호로 묶는다
+        jpShow.add(m_chkCpu);
+        JPanel jpCores = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+        jpCores.add(new JLabel("("));
+        jpCores.add(m_chkCores);
+        jpCores.add(new JLabel(")"));
+        jpShow.add(jpCores);
+        jpShow.add(m_chkMem);
+        jpShow.add(m_chkTemp);
         JPanel jpInterval = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 0));
         jpInterval.add(new JLabel("주기 :"));
         jpInterval.add(m_cbInterval);
         // 측정 시간 (1.27)
-        javax.swing.JButton btnDuration = new javax.swing.JButton("측정 시간…");
-        btnDuration.setMargin(new java.awt.Insets(1, 6, 1, 6));
-        btnDuration.setToolTipText("장치 통계를 몇 시간 동안 측정할지 정하기");
-        btnDuration.addActionListener(e -> { if(getOwner() instanceof LogFilterMain) ((LogFilterMain)getOwner()).showStatsDurationDialog(); });
-        jpInterval.add(btnDuration);
+        m_btnDuration.setMargin(new java.awt.Insets(1, 6, 1, 6));
+        m_btnDuration.setToolTipText("장치 통계를 몇 시간 동안 측정할지 정하기");
+        m_btnDuration.addActionListener(e -> { if(getOwner() instanceof LogFilterMain) ((LogFilterMain)getOwner()).showStatsDurationDialog(); });
+        jpInterval.add(m_btnDuration);
         JPanel jpLine1 = new JPanel(new BorderLayout());
         jpLine1.add(m_lbSummary, BorderLayout.CENTER);
         jpLine1.add(jpInterval, BorderLayout.EAST);
@@ -166,10 +178,32 @@ public class StatsDialog extends JDialog
         {
             public void actionPerformed(java.awt.event.ActionEvent e) { saveExcel(); }
         });
-        JPanel jpBottom = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 4));
-        jpBottom.add(btnExcel);
-        jpBottom.add(btnCopy);
-        jpBottom.add(btnSave);
+        JPanel jpSaveButtons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 4));
+        m_chkExcelAuto.setToolTipText("정한 측정 시간이 끝나거나 '측정 종료'를 누르면 전체 기록을 실행 폴더에 DeviceStats_날짜_시각.xlsx로 저장");
+        m_chkExcelAuto.addActionListener(e ->
+        {
+            if(getOwner() instanceof LogFilterMain)
+            {
+                LogFilterMain main = (LogFilterMain)getOwner();
+                main.m_bStatsExcelAuto = m_chkExcelAuto.isSelected();
+                main.setStatus("장치 통계: 측정 완료 시 엑셀 자동 저장 " + (main.m_bStatsExcelAuto ? "켬" : "끔"));
+            }
+        });
+        jpSaveButtons.add(m_chkExcelAuto);
+        jpSaveButtons.add(btnExcel);
+        jpSaveButtons.add(btnCopy);
+        jpSaveButtons.add(btnSave);
+        // 왼쪽: 측정 시작·종료 (1.33). 시작 전에 주기·측정 시간·표시를 정하고, 시작하면 설정이 잠긴다.
+        m_btnStart.setToolTipText("장치 통계 측정 시작 — 시작하면 주기·측정 시간 설정이 잠깁니다");
+        m_btnStop.setToolTipText("측정을 멈추고 마지막 결과와 기록을 남김 (측정 완료 시 엑셀 자동 저장이 켜져 있으면 저장)");
+        m_btnStart.addActionListener(e -> { if(getOwner() instanceof LogFilterMain) ((LogFilterMain)getOwner()).startStatsMeasurement(); });
+        m_btnStop.addActionListener(e -> { if(getOwner() instanceof LogFilterMain) ((LogFilterMain)getOwner()).stopStatsMeasurement(); });
+        JPanel jpRunButtons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 4));
+        jpRunButtons.add(m_btnStart);
+        jpRunButtons.add(m_btnStop);
+        JPanel jpBottom = new JPanel(new BorderLayout());
+        jpBottom.add(jpRunButtons, BorderLayout.WEST);
+        jpBottom.add(jpSaveButtons, BorderLayout.EAST);
         getRootPane().getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_C, java.awt.event.InputEvent.CTRL_DOWN_MASK), "CopyImage");
         getRootPane().getActionMap().put("CopyImage", new javax.swing.AbstractAction()
         {
@@ -201,6 +235,21 @@ public class StatsDialog extends JDialog
         if(b) { updatePeriod(); m_tmPeriod.start(); }
         else  m_tmPeriod.stop();
         super.setVisible(b);
+        if(getOwner() instanceof LogFilterMain) ((LogFilterMain)getOwner()).updateStatsViewMenu();   // View 메뉴 글자 보기/숨기기 (1.34)
+    }
+
+    // 측정 완료 시 엑셀 자동 저장 체크 (1.34, 메뉴에서 창으로 옮김)
+    void setExcelAuto(boolean b) { m_chkExcelAuto.setSelected(b); }
+
+    // 측정 중에는 주기·측정 시간 설정을 못 바꾸게 흐리게 하고, 멈추면 다시 켠다 (1.32)
+    void setSettingsEnabled(boolean b)
+    {
+        m_btnStart.setEnabled(b);           // 멈춰 있을 때만 시작, 측정 중일 때만 종료 (1.33)
+        m_btnStop.setEnabled(!b);
+        m_cbInterval.setEnabled(b);
+        m_btnDuration.setEnabled(b);
+        m_cbInterval.setToolTipText("장치 통계를 읽는 주기" + (b ? "" : TIP_LOCKED));
+        m_btnDuration.setToolTipText("장치 통계를 몇 시간 동안 측정할지 정하기" + (b ? "" : TIP_LOCKED));
     }
 
     // 측정 시간 줄: 남은 시간 / 경과 / 완료 (1.27)
@@ -287,7 +336,7 @@ public class StatsDialog extends JDialog
         }
         try
         {
-            int n = StatsExcel.write(file, m_stats, m_arReboot);
+            int n = StatsExcel.write(file, m_stats, m_arReboot, m_chkCores.isSelected());
             setTitle("장치 통계 — 엑셀로 저장했습니다 (" + n + "회 측정) : " + file.getName());
         }
         catch(java.io.IOException e)
@@ -330,7 +379,9 @@ public class StatsDialog extends JDialog
     // 체크박스 상태를 그래프·안내 줄·코어별 막대에 적용한다. bNotify면 주 창에 알려 설정에 저장한다. (1.30)
     void applyShow(boolean bNotify)
     {
-        boolean bCpu = m_chkCpu.isSelected(), bMem = m_chkMem.isSelected(), bTemp = m_chkTemp.isSelected(), bCores = m_chkCores.isSelected();
+        boolean bCpu = m_chkCpu.isSelected(), bMem = m_chkMem.isSelected(), bTemp = m_chkTemp.isSelected();
+        m_chkCores.setEnabled(bCpu);                        // 코어별은 CPU의 하위 옵션: CPU를 끄면 흐리게, 선도 안 그림
+        boolean bCores = m_chkCores.isSelected() && bCpu;
         m_graph.m_bCpu = bCpu;
         m_graph.m_bMem = bMem;
         m_graph.m_bTemp = bTemp;
@@ -346,7 +397,7 @@ public class StatsDialog extends JDialog
             main.m_bStatsGraphCpu = bCpu;
             main.m_bStatsGraphMem = bMem;
             main.m_bStatsGraphTemp = bTemp;
-            main.m_bStatsGraphCores = bCores;
+            main.m_bStatsGraphCores = m_chkCores.isSelected();     // 체크 자체를 저장 (CPU를 잠시 꺼도 잃지 않게)
         }
         if(isVisible()) pack();
     }

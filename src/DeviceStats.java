@@ -249,6 +249,7 @@ public class DeviceStats
 
     synchronized void stop()
     {
+        if(m_bRunning) m_nFinishTime = System.currentTimeMillis();   // 손으로 멈춰도 "측정 완료 (시작 ~ 끝)"으로 보이게 (1.33)
         m_bRunning = false;
         if(m_thread != null) m_thread.interrupt();
         m_thread = null;

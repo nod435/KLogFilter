@@ -29,19 +29,32 @@ public class StatsExcel
         return file.getName().toLowerCase().endsWith(EXT) ? file : new File(file.getPath() + EXT);
     }
 
-    /** 기록을 엑셀 파일로 쓴다. 쓴 측정 줄 수를 돌려준다 (기록이 없어도 정보 시트만 있는 파일을 만든다). */
+    static final String SHEET_STATS = "통계";
+    // 차트 색 (자세히 창과 같은 색)
+    static final String COLOR_CPU = "1E6FD9", COLOR_MEM = "2E9E44", COLOR_TEMP = "EF6C00";
+    static final String[] COLOR_CORES = { "8E24AA", "00897B", "D81B60", "6D4C41", "3949AB", "827717", "0097A7", "546E7A" };
+
     static int write(File file, DeviceStats stats, List<String> arReboot) throws IOException
+    {
+        return write(file, stats, arReboot, true);
+    }
+
+    /**
+     * 기록을 엑셀 파일로 쓴다. 쓴 측정 줄 수를 돌려준다 (기록이 없어도 정보 시트만 있는 파일을 만든다).
+     * bCoreChart면 "그래프" 시트에 코어별 차트도 넣는다 (1.35).
+     */
+    static int write(File file, DeviceStats stats, List<String> arReboot, boolean bCoreChart) throws IOException
     {
         List<DeviceStats.Sample> arSample = stats.record();
         List<String> arRebootCopy = new ArrayList<String>();
         if(arReboot != null)
             synchronized(arReboot) { arRebootCopy.addAll(arReboot); }
-        XlsxWriter xlsx = build(arSample, stats, arRebootCopy);
+        XlsxWriter xlsx = build(arSample, stats, arRebootCopy, bCoreChart);
         xlsx.write(file);
         return arSample.size();
     }
 
-    static XlsxWriter build(List<DeviceStats.Sample> arSample, DeviceStats stats, List<String> arReboot)
+    static XlsxWriter build(List<DeviceStats.Sample> arSample, DeviceStats stats, List<String> arReboot, boolean bCoreChart)
     {
         // 코어 수와 센서 이름은 측정마다 다를 수 있다 (꺼진 코어, 센서 추가): 전체에서 가장 많은 것으로 열을 만든다
         int nCores = 0;
@@ -63,7 +76,7 @@ public class StatsExcel
         for(int i = 0; i < nCores; i++) arHeader.add("cpu" + i + " %");
         for(String strSensor : arSensor) arHeader.add(strSensor + " °C");
         arHeader.add("비고");
-        XlsxWriter.Sheet sheet = xlsx.addSheet("통계", arHeader.toArray());
+        XlsxWriter.Sheet sheet = xlsx.addSheet(SHEET_STATS, arHeader.toArray());
         double[] arWidth = new double[arHeader.size()];
         arWidth[0] = 20; arWidth[1] = 10;
         for(int i = 2; i < arWidth.length - 1; i++) arWidth[i] = 13;
@@ -93,6 +106,24 @@ public class StatsExcel
             if(!bOk) sbNote.append(sbNote.length() > 0 ? " / " : "").append("오류: ").append(s.m_strError);
             ar.add(sbNote.length() > 0 ? sbNote.toString() : null);
             sheet.addRow(ar.toArray());
+        }
+
+        // ---- 그래프 (1.35): 통계 시트의 셀을 참조하는 엑셀 꺾은선 차트 ----
+        if(!arSample.isEmpty())
+        {
+            XlsxWriter.Sheet sheetGraph = xlsx.addSheet("그래프");
+            int nRow1 = 2, nRow2 = arSample.size() + 1;            // 머리줄 다음부터
+            String strCat = XlsxWriter.ref(SHEET_STATS, 0, nRow1, nRow2);
+            XlsxWriter.Chart chart = sheetGraph.addChart("CPU % · 메모리 % · CPU 온도 °C", 0, 22, 16).setCategories(strCat);
+            chart.addSeries("CPU %", XlsxWriter.ref(SHEET_STATS, 2, nRow1, nRow2), COLOR_CPU);
+            chart.addSeries("메모리 %", XlsxWriter.ref(SHEET_STATS, 3, nRow1, nRow2), COLOR_MEM);
+            chart.addSeries("CPU 온도 °C", XlsxWriter.ref(SHEET_STATS, 7, nRow1, nRow2), COLOR_TEMP);
+            if(bCoreChart && nCores > 0)
+            {
+                XlsxWriter.Chart chartCores = sheetGraph.addChart("코어별 CPU %", 24, 22, 16).setCategories(strCat);
+                for(int i = 0; i < nCores; i++)
+                    chartCores.addSeries("cpu" + i, XlsxWriter.ref(SHEET_STATS, 8 + i, nRow1, nRow2), COLOR_CORES[i % COLOR_CORES.length]);
+            }
         }
 
         // ---- 상위 프로세스 ----
