@@ -11,7 +11,7 @@ import java.util.Properties;
 public class AppVersion
 {
     static final int    MAJOR = 1;
-    static final int    MINOR = 30;
+    static final int    MINOR = 31;
     static final String BUILD = loadBuild();
 
     static String loadBuild()

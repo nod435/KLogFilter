@@ -545,6 +545,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.31 : 장치 통계 그래프를 측정 전체 기록으로 (시간 눈금, 가로 스크롤 바·마우스 휠로 구간 이동, 간격 1·2·4·8px, 재부팅·오류 표시)");
         addDesc("Version 1.30 : 장치 통계 자세히 창의 CPU·메모리·온도 표시 켜고 끄기 (표시 : 체크박스, 그래프 선과 안내 줄·코어별 막대)");
         addDesc("Version 1.29 : 장치 통계 그래프에 코어별 CPU 선 (자세히 창의 '코어별' 체크)");
         addDesc("Version 1.28 : 장치 통계를 엑셀 파일로 저장 (자세히 창·View 메뉴, 측정 완료 시 자동 저장 — 시각·CPU·메모리·온도·코어별·상위 프로세스)");

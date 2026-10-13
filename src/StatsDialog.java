@@ -35,6 +35,10 @@ public class StatsDialog extends JDialog
     final JLabel           m_lbPeriod  = new JLabel("측정 시간: -");         // 1.27
     final javax.swing.Timer m_tmPeriod = new javax.swing.Timer(1000, e -> updatePeriod());   // 남은 시간을 1초마다
     final GraphPanel       m_graph     = new GraphPanel();
+    final JPanel           m_jpGraph   = new JPanel(new BorderLayout());        // 그래프 + 가로 스크롤 바 (제목 테두리) (1.31)
+    final javax.swing.JScrollBar m_sbTime = new javax.swing.JScrollBar(javax.swing.JScrollBar.HORIZONTAL);
+    final javax.swing.JComboBox<String> m_cbPx = new javax.swing.JComboBox<String>();   // 측정 하나의 가로 픽셀
+    boolean                m_bSyncingScroll;
     final CorePanel        m_cores     = new CorePanel();
     final javax.swing.JComboBox<String> m_cbInterval = new javax.swing.JComboBox<String>();
     final javax.swing.JCheckBox m_chkCores = new javax.swing.JCheckBox("코어별");    // 그래프에 코어별 선 (1.29)
@@ -113,7 +117,19 @@ public class StatsDialog extends JDialog
         }
         jpTop.setBorder(BorderFactory.createEmptyBorder(6, 8, 4, 8));
 
-        m_graph.setPreferredSize(new Dimension(520, 160));
+        // 그래프 아래 가로 스크롤 바: 전체 기록에서 보이는 구간을 옮긴다 (1.31)
+        m_sbTime.setToolTipText("측정 전체 기록에서 보이는 구간 옮기기 (그래프 위에서 마우스 휠도 됨). 맨 오른쪽에 두면 새 측정을 따라갑니다");
+        m_sbTime.addAdjustmentListener(e -> { if(!m_bSyncingScroll) m_graph.setOffset(e.getValue()); });
+        m_graph.m_onScroll = this::syncScroll;
+        m_jpGraph.add(m_graph, BorderLayout.CENTER);
+        m_jpGraph.add(m_sbTime, BorderLayout.SOUTH);
+        m_jpGraph.setPreferredSize(new Dimension(520, 210));
+        for(int nPx : GraphPanel.PX_CHOICES) m_cbPx.addItem(nPx + "px");
+        m_cbPx.setSelectedIndex(2);
+        m_cbPx.setToolTipText("측정 하나를 몇 픽셀로 그릴지 (작을수록 긴 시간이 한 화면에)");
+        m_cbPx.addActionListener(e -> { if(m_cbPx.getSelectedIndex() >= 0) m_graph.setPx(GraphPanel.PX_CHOICES[m_cbPx.getSelectedIndex()]); });
+        jpShow.add(new JLabel("   간격 :"));
+        jpShow.add(m_cbPx);
         syncInterval();
         m_cores.setBorder(BorderFactory.createTitledBorder("코어별 CPU"));
 
@@ -126,7 +142,7 @@ public class StatsDialog extends JDialog
         spTop.setBorder(BorderFactory.createTitledBorder("CPU 상위 프로세스 (top)"));
 
         JPanel jpCenter = new JPanel(new BorderLayout());
-        jpCenter.add(m_graph, BorderLayout.NORTH);
+        jpCenter.add(m_jpGraph, BorderLayout.NORTH);
         jpCenter.add(m_cores, BorderLayout.CENTER);
         jpCenter.add(spTop, BorderLayout.SOUTH);
 
@@ -322,7 +338,7 @@ public class StatsDialog extends JDialog
         m_lbMem.setVisible(bMem);
         m_lbTemp.setVisible(bTemp);
         m_cores.setVisible(bCpu);
-        m_graph.setPreferredSize(new Dimension(520, bCores ? 180 : 160));    // 범례가 두 줄이 되는 만큼
+        m_jpGraph.setPreferredSize(new Dimension(520, bCores ? 230 : 210));    // 범례가 두 줄이 되는 만큼
         syncInterval();
         if(bNotify && getOwner() instanceof LogFilterMain)
         {
@@ -343,9 +359,8 @@ public class StatsDialog extends JDialog
         for(int i = 0; i < DeviceStats.INTERVALS_SEC.length; i++)
             if(DeviceStats.INTERVALS_SEC[i] == nSec) m_cbInterval.setSelectedIndex(i);
         m_bSyncing = false;
-        long nSpan = nSec * DeviceStats.HISTORY;
-        String strSpan = "최근 " + (nSpan >= 3600 ? (nSpan / 3600) + "시간" : nSpan >= 60 ? (nSpan / 60) + "분" : nSpan + "초");
-        // 범례 글자는 각 선과 같은 색
+        // 범례 글자는 각 선과 같은 색. 그래프는 측정 전체 기록 (1.31)
+        String strSpan = "측정 전체";
         List<String> arLegend = new ArrayList<String>();
         if(m_graph.m_bCpu)  arLegend.add(legend(COLOR_CPU, "파랑: CPU %"));
         if(m_graph.m_bMem)  arLegend.add(legend(COLOR_MEM, "초록: 메모리 %"));
@@ -361,7 +376,19 @@ public class StatsDialog extends JDialog
                 sb.append(i > 0 ? ", " : "").append(legend(coreColor(i), "cpu" + i));
             if(nCores == 0) sb.append("(측정 대기 중)");
         }
-        m_graph.setBorder(BorderFactory.createTitledBorder(sb.append("</html>").toString()));
+        m_jpGraph.setBorder(BorderFactory.createTitledBorder(sb.append("</html>").toString()));
+    }
+
+    // 그래프의 보이는 구간에 맞춰 스크롤 바를 놓는다 (1.31)
+    void syncScroll()
+    {
+        m_bSyncingScroll = true;
+        int nVisible = m_graph.visibleCount(), nAll = m_graph.m_arAll.size();
+        m_sbTime.setValues(m_graph.m_nOffset, nVisible, 0, Math.max(nAll, nVisible));
+        m_sbTime.setUnitIncrement(Math.max(1, nVisible / 10));
+        m_sbTime.setBlockIncrement(Math.max(1, nVisible * 9 / 10));
+        m_sbTime.setEnabled(nAll > nVisible);
+        m_bSyncingScroll = false;
     }
 
     // 코어별 선 색 (코어가 많으면 되풀이)
@@ -383,7 +410,7 @@ public class StatsDialog extends JDialog
             m_lbMem.setText(String.format("메모리: 사용 %,d MB / 전체 %,d MB, 사용 가능 %,d MB",
                 (sample.m_nMemTotalKb - sample.m_nMemAvailKb) / 1024, sample.m_nMemTotalKb / 1024, sample.m_nMemAvailKb / 1024));
         int nCoresBefore = m_graph.coreCount();
-        m_graph.setHistory(m_stats.history());
+        m_graph.setSamples(m_stats.record());       // 전체 기록 (1.31)
         if(m_graph.m_bCores && m_graph.coreCount() != nCoresBefore)
             syncInterval();         // 코어 수를 알게 되면 범례에 cpu0, cpu1 … 표시
         updatePeriod();
@@ -419,31 +446,82 @@ public class StatsDialog extends JDialog
     }
 
     /** CPU·메모리 사용률 그래프 */
+    /**
+     * CPU·메모리·온도 그래프. 측정을 켠 뒤의 전체 기록을 시간 축으로 그리고, 가로 스크롤로 구간을 옮긴다 (1.31).
+     * 한 측정이 m_nPx 픽셀. 맨 끝을 보고 있으면 새 측정이 올 때 따라간다(m_bFollow).
+     */
     static class GraphPanel extends JPanel
     {
         private static final long serialVersionUID = 1L;
-        List<DeviceStats.Sample> m_arHistory = new ArrayList<DeviceStats.Sample>();
+        static final int X0 = 40, RIGHT = 14, BOTTOM = 30;      // 왼쪽 % 눈금, 오른쪽 여백, 아래 시간 눈금
+        static final int[] PX_CHOICES = { 1, 2, 4, 8 };
+        List<DeviceStats.Sample> m_arAll = new ArrayList<DeviceStats.Sample>();   // 전체 기록 (오류 측정 포함)
         boolean m_bCores;       // 코어별 선도 그린다 (1.29)
         boolean m_bCpu = true, m_bMem = true, m_bTemp = true;   // 어떤 선을 그릴지 (1.30)
+        int     m_nPx = 4;      // 측정 하나의 가로 픽셀
+        int     m_nOffset;      // 보이는 구간의 첫 측정 번호
+        boolean m_bFollow = true;   // 맨 끝을 따라간다 (스크롤을 뒤로 돌리면 false)
+        int     m_nCores;       // 기록에 있는 가장 많은 코어 수
+        Runnable m_onScroll;    // 보이는 구간이 바뀌면 스크롤 바를 맞추라고 알림
 
-        void setHistory(List<DeviceStats.Sample> ar) { m_arHistory = ar; repaint(); }
-        void setShowCores(boolean b) { m_bCores = b; repaint(); }
-
-        // 기록에 있는 가장 많은 코어 수
-        int coreCount()
+        GraphPanel()
         {
-            int n = 0;
-            for(DeviceStats.Sample s : m_arHistory) n = Math.max(n, s.m_arCore.length);
-            return n;
+            addComponentListener(new java.awt.event.ComponentAdapter()
+            {
+                public void componentResized(java.awt.event.ComponentEvent e) { clampOffset(); }
+            });
+            addMouseWheelListener(e -> setOffset(m_nOffset + e.getWheelRotation() * Math.max(1, visibleCount() / 4)));
         }
+
+        void setSamples(List<DeviceStats.Sample> ar)
+        {
+            m_arAll = ar;
+            int n = 0;
+            for(DeviceStats.Sample s : ar) n = Math.max(n, s.m_arCore.length);
+            m_nCores = n;
+            clampOffset();
+        }
+        void setShowCores(boolean b) { m_bCores = b; repaint(); }
+        int  coreCount() { return m_nCores; }
+
+        void setPx(int nPx)
+        {
+            // 보이는 구간의 가운데를 유지한 채 간격을 바꾼다
+            int nCenter = m_nOffset + visibleCount() / 2;
+            m_nPx = Math.max(1, nPx);
+            m_nOffset = nCenter - visibleCount() / 2;
+            clampOffset();
+        }
+
+        int plotWidth()    { return Math.max(1, getWidth() - X0 - RIGHT); }
+        int visibleCount() { return Math.max(1, plotWidth() / m_nPx + 1); }   // 한 화면에 들어가는 측정 수
+        int maxOffset()    { return Math.max(0, m_arAll.size() - visibleCount()); }
+
+        // 스크롤 바가 움직였다
+        void setOffset(int nOffset)
+        {
+            m_nOffset = nOffset;
+            m_bFollow = nOffset >= maxOffset();
+            clampOffset();
+        }
+
+        // 따라가는 중이면 맨 끝으로, 아니면 범위 안으로. 스크롤 바도 맞춘다.
+        void clampOffset()
+        {
+            if(m_bFollow) m_nOffset = maxOffset();
+            m_nOffset = Math.max(0, Math.min(maxOffset(), m_nOffset));
+            if(m_onScroll != null) m_onScroll.run();
+            repaint();
+        }
+
+        static String clock(long nTime) { return new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(nTime)); }
 
         protected void paintComponent(Graphics g0)
         {
             super.paintComponent(g0);
             Graphics2D g = (Graphics2D)g0;
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            // 제목(범례)이 두 줄이면 테두리가 높아지므로 그 아래부터 그린다
-            int x0 = 40, y0 = Math.max(30, getInsets().top + 8), w = getWidth() - x0 - 14, h = getHeight() - y0 - 14;
+            int x0 = X0, y0 = getInsets().top + 18, w = plotWidth(), h = Math.max(10, getHeight() - y0 - BOTTOM);
             g.setColor(Color.WHITE);
             g.fillRect(x0, y0, w, h);
             g.setColor(new Color(0xDDDDDD));
@@ -455,43 +533,82 @@ public class StatsDialog extends JDialog
                 g.drawString(p + "%", 4, y + 4);
                 g.setColor(new Color(0xDDDDDD));
             }
+            List<DeviceStats.Sample> ar = m_arAll;
+            int nFirst = m_nOffset, nLast = Math.min(ar.size(), m_nOffset + visibleCount());
+            // 위: 전체 범위와 보이는 구간
+            g.setColor(Color.GRAY);
+            g.setFont(g.getFont().deriveFont(11f));
+            if(!ar.isEmpty())
+                g.drawString("전체 " + ar.size() + "회  " + clock(ar.get(0).m_nTime) + " ~ " + clock(ar.get(ar.size() - 1).m_nTime)
+                    + "   ·   보이는 구간 " + clock(ar.get(nFirst).m_nTime) + " ~ " + clock(ar.get(nLast - 1).m_nTime) + " (" + (nFirst + 1) + "~" + nLast + ")", x0, y0 - 5);
+            else
+                g.drawString("측정 기록 없음", x0, y0 - 5);
+            // 아래: 시간 눈금 (약 110픽셀마다)
+            int nStep = Math.max(1, 110 / m_nPx);
+            for(int i = nFirst - nFirst % nStep; i < nLast; i += nStep)
+            {
+                if(i < nFirst) continue;
+                int x = x0 + (i - nFirst) * m_nPx;
+                g.setColor(new Color(0xE8E8E8));
+                g.drawLine(x, y0, x, y0 + h);
+                g.setColor(Color.GRAY);
+                String s = clock(ar.get(i).m_nTime);
+                int sw = g.getFontMetrics().stringWidth(s);
+                g.drawString(s, Math.min(x - sw / 2, x0 + w - sw), y0 + h + 14);
+                g.drawLine(x, y0 + h, x, y0 + h + 3);
+            }
+            // 재부팅·오류 표시 (1.24)
+            for(int i = nFirst; i < nLast; i++)
+            {
+                DeviceStats.Sample s = ar.get(i);
+                int x = x0 + (i - nFirst) * m_nPx;
+                if(s.m_strError != null)
+                {
+                    g.setColor(new Color(0xFFF0F0));
+                    g.fillRect(x, y0, Math.max(1, m_nPx), h);
+                }
+                if(s.m_bReboot)
+                {
+                    g.setColor(new Color(0xC62828));
+                    g.drawLine(x, y0, x, y0 + h);
+                    g.drawString("재부팅", Math.min(x + 2, x0 + w - 36), y0 + 12);
+                }
+            }
             // 코어별 선은 가늘게 먼저 그려 전체 CPU·메모리·온도 선이 위에 오게 한다
             if(m_bCores)
             {
                 java.awt.Stroke stroke = g.getStroke();
                 g.setStroke(new java.awt.BasicStroke(1f));
-                int nCores = coreCount();
-                for(int i = 0; i < nCores; i++)
-                    drawLine(g, x0, y0, w, h, 3 + i);
+                for(int i = 0; i < m_nCores; i++)
+                    drawLine(g, x0, y0, w, h, 3 + i, nFirst, nLast);
                 g.setStroke(stroke);
             }
-            if(m_bCpu)  drawLine(g, x0, y0, w, h, 0);
-            if(m_bMem)  drawLine(g, x0, y0, w, h, 1);
-            if(m_bTemp) drawLine(g, x0, y0, w, h, 2);
+            if(m_bCpu)  drawLine(g, x0, y0, w, h, 0, nFirst, nLast);
+            if(m_bMem)  drawLine(g, x0, y0, w, h, 1, nFirst, nLast);
+            if(m_bTemp) drawLine(g, x0, y0, w, h, 2, nFirst, nLast);
         }
 
-        // nKind: 0 CPU %, 1 메모리 %, 2 온도 °C (같은 0~100 눈금), 3 이상은 코어 (nKind - 3) 사용률 %
-        void drawLine(Graphics2D g, int x0, int y0, int w, int h, int nKind)
+        // nKind: 0 CPU %, 1 메모리 %, 2 온도 °C (같은 0~100 눈금), 3 이상은 코어 (nKind - 3) 사용률 %. [nFirst, nLast) 구간만 그린다.
+        void drawLine(Graphics2D g, int x0, int y0, int w, int h, int nKind, int nFirst, int nLast)
         {
             g.setColor(nKind == 0 ? COLOR_CPU : nKind == 1 ? COLOR_MEM : nKind == 2 ? COLOR_TEMP : coreColor(nKind - 3));
             int nPrevX = -1, nPrevY = -1;
-            int n = DeviceStats.HISTORY;
-            List<DeviceStats.Sample> ar = m_arHistory;
-            for(int i = 0; i < ar.size(); i++)
+            List<DeviceStats.Sample> ar = m_arAll;
+            for(int i = nFirst; i < nLast; i++)
             {
+                DeviceStats.Sample s = ar.get(i);
                 double v;
-                if(nKind >= 3)
-                {
-                    double[] arCore = ar.get(i).m_arCore;
-                    v = nKind - 3 < arCore.length ? arCore[nKind - 3] : -1;      // 꺼진 코어·없는 코어는 끊김
-                }
+                if(s.m_strError != null) v = -1;                                   // 오류 측정은 끊김
+                else if(nKind >= 3)
+                    v = nKind - 3 < s.m_arCore.length ? s.m_arCore[nKind - 3] : -1;   // 꺼진 코어·없는 코어는 끊김
                 else
-                    v = nKind == 0 ? ar.get(i).m_dCpu : nKind == 1 ? ar.get(i).memUsedPercent() : Math.min(100, ar.get(i).m_dTemp);
+                    v = nKind == 0 ? s.m_dCpu : nKind == 1 ? s.memUsedPercent() : Math.min(100, s.m_dTemp);
                 if(v < 0) { nPrevX = -1; continue; }
-                int x = x0 + w * (n - ar.size() + i) / (n - 1);
+                int x = x0 + (i - nFirst) * m_nPx;
                 int y = y0 + h - (int)(h * v / 100);
                 if(nPrevX >= 0) g.drawLine(nPrevX, nPrevY, x, y);
-                else g.fillOval(x - 2, y - 2, 4, 4);
+                else if(m_nPx >= 2) g.fillOval(x - 2, y - 2, 4, 4);
+                else g.drawLine(x, y, x, y);
                 nPrevX = x; nPrevY = y;
             }
         }
