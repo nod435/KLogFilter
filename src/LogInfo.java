@@ -25,7 +25,8 @@ public class LogInfo
     String                  m_strTag        = "";
     String                  m_strMessage    = "";
     Color                   m_TextColor;
-    
+    boolean                 m_bConnMarker;      // KLogFilter가 넣은 끊김·재연결 표시 줄: 진회색 배경에 흰 글자 (1.38)
+
     // 레벨 문자열 → LOG_LV_* 비트 (알 수 없으면 LOG_LV_NONE)
     public static int levelOf(String strLogLV)
     {

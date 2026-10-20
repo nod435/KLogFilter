@@ -49,6 +49,15 @@ public class LogCatParser implements ILogParser
         return color;
     }
 
+    static final Color COLOR_MARKER_BG          = new Color(0x616161);     // 끊김·재연결 표시 줄 배경 (진회색)
+    static final Color COLOR_MARKER_BG_SELECTED = new Color(0x7A7A7A);     // 선택됐을 때는 조금 밝게
+
+    // 수집 중 KLogFilter가 기록 파일에 넣은 끊김·재연결 표시 줄인가 (태그 KLogFilter, 메시지가 "--------"로 시작)
+    static boolean isConnectionMarker(LogInfo logInfo)
+    {
+        return LogSource.MARKER_TAG.equals(logInfo.m_strTag) && logInfo.m_strMessage != null && logInfo.m_strMessage.startsWith("--------");
+    }
+
     public Color getColor(LogInfo logInfo)
     {
         if(logInfo.m_strLogLV == null) return Color.BLACK;
@@ -223,6 +232,12 @@ public class LogCatParser implements ILogParser
             logInfo.m_strMessage = strText;
         }
         logInfo.m_TextColor = getColor(logInfo);
+        // KLogFilter가 넣은 연결 끊김·재연결 표시 줄("-------- …")은 진회색 배경에 흰 글자 (1.38, 배경은 LogTable 렌더러가 칠함)
+        if(isConnectionMarker(logInfo))
+        {
+            logInfo.m_bConnMarker = true;
+            logInfo.m_TextColor = Color.WHITE;
+        }
         // 필터 판정 때 문자열 비교 대신 비트 연산을 쓰도록 레벨을 미리 계산
         logInfo.m_nLogLV = LogInfo.levelOf(logInfo.m_strLogLV);
         return logInfo;

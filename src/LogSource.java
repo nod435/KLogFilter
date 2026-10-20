@@ -156,8 +156,13 @@ public class LogSource
     static final Charset ADB_CHARSET     = Charset.forName("UTF-8");   // adb 출력은 장치에서 UTF-8로 온다
     static final long    LIVE_PUBLISH_MS = 50;      // 출력이 계속 들어오는 동안 화면에 알리는 간격
     static final int     LIVE_BUFFER     = 64 << 10;
-    // 기록 파일 하나의 최대 크기. 넘으면 다음 파일(이름_2.txt, _3 …)에 이어 쓴다. (테스트용으로 -Dklogfilter.rotateBytes로 바꿀 수 있음)
-    static final long    LIVE_ROTATE_BYTES = Long.getLong("klogfilter.rotateBytes", 50L << 20);
+    // 기록 파일 하나의 최대 크기 기본값 100MB (1.37: File > 기록 파일 크기에서 바꿈, 이전 1.17은 50MB 고정). 테스트용 -Dklogfilter.rotateBytes가 있으면 그 값.
+    static final int     DEFAULT_ROTATE_MB = 100;
+    static final long    LIVE_ROTATE_BYTES = Long.getLong("klogfilter.rotateBytes", (long)DEFAULT_ROTATE_MB << 20);
+    volatile long        m_nRotateBytes    = LIVE_ROTATE_BYTES;    // 지금 쓰는 최대 크기. 넘으면 다음 파일(이름_2.txt, _3 …)에 이어 쓴다
+
+    void setRotateMb(int nMb) { m_nRotateBytes = Math.max(1, (long)nMb) << 20; }
+    int  rotateMb()           { return (int)(m_nRotateBytes >> 20); }
 
     /**
      * adb 출력 한 줄씩을 기록 파일에 쓰면서, 쓴 위치를 목록(FileLogStore)에 바로 추가한다.
@@ -196,7 +201,7 @@ public class LogSource
         {
             byte[] arByte = strLine.getBytes(ADB_CHARSET);
             // 이 줄을 쓰면 최대 크기를 넘으면 다음 파일로 (줄 중간에서 나누지 않음)
-            if(m_nFileBytes > 0 && m_nFileBytes + arByte.length + 2 > LIVE_ROTATE_BYTES)
+            if(m_nFileBytes > 0 && m_nFileBytes + arByte.length + 2 > m_nRotateBytes)
                 rotate();
             m_out.write(arByte);
             m_out.write('\r');
@@ -346,16 +351,24 @@ public class LogSource
                     String[] boot = target.bootInfo();
                     m_strBootId = boot[0];
                 }
+                boolean bDisconnectStop = false;            // 연결이 끊겨 자동으로 멈췄다 (1.38)
                 while(true)
                 {
                     process = readProcess(strCmd, feed, nLines, lastLine);
                     if(m_thProcess != current)
                         break;                              // Stop
-                    // 장치 연결이 끊겨 adb가 끝났으면(재부팅 등) 다시 연결을 기다려 이어서 수집한다.
-                    if(target == null || !m_bAutoReconnect || !target.disconnected())
+                    // 장치 연결이 끊겨 adb가 끝났는지 본다 (재부팅, 케이블 빠짐 등)
+                    if(target == null || !target.disconnected())
                         break;                              // 정상 종료 (예: logcat -d)
-                    writeMarker(feed, "-------- 장치 연결이 끊겼습니다 : 다시 연결을 기다립니다 --------", null);
-                    m_listener.onStatus("장치 연결이 끊겼습니다 : 다시 연결되면 이어서 수집합니다 (Stop으로 중단)");
+                    if(!m_bAutoReconnect)
+                    {
+                        // 기본: 끊기면 바로 Stop (1.38). '연결 대기'를 켜면 아래처럼 기다렸다가 이어서 수집한다.
+                        writeMarker(feed, "-------- ADB device disconnected : logging stopped --------", null);
+                        bDisconnectStop = true;
+                        break;
+                    }
+                    writeMarker(feed, "-------- ADB device disconnected : waiting for reconnection --------", null);
+                    m_listener.onStatus("ADB device disconnected : waiting for reconnection, logging will continue (press Stop to cancel)");
                     if(!target.waitForDevice(LogSource.this) || m_thProcess != current)
                         break;
                     String[] boot = target.bootInfo();
@@ -368,23 +381,26 @@ public class LogSource
                     else if(bRebooted)
                         writePendingMarkers(feed);      // 장치 통계가 먼저 알아채 표시를 넣기로 했다
                     else
-                        writeMarker(feed, "-------- 장치가 다시 연결되었습니다 (재부팅은 확인되지 않음) --------", null);
+                        writeMarker(feed, "-------- ADB device reconnected (no reboot detected) --------", null);
                     if(boot[0] != null) m_strBootId = boot[0];
-                    m_listener.onStatus(bRebooted ? "장치 재부팅 감지 : 이어서 수집합니다 (F2로 표시 위치 이동)" : "장치가 다시 연결되었습니다 : 이어서 수집합니다");
+                    m_listener.onStatus(bRebooted ? "Device reboot detected : logging continues (F2 jumps to the marker)" : "ADB device reconnected : logging continues");
                 }
                 feed.close();
                 // 그 사이 Stop 후 다시 Run 했다면 새 프로세스를 건드리지 않는다.
                 if(m_thProcess == current)
                 {
                     // 사용자가 Stop하지 않았는데 adb가 끝났다: 오류 메시지(마지막 줄)를 상태 표시줄에 보여준다.
-                    reportProcessEnd(process, nLines[0], lastLine[0]);
+                    if(bDisconnectStop)
+                        m_listener.onStatus("ADB device disconnected : logging stopped — check '연결 대기' to keep waiting for reconnection");
+                    else
+                        reportProcessEnd(process, nLines[0], lastLine[0]);
                     stopProcess();
                 }
             }        }, "AdbProcess");
         m_thProcess.start();
     }
 
-    volatile boolean m_bAutoReconnect = true;   // 장치 연결이 끊기면 다시 연결을 기다려 이어서 수집 (1.24)
+    volatile boolean m_bAutoReconnect = false;  // 연결 대기: 장치 연결이 끊기면 다시 연결을 기다려 이어서 수집 (1.24). 기본은 끊기면 Stop (1.38)
     volatile String  m_strBootId;               // 수집 중인 장치의 boot_id (재부팅하면 바뀜)
     volatile String  m_strMarkedBootId;         // 이미 재부팅 표시를 넣은(또는 넣기로 한) boot_id
 
@@ -400,7 +416,8 @@ public class LogSource
             pb.redirectErrorStream(true);
             process = pb.start();
             m_process = process;
-            m_listener.onStatus("adb 실행 중 : " + strCmd);
+            // 다시 연결되어 이어서 실행하는 것이면(이미 받은 줄이 있음) 그렇게 알린다 (1.38)
+            m_listener.onStatus((nLines[0] > 0 ? "ADB device reconnected, logging continues : " : "adb 실행 중 : ") + strCmd);
             startNoOutputWatch(process, nLines);
 
             try(BufferedReader stdOut = new BufferedReader(new InputStreamReader(process.getInputStream(), ADB_CHARSET), LIVE_BUFFER))
@@ -419,7 +436,7 @@ public class LogSource
                         continue;
                     // adb가 장치를 못 찾으면 이 문구만 출력하고 계속 기다린다. 로그로 세지 않고 바로 알린다.
                     if(s.startsWith("- waiting for device"))
-                        m_listener.onStatus("장치를 기다리는 중 : 장치가 연결되어 있지 않거나 offline 상태입니다. Stop 후 Device OK로 상태를 확인하세요.");
+                        m_listener.onStatus("Waiting for device : no device connected or device is offline. Press Stop, then Device OK to check.");
                     else
                         nLines[0]++;
                     lastLine[0] = s;
@@ -473,9 +490,9 @@ public class LogSource
         if(boot[1] != null)
         {
             long nUptimeMs = (long)(Double.parseDouble(boot[1]) * 1000);
-            strBoot = String.format(" (부팅 시각 약 %s, 부팅 후 %d초)", new SimpleDateFormat("MM-dd HH:mm:ss").format(new Date(System.currentTimeMillis() - nUptimeMs)), nUptimeMs / 1000);
+            strBoot = String.format(" (booted at about %s, uptime %ds)", new SimpleDateFormat("MM-dd HH:mm:ss").format(new Date(System.currentTimeMillis() - nUptimeMs)), nUptimeMs / 1000);
         }
-        writeMarker(feed, "======== 장치 재부팅 감지" + strBoot + " ========", "재부팅");
+        writeMarker(feed, "======== Device reboot detected" + strBoot + " ========", "Reboot");
         if(boot[0] != null) m_strBootId = boot[0];
         m_listener.onReboot(boot[0], strBoot.trim());
     }
@@ -603,11 +620,14 @@ public class LogSource
             {
                 ProcessBuilder pb = new ProcessBuilder(arCmd);
                 pb.redirectErrorStream(true);
+                long nStart = System.currentTimeMillis();
                 Process p = pb.start();
                 source.m_process = p;                 // Stop하면 이 프로세스를 끝낸다
                 Thread current = Thread.currentThread();
                 try(InputStream in = p.getInputStream()) { while(in.read() >= 0) { } }
                 p.waitFor();
+                // adb 자체가 없거나 바로 끝나면 잠깐 쉬어 빈 루프를 막는다 (1.38)
+                if(System.currentTimeMillis() - nStart < 1000) Thread.sleep(2000);
                 return source.m_thProcess == current && p.exitValue() == 0;
             }
             catch(Exception e)

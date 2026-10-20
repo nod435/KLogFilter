@@ -200,17 +200,41 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             }
         });
 
-        // 수집 중 장치 연결이 끊기면(재부팅 등) 다시 연결을 기다려 이어서 수집하고 재부팅을 표시 (1.24)
-        mainFrame.m_miAutoReconnect = new javax.swing.JCheckBoxMenuItem("장치 연결이 끊기면 자동 다시 연결 (재부팅 표시)");
+        // 연결 대기 (1.24, 1.38): 끄면 ADB 연결이 끊길 때 Stop, 켜면 다시 연결을 기다렸다가 이어서 수집하고 재부팅을 표시
+        mainFrame.m_miAutoReconnect = new javax.swing.JCheckBoxMenuItem("ADB 연결 대기 — 끊겨도 기다렸다가 다시 연결되면 이어서 보기 (끄면 끊길 때 Stop)");
         mainFrame.m_miAutoReconnect.setSelected(mainFrame.m_source.m_bAutoReconnect);
         mainFrame.m_miAutoReconnect.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent event) { mainFrame.m_source.m_bAutoReconnect = mainFrame.m_miAutoReconnect.isSelected(); }
+            public void actionPerformed(ActionEvent event) { mainFrame.setWaitReconnect(mainFrame.m_miAutoReconnect.isSelected()); }
         });
+
+        // 기록 파일 하나의 최대 크기 (1.37): 넘으면 이름_2.txt, _3 …에 이어 기록
+        JMenu fileSize = new JMenu("기록 파일 크기");
+        fileSize.setToolTipText("adb 기록 파일이 이 크기를 넘으면 다음 파일(이름_2.txt, _3 …)에 이어서 기록합니다");
+        javax.swing.ButtonGroup groupSize = new javax.swing.ButtonGroup();
+        for(final int nMb : LOG_FILE_MB_CHOICES)
+        {
+            final javax.swing.JRadioButtonMenuItem mi = new javax.swing.JRadioButtonMenuItem(logFileSizeText(nMb));
+            mi.addActionListener(new ActionListener() {
+                public void actionPerformed(ActionEvent event) { mainFrame.setLogFileMaxMb(nMb); }
+            });
+            groupSize.add(mi);
+            fileSize.add(mi);
+            mainFrame.m_arMiLogFileSize.add(mi);
+        }
+        fileSize.addSeparator();
+        mainFrame.m_miLogFileSizeCustom = new javax.swing.JRadioButtonMenuItem("직접 입력…");
+        mainFrame.m_miLogFileSizeCustom.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.askLogFileMaxMb(); }
+        });
+        groupSize.add(mainFrame.m_miLogFileSizeCustom);
+        fileSize.add(mainFrame.m_miLogFileSizeCustom);
+        mainFrame.syncLogFileSizeMenu();
 
         file.add(fileOpen);
         file.add(m_recentMenu);
         file.addSeparator();
         file.add(mainFrame.m_miAutoReconnect);
+        file.add(fileSize);
         file.addSeparator();
         file.add(fileForceExit);
 
@@ -421,7 +445,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_bStatsGraphMem  = config.bStatsGraphMem;
         m_bStatsGraphTemp = config.bStatsGraphTemp;
         // 장치 통계의 기본은 측정 안 함: 자세히 창의 "측정 시작"을 눌러야 시작한다 (설정 파일의 DEVICE_STATS로 자동 시작하지 않음, 1.33)
-        m_source.m_bAutoReconnect = config.bAutoReconnect;
+        setWaitReconnect(config.bAutoReconnect);
+        m_source.setRotateMb(config.nLogFileMaxMb);
+        syncLogFileSizeMenu();
         m_tfTimeFrom.setText(config.strTimeFrom);
         m_tfTimeTo.setText(config.strTimeTo);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
@@ -465,6 +491,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.bStatsGraphMem  = m_bStatsGraphMem;
         m_config.bStatsGraphTemp = m_bStatsGraphTemp;
         m_config.bAutoReconnect = m_source.m_bAutoReconnect;
+        m_config.nLogFileMaxMb = m_source.rotateMb();
         m_config.nStatsIntervalSec = (int)(m_deviceStats.interval() / 1000);
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
         m_config.strTimeTo    = m_tfTimeTo.getText();
@@ -502,6 +529,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.38 : ADB 연결이 끊기면 기본으로 Stop. '연결 대기' 체크(Run/Stop 옆, File 메뉴)를 켜면 다시 연결될 때까지 기다렸다가 이어서 표시");
+        addDesc("Version 1.37 : File > 기록 파일 크기 — adb 기록 파일 하나의 최대 크기 선택 (10·50·100·200·500 MB·1 GB 또는 직접 입력, 기본 100 MB)");
+        addDesc("Version 1.36 : 엑셀 그래프에 메모리 점유 상위 5개 프로세스 차트 (측정마다 메모리 기준 top을 읽어 기록, '메모리 상위' 시트)");
         addDesc("Version 1.35 : 엑셀 저장에 '그래프' 시트 (CPU·메모리·온도 꺾은선 차트, 코어별 선이 켜져 있으면 코어별 차트도 — 셀을 참조하는 실제 엑셀 차트)");
         addDesc("Version 1.34 : View 메뉴를 '장치 통계 보기/숨기기' 하나로 (주기·측정 시간·엑셀 저장·자동 저장은 통계 창 안에서)");
         addDesc("Version 1.33 : 장치 통계 자세히 창에 측정 시작·종료 버튼 (기본은 측정 안 함 — 옵션을 정하고 '측정 시작', 종료하면 마지막 결과를 남김)");
@@ -1491,6 +1521,14 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_btnStop = new JButton("Stop");
         m_btnStop.setMargin(new Insets(0, 0, 0, 0));
         m_btnStop.setEnabled(false);
+        // 연결 대기 체크 (1.38): Run/Stop 옆. File 메뉴의 같은 항목과 함께 움직인다
+        m_chkWaitReconnect = new JCheckBox("연결 대기");
+        m_chkWaitReconnect.setMargin(new Insets(0, 2, 0, 0));
+        m_chkWaitReconnect.setToolTipText("<html>ADB 연결이 끊겼을 때:<br>끔(기본) — 바로 Stop<br>켬 — 다시 연결될 때까지 기다렸다가 이어서 로그를 보여 줌 (재부팅이면 표시 줄)</html>");
+        m_chkWaitReconnect.setSelected(m_source.m_bAutoReconnect);
+        m_chkWaitReconnect.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) { setWaitReconnect(m_chkWaitReconnect.isSelected()); }
+        });
         m_btnRun.addActionListener(m_alButtonListener);
         m_btnStop.addActionListener(m_alButtonListener);
         m_btnClear.addActionListener(m_alButtonListener);
@@ -1511,6 +1549,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         optionWest.add(m_btnRun);
         optionWest.add(m_tbtnPause);
         optionWest.add(m_btnStop);
+        optionWest.add(m_chkWaitReconnect);
 
         optionMenu.add(optionWest, BorderLayout.WEST);
         optionMenu.add(getSearchPanel(), BorderLayout.CENTER);
@@ -1880,6 +1919,71 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         }
         if(m_dlgStats != null) m_dlgStats.updatePeriod();
         updateStatsSettingsEnabled();
+    }
+
+    // ---- ADB 연결 대기 (1.38) ----
+    JCheckBox m_chkWaitReconnect;       // Run/Stop 옆 체크 (getOptionMenu에서 만듦)
+
+    // 끊겼을 때 기다릴지(true) 바로 Stop할지(false). 메뉴 항목과 체크박스를 함께 맞춘다.
+    void setWaitReconnect(boolean b)
+    {
+        m_source.m_bAutoReconnect = b;
+        if(m_miAutoReconnect != null && m_miAutoReconnect.isSelected() != b) m_miAutoReconnect.setSelected(b);
+        if(m_chkWaitReconnect != null && m_chkWaitReconnect.isSelected() != b) m_chkWaitReconnect.setSelected(b);
+    }
+
+    // ---- 기록 파일 크기 (1.37) ----
+    static final int[] LOG_FILE_MB_CHOICES = { 10, 50, 100, 200, 500, 1000 };
+    final List<javax.swing.JRadioButtonMenuItem> m_arMiLogFileSize = new ArrayList<javax.swing.JRadioButtonMenuItem>();   // File > 기록 파일 크기
+    javax.swing.JRadioButtonMenuItem m_miLogFileSizeCustom;
+
+    static String logFileSizeText(int nMb)
+    {
+        return nMb >= 1000 && nMb % 1000 == 0 ? (nMb / 1000) + " GB" : nMb + " MB";
+    }
+
+    // 기록 파일 최대 크기(MB)를 정한다. 수집 중이면 다음 줄부터 적용된다.
+    void setLogFileMaxMb(int nMb)
+    {
+        m_source.setRotateMb(Math.max(1, nMb));
+        syncLogFileSizeMenu();
+        setStatus("기록 파일 크기 : " + logFileSizeText(m_source.rotateMb()) + " — 넘으면 다음 파일(이름_2.txt, _3 …)에 이어서 기록"
+            + (m_source.isRunning() ? " (수집 중: 지금 파일부터 적용)" : ""));
+    }
+
+    // 메뉴 선택을 지금 값에 맞춘다. 목록에 없는 값이면 "직접 입력…"에 값을 보여 준다.
+    void syncLogFileSizeMenu()
+    {
+        int nMb = m_source.rotateMb();
+        boolean bListed = false;
+        for(int i = 0; i < m_arMiLogFileSize.size() && i < LOG_FILE_MB_CHOICES.length; i++)
+        {
+            boolean b = LOG_FILE_MB_CHOICES[i] == nMb;
+            m_arMiLogFileSize.get(i).setSelected(b);
+            bListed |= b;
+        }
+        if(m_miLogFileSizeCustom != null)
+        {
+            m_miLogFileSizeCustom.setSelected(!bListed);
+            m_miLogFileSizeCustom.setText(bListed ? "직접 입력…" : "직접 입력… (지금 " + logFileSizeText(nMb) + ")");
+        }
+    }
+
+    void askLogFileMaxMb()
+    {
+        String s = javax.swing.JOptionPane.showInputDialog(this, "기록 파일 하나의 최대 크기 (MB, 1 ~ 100000)\n넘으면 다음 파일(이름_2.txt, _3 …)에 이어서 기록합니다.", "" + m_source.rotateMb());
+        if(s == null) { syncLogFileSizeMenu(); return; }        // 취소: 선택 표시를 원래대로
+        try
+        {
+            int nMb = Integer.parseInt(s.trim().replaceAll("(?i)\\s*mb?$", ""));
+            if(nMb < 1 || nMb > 100000) throw new NumberFormatException();
+            setLogFileMaxMb(nMb);
+        }
+        catch(NumberFormatException e)
+        {
+            javax.swing.JOptionPane.showMessageDialog(this, "1에서 100000 사이의 숫자(MB)를 넣어 주세요 : " + s);
+            syncLogFileSizeMenu();
+        }
     }
 
     // ---- 자세히 창의 측정 시작·종료 (1.33) ----

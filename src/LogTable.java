@@ -199,7 +199,8 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         taLine.setEditable(false);
         taLine.setFont(getFont().deriveFont(m_fFontSize));
         taLine.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
-        fillStyled(taLine.getStyledDocument(), strLine, logInfo.m_TextColor);
+        // 끊김 표시 줄은 테이블에서 흰 글자지만, 이 창은 배경이 밝으니 진회색 글자로
+        fillStyled(taLine.getStyledDocument(), strLine, logInfo.m_bConnMarker ? LogCatParser.COLOR_MARKER_BG : logInfo.m_TextColor);
         taLine.setCaretPosition(0);
 
         // 줄바꿈한 높이를 구해 창 크기를 정한다. (짧으면 글자 폭에 맞춤)
@@ -639,7 +640,9 @@ public class LogTable extends JTable implements FocusListener, ActionListener
             LogInfo logInfo = ((LogFilterTableModel)getModel()).getRow(row);
             c.setFont(cellFont());
             c.setForeground(logInfo.m_TextColor);
-            if(isSelected)
+            if(logInfo.m_bConnMarker)       // 끊김·재연결 표시 줄: 진회색 배경 (북마크보다 우선, 1.38)
+                c.setBackground(isSelected ? LogCatParser.COLOR_MARKER_BG_SELECTED : LogCatParser.COLOR_MARKER_BG);
+            else if(isSelected)
             {
                 if(logInfo.m_bMarked)
                     c.setBackground(bookmarkColor(LogColor.COLOR_BOOKMARK2));

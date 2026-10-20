@@ -71,6 +71,7 @@ public class XlsxWriter
 
         public Chart setCategories(String strRef) { m_strCategoryRef = strRef; return this; }
         public Chart setRange(double dMin, double dMax) { m_dMin = dMin; m_dMax = dMax; return this; }
+        public Chart setAutoRange() { m_dMin = m_dMax = 0; return this; }      // 세로축 범위를 엑셀이 정함 (max == min이면 자동)
         public Chart addSeries(String strName, String strValuesRef, String strColorHex) { m_arSeries.add(new String[]{ strName, strValuesRef, strColorHex }); return this; }
     }
 
@@ -190,7 +191,9 @@ public class XlsxWriter
           .append("<c:numFmt formatCode=\"").append(esc(chart.m_strCategoryFormat)).append("\" sourceLinked=\"0\"/><c:majorTickMark val=\"out\"/><c:minorTickMark val=\"none\"/><c:tickLblPos val=\"low\"/>")
           // auto=0: 시각 셀을 날짜 축(하루 단위)으로 해석하지 않고 측정마다 한 칸씩 쓰는 문자 축으로 둔다
           .append("<c:crossAx val=\"500200\"/><c:crosses val=\"autoZero\"/><c:auto val=\"0\"/><c:lblAlgn val=\"ctr\"/><c:lblOffset val=\"100\"/><c:noMultiLvlLbl val=\"1\"/></c:catAx>")
-          .append("<c:valAx><c:axId val=\"500200\"/><c:scaling><c:orientation val=\"minMax\"/><c:max val=\"").append(chart.m_dMax).append("\"/><c:min val=\"").append(chart.m_dMin).append("\"/></c:scaling>")
+          .append("<c:valAx><c:axId val=\"500200\"/><c:scaling><c:orientation val=\"minMax\"/>")
+          .append(chart.m_dMax > chart.m_dMin ? "<c:max val=\"" + chart.m_dMax + "\"/><c:min val=\"" + chart.m_dMin + "\"/>" : "")
+          .append("</c:scaling>")
           .append("<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:majorGridlines/><c:numFmt formatCode=\"General\" sourceLinked=\"1\"/><c:majorTickMark val=\"out\"/><c:minorTickMark val=\"none\"/><c:tickLblPos val=\"nextTo\"/>")
           .append("<c:crossAx val=\"500100\"/><c:crosses val=\"autoZero\"/><c:crossBetween val=\"between\"/></c:valAx></c:plotArea>")
           .append("<c:legend><c:legendPos val=\"b\"/><c:overlay val=\"0\"/></c:legend><c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"gap\"/></c:chart></c:chartSpace>");

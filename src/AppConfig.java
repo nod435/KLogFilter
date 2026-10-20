@@ -40,7 +40,8 @@ public class AppConfig
     static final String INI_VIEW_COMPACT    = "VIEW_COMPACT";           // 화면 모드 (1.20)
     static final String INI_DEVICE_STATS    = "DEVICE_STATS";           // 장치 통계 표시 (1.21)
     static final String INI_STATS_INTERVAL  = "DEVICE_STATS_INTERVAL";  // 장치 통계 주기(초) (1.23)
-    static final String INI_AUTO_RECONNECT  = "AUTO_RECONNECT";         // 연결 끊기면 다시 연결 (1.24)
+    static final String INI_AUTO_RECONNECT  = "WAIT_RECONNECT";         // 연결 대기: 끊기면 다시 연결을 기다려 이어서 수집 (1.24). 1.38부터 기본 false(끊기면 Stop), 키 이름도 바꿔 예전 저장값은 쓰지 않음
+    static final String INI_LOG_FILE_MAX_MB = "LOG_FILE_MAX_MB";        // adb 기록 파일 하나의 최대 크기(MB), 기본 100 (1.37)
     static final String INI_STATS_DURATION  = "DEVICE_STATS_DURATION";  // 장치 통계 측정 시간(분), 0 = 계속 (1.27)
     static final String INI_STATS_EXCEL_AUTO = "DEVICE_STATS_EXCEL_AUTO"; // 측정 완료 시 엑셀 자동 저장 (1.28)
     static final String INI_STATS_GRAPH_CORES = "DEVICE_STATS_GRAPH_CORES"; // 그래프에 코어별 CPU 선 (1.29)
@@ -86,7 +87,8 @@ public class AppConfig
     boolean bRemoveRegex;
     boolean bCompactView;
     boolean bDeviceStats = false;       // 기본은 측정 안 함 (1.33). 시작 때 자동 측정에 쓰지 않고 기록만 한다
-    boolean bAutoReconnect = true;
+    boolean bAutoReconnect = false;     // 연결 대기 (기본 끔: 끊기면 Stop, 1.38)
+    int     nLogFileMaxMb = LogSource.DEFAULT_ROTATE_MB;    // 기록 파일 크기 MB (1.37)
     int     nStatsIntervalSec = (int)(DeviceStats.INTERVAL_MS / 1000);
     int     nStatsDurationMin = 0;
     boolean bStatsExcelAuto = true;     // 측정 완료 시 엑셀 자동 저장 (1.28)
@@ -130,7 +132,9 @@ public class AppConfig
         config.bRemoveRegex = "true".equalsIgnoreCase(p.getProperty(INI_REMOVE_REGEX, "false").trim());
         config.bCompactView = "true".equalsIgnoreCase(p.getProperty(INI_VIEW_COMPACT, "false").trim());
         config.bDeviceStats = "true".equalsIgnoreCase(p.getProperty(INI_DEVICE_STATS, "false").trim());
-        config.bAutoReconnect = !"false".equalsIgnoreCase(p.getProperty(INI_AUTO_RECONNECT, "true").trim());
+        config.bAutoReconnect = "true".equalsIgnoreCase(p.getProperty(INI_AUTO_RECONNECT, "false").trim());
+        int nLogMb = intOf(p, INI_LOG_FILE_MAX_MB, LogSource.DEFAULT_ROTATE_MB);
+        config.nLogFileMaxMb = nLogMb >= 1 && nLogMb <= 100000 ? nLogMb : LogSource.DEFAULT_ROTATE_MB;
         int nInterval = intOf(p, INI_STATS_INTERVAL, config.nStatsIntervalSec);
         config.nStatsIntervalSec = nInterval >= 1 && nInterval <= 3600 ? nInterval : config.nStatsIntervalSec;
         int nDuration = intOf(p, INI_STATS_DURATION, 0);
@@ -206,6 +210,7 @@ public class AppConfig
         p.setProperty(INI_STATS_GRAPH_MEM, "" + bStatsGraphMem);
         p.setProperty(INI_STATS_GRAPH_TEMP, "" + bStatsGraphTemp);
         p.setProperty(INI_AUTO_RECONNECT, "" + bAutoReconnect);
+        p.setProperty(INI_LOG_FILE_MAX_MB, "" + nLogFileMaxMb);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             p.setProperty(INI_HIGHLIGHT_ + nIndex,       arHighlight[nIndex] == null ? "" : arHighlight[nIndex]);

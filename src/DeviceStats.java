@@ -41,6 +41,7 @@ public class DeviceStats
         double[] m_arCore = new double[0];  // 코어별 사용률 % (-1이면 그 코어는 꺼져 있음)
         long     m_nMemTotalKb, m_nMemAvailKb;
         List<String[]> m_arTop = new ArrayList<String[]>();   // {PID, CPU%, 이름} 상위 프로세스 (자세히 보기 중일 때만)
+        List<String[]> m_arTopMem = new ArrayList<String[]>();   // {PID, MB, 이름} 메모리 상위 프로세스 (측정마다, 엑셀 그래프용) (1.36)
         long     m_nTime = System.currentTimeMillis();
         String   m_strBootId;               // /proc/sys/kernel/random/boot_id (재부팅하면 바뀜)
         String   m_strUptime;               // /proc/uptime 첫 값 (초)
@@ -324,6 +325,10 @@ public class DeviceStats
             if(top[1] == null)
                 sample.m_arTop = parseTop(top[0], 10);
         }
+        // 메모리 상위 프로세스 (1.36): toybox top은 RES(6번째 열) 기준, 예전 top은 rss 기준으로 정렬. 둘 중 되는 쪽을 쓴다.
+        String[] topMem = runAdb("top -b -n 1 -m 10 -s 6 2>/dev/null || top -n 1 -m 10 -s rss");
+        if(topMem[1] == null)
+            sample.m_arTopMem = parseTopMem(topMem[0], 10);
         return sample;
     }
 
@@ -512,6 +517,62 @@ public class DeviceStats
      * top 출력 → CPU 상위 {PID, CPU%, 이름}. 장치마다 형식이 달라 머리줄에서 PID·CPU 열 위치를 찾는다.
      * (toybox: "PID USER PR NI VIRT RES SHR S[%CPU] %MEM TIME+ ARGS", 예전: "PID PR CPU% S #THR VSS RSS PCY UID Name")
      */
+    /**
+     * top 출력 → 메모리 상위 {PID, MB, 이름} (큰 순서). 머리줄에서 PID와 RES(toybox) 또는 RSS(예전 top) 열을 찾는다.
+     * 값은 "312M", "5.1G", "123456K", 숫자만(K)을 MB로 바꾼다.
+     */
+    static List<String[]> parseTopMem(String strOut, int nMax)
+    {
+        List<String[]> arResult = new ArrayList<String[]>();
+        String[] arLine = strOut.split("\n");
+        int nPid = -1, nMem = -1, nName = -1, nHeader = -1;
+        for(int i = 0; i < arLine.length && nHeader < 0; i++)
+        {
+            String[] ar = arLine[i].replaceAll("\u001B\\[[0-9;]*[A-Za-z]", "").trim().split("\\s+");
+            int p = -1, m = -1, nShift = 0;
+            for(int k = 0; k < ar.length; k++)
+            {
+                String t = ar[k].toUpperCase();
+                if(t.equals("PID")) p = k;
+                else if((t.equals("RES") || t.equals("RSS")) && m < 0) m = k;
+                else if(t.startsWith("S[")) nShift = 1;     // toybox: "S[%CPU]"는 값 줄에서 두 칸
+            }
+            if(p >= 0 && m >= 0) { nPid = p; nMem = m; nName = ar.length - 1 + nShift; nHeader = i; }
+        }
+        if(nHeader < 0) return arResult;
+        List<double[]> arMb = new ArrayList<double[]>();
+        for(int i = nHeader + 1; i < arLine.length; i++)
+        {
+            String s = arLine[i].replaceAll("\u001B\\[[0-9;]*[A-Za-z]", "").trim();
+            if(s.length() == 0) continue;
+            String[] ar = s.split("\\s+");
+            if(ar.length <= Math.max(nPid, nMem) || !ar[nPid].matches("\\d+")) continue;
+            double dMb = memMb(ar[nMem]);
+            if(dMb < 0) continue;
+            StringBuilder sbName = new StringBuilder();
+            for(int k = Math.min(nName, ar.length - 1); k < ar.length; k++)
+                sbName.append(sbName.length() > 0 ? " " : "").append(ar[k]);
+            arResult.add(new String[]{ ar[nPid], String.format("%.1f", dMb), sbName.toString() });
+            arMb.add(new double[]{ dMb });
+        }
+        // 큰 순서로 (top이 이미 정렬하지만 형식에 따라 다를 수 있음)
+        List<String[]> arSorted = new ArrayList<String[]>(arResult);
+        java.util.Collections.sort(arSorted, (a, b) -> Double.compare(Double.parseDouble(b[1]), Double.parseDouble(a[1])));
+        return arSorted.size() > nMax ? new ArrayList<String[]>(arSorted.subList(0, nMax)) : arSorted;
+    }
+
+    // "312M" → 312, "5.1G" → 5222.4, "123456K" → 120.6, "4096" → 4 (K로 봄). 못 읽으면 -1
+    static double memMb(String s)
+    {
+        String t = s.trim().toUpperCase().replace(",", "");
+        if(t.length() == 0) return -1;
+        char c = t.charAt(t.length() - 1);
+        double dScale = c == 'G' ? 1024 : c == 'M' ? 1 : c == 'K' ? 1 / 1024.0 : c == 'B' ? 1 / 1048576.0 : -1;
+        String strNum = dScale < 0 ? t : t.substring(0, t.length() - 1);
+        if(dScale < 0) dScale = 1 / 1024.0;         // 단위 없으면 K
+        try { return Double.parseDouble(strNum) * dScale; } catch(NumberFormatException e) { return -1; }
+    }
+
     static List<String[]> parseTop(String strOut, int nMax)
     {
         List<String[]> arResult = new ArrayList<String[]>();

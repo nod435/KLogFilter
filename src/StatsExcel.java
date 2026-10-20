@@ -10,7 +10,10 @@ import java.util.Set;
 /**
  * 장치 통계 기록을 엑셀 파일(.xlsx)로 만든다. (1.28)
  * - "통계" 시트      : 측정마다 한 줄 — 시각, 경과, CPU %, 메모리, CPU 온도, 코어별 %, 센서별 온도, 비고(재부팅·오류)
+ * - "그래프" 시트      : 통계 시트를 참조하는 엑셀 차트 (CPU·메모리·온도, 코어별, 메모리 상위 5 프로세스)
+ * - "메모리 상위"      : 전체 기록에서 메모리 최고 점유가 큰 프로세스 5개의 시각별 MB (차트 자료)
  * - "상위 프로세스" : 자세히 창이 열려 있어 top을 읽은 측정의 CPU 상위 프로세스
+ * - "메모리 상위 프로세스" : 측정마다 읽은 메모리 상위 10개 {PID, MB, 이름}
  * - "정보" 시트      : 장치, 측정 시작·끝, 주기, 측정 시간, 측정 횟수, 재부팅 기록
  * 값을 못 읽은 칸(첫 측정의 CPU, 꺼진 코어, 센서 없음)은 비워 두어 엑셀에서 그래프를 그릴 때 끊기게 둔다.
  */
@@ -109,9 +112,10 @@ public class StatsExcel
         }
 
         // ---- 그래프 (1.35): 통계 시트의 셀을 참조하는 엑셀 꺾은선 차트 ----
+        XlsxWriter.Sheet sheetGraph = null;
         if(!arSample.isEmpty())
         {
-            XlsxWriter.Sheet sheetGraph = xlsx.addSheet("그래프");
+            sheetGraph = xlsx.addSheet("그래프");
             int nRow1 = 2, nRow2 = arSample.size() + 1;            // 머리줄 다음부터
             String strCat = XlsxWriter.ref(SHEET_STATS, 0, nRow1, nRow2);
             XlsxWriter.Chart chart = sheetGraph.addChart("CPU % · 메모리 % · CPU 온도 °C", 0, 22, 16).setCategories(strCat);
@@ -126,6 +130,34 @@ public class StatsExcel
             }
         }
 
+        // ---- 메모리 상위 5 프로세스 (1.36): 전체 기록에서 최고 점유가 큰 5개를 골라 시각별 MB 표 + 그래프 시트에 차트 ----
+        List<String> arTopMemName = topMemoryProcesses(arSample, 5);
+        if(!arTopMemName.isEmpty() && sheetGraph != null)
+        {
+            List<Object> arMemHeader = new ArrayList<Object>();
+            arMemHeader.add("시각");
+            for(String strName : arTopMemName) arMemHeader.add(strName + " (MB)");
+            XlsxWriter.Sheet sheetMem = xlsx.addSheet("메모리 상위", arMemHeader.toArray());
+            double[] arMemWidth = new double[arMemHeader.size()];
+            arMemWidth[0] = 20;
+            for(int i = 1; i < arMemWidth.length; i++) arMemWidth[i] = Math.min(40, Math.max(12, arTopMemName.get(i - 1).length() + 6));
+            sheetMem.setWidths(arMemWidth);
+            for(DeviceStats.Sample s : arSample)
+            {
+                Object[] ar = new Object[arMemHeader.size()];
+                ar[0] = new Date(s.m_nTime);
+                if(s.m_strError == null)
+                    for(int i = 0; i < arTopMemName.size(); i++)
+                        ar[i + 1] = memOf(s, arTopMemName.get(i));
+                sheetMem.addRow(ar);
+            }
+            int nRow1 = 2, nRow2 = arSample.size() + 1;
+            XlsxWriter.Chart chartMem = sheetGraph.addChart("메모리 상위 5 프로세스 (MB)", sheetGraph.m_arChart.size() * 24, 22, 16)
+                .setCategories(XlsxWriter.ref("메모리 상위", 0, nRow1, nRow2)).setAutoRange();
+            for(int i = 0; i < arTopMemName.size(); i++)
+                chartMem.addSeries(arTopMemName.get(i), XlsxWriter.ref("메모리 상위", i + 1, nRow1, nRow2), COLOR_CORES[i % COLOR_CORES.length]);
+        }
+
         // ---- 상위 프로세스 ----
         XlsxWriter.Sheet sheetTop = xlsx.addSheet("상위 프로세스", "시각", "PID", "CPU %", "프로세스");
         sheetTop.setWidths(20, 10, 10, 50);
@@ -134,6 +166,14 @@ public class StatsExcel
             if(s.m_strError != null) continue;
             for(String[] t : s.m_arTop)
                 sheetTop.addRow(new Date(s.m_nTime), number(t[0]), number(t[1]), t[2]);
+        }
+        XlsxWriter.Sheet sheetTopMem = xlsx.addSheet("메모리 상위 프로세스", "시각", "PID", "메모리 MB", "프로세스");
+        sheetTopMem.setWidths(20, 10, 12, 50);
+        for(DeviceStats.Sample s : arSample)
+        {
+            if(s.m_strError != null) continue;
+            for(String[] t : s.m_arTopMem)
+                sheetTopMem.addRow(new Date(s.m_nTime), number(t[0]), number(t[1]), t[2]);
         }
 
         // ---- 정보 ----
@@ -166,6 +206,43 @@ public class StatsExcel
             sheetInfo.addRow("주의", "기록이 " + DeviceStats.RECORD_MAX + "개를 넘어 오래된 측정은 빠졌습니다");
         sheetInfo.addRow("저장 시각", new Date());
         return xlsx;
+    }
+
+    /** 전체 기록에서 메모리 최고 점유(MB)가 큰 프로세스 이름 nCount개 (큰 순서) */
+    static List<String> topMemoryProcesses(List<DeviceStats.Sample> arSample, int nCount)
+    {
+        java.util.Map<String, Double> mapPeak = new java.util.HashMap<String, Double>();
+        for(DeviceStats.Sample s : arSample)
+        {
+            if(s.m_strError != null) continue;
+            for(String[] t : s.m_arTopMem)
+            {
+                double v = parse(t[1]);
+                Double dPrev = mapPeak.get(t[2]);
+                if(dPrev == null || v > dPrev) mapPeak.put(t[2], v);
+            }
+        }
+        List<String> arName = new ArrayList<String>(mapPeak.keySet());
+        java.util.Collections.sort(arName, (a, b) -> Double.compare(mapPeak.get(b), mapPeak.get(a)));
+        return arName.size() > nCount ? new ArrayList<String>(arName.subList(0, nCount)) : arName;
+    }
+
+    // 그 측정에서 이름이 같은 프로세스의 메모리 MB (여러 개면 가장 큰 것). 없으면 null (차트에서 끊김)
+    static Double memOf(DeviceStats.Sample s, String strName)
+    {
+        Double dMax = null;
+        for(String[] t : s.m_arTopMem)
+            if(t[2].equals(strName))
+            {
+                double v = parse(t[1]);
+                if(dMax == null || v > dMax) dMax = v;
+            }
+        return dMax;
+    }
+
+    static double parse(String s)
+    {
+        try { return Double.parseDouble(s); } catch(NumberFormatException e) { return 0; }
     }
 
     static Double round1(double v)
