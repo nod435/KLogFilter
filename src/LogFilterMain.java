@@ -529,6 +529,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         addDesc(VERSION);
         addDesc("");
+        addDesc("Version 1.39 : 단축키 정리 — F2 아래 북마크, F3 위 북마크, F4 검색창, Esc 검색 중단·로그 목록으로 (검색 다음/이전은 검색창에서 Enter / Shift+Enter), 로그 목록에서 Tab은 다른 항목으로");
         addDesc("Version 1.38 : ADB 연결이 끊기면 기본으로 Stop. '연결 대기' 체크(Run/Stop 옆, File 메뉴)를 켜면 다시 연결될 때까지 기다렸다가 이어서 표시");
         addDesc("Version 1.37 : File > 기록 파일 크기 — adb 기록 파일 하나의 최대 크기 선택 (10·50·100·200·500 MB·1 GB 또는 직접 입력, 기본 100 MB)");
         addDesc("Version 1.36 : 엑셀 그래프에 메모리 점유 상위 5개 프로세스 차트 (측정마다 메모리 기준 top을 읽어 기록, '메모리 상위' 시트)");
@@ -589,10 +590,10 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         addDesc("");
         addDesc("[Bookmark]");
         addDesc("Ctrl+F2/double click: bookmark toggle");
-        addDesc("F2 : next bookmark, Shift+F2 : pre bookmark");
+        addDesc("F2 : next bookmark (down), F3 : previous bookmark (up), F4 : search box, Esc : back to the log list");
         addDesc("");
         addDesc("[Search] (필터와 별개로 메시지에서 찾기)");
-        addDesc("Ctrl+F : 검색창으로, Enter/F3 : 다음, Shift+Enter/Shift+F3 : 이전");
+        addDesc("F4 (Ctrl+F) : 검색창으로, Enter : 다음, Shift+Enter : 이전, Esc : 로그 목록으로");
         addDesc("");
         addDesc("[Copy]");
         addDesc("Ctrl+c : row copy");
@@ -1567,7 +1568,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     Component getSearchPanel()
     {
         m_tfSearch = new JTextField();
-        m_tfSearch.setToolTipText("메시지 검색 (여러 개는 | 로 구분, 대소문자 무시) — Enter/F3: 다음, Shift+Enter/Shift+F3: 이전, Ctrl+F: 여기로");
+        m_tfSearch.setToolTipText("메시지 검색 (여러 개는 | 로 구분, 대소문자 무시) — Enter: 다음, Shift+Enter: 이전, F4(또는 Ctrl+F): 여기로, Esc: 로그 목록으로");
         installUndoRedo(m_tfSearch);
         installInputHistory(m_tfSearch, "SEARCH");
         // 입력하는 대로 검색어를 테이블에 빨간색으로 표시 (재필터 없이 다시 그리기만)
@@ -1602,14 +1603,14 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
 
         m_btnSearchPrev = new JButton("▲");
         m_btnSearchPrev.setMargin(new Insets(0, 4, 0, 4));
-        m_btnSearchPrev.setToolTipText("이전 찾기 (Shift+F3)");
+        m_btnSearchPrev.setToolTipText("이전 찾기 (검색창에서 Shift+Enter)");
         m_btnSearchPrev.addActionListener(new ActionListener()
         {
             public void actionPerformed(ActionEvent e) { search(false); }
         });
         m_btnSearchNext = new JButton("▼");
         m_btnSearchNext.setMargin(new Insets(0, 4, 0, 4));
-        m_btnSearchNext.setToolTipText("다음 찾기 (F3)");
+        m_btnSearchNext.setToolTipText("다음 찾기 (검색창에서 Enter)");
         m_btnSearchNext.addActionListener(new ActionListener()
         {
             public void actionPerformed(ActionEvent e) { search(true); }
@@ -1628,13 +1629,16 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     }
 
     // 창 어디서든 Ctrl+F(검색창으로), F3(다음), Shift+F3(이전)
+    // 창 어디서든 (1.39): F4·Ctrl+F 검색창으로, F2 아래 북마크, F3 위 북마크, Esc 하던 일을 멈추고 로그 목록으로, F12 화면 전환
     void installSearchKeys()
     {
         javax.swing.InputMap  im = getRootPane().getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW);
         javax.swing.ActionMap am = getRootPane().getActionMap();
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK), "SearchFocus");
-        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0), "SearchNext");
-        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, InputEvent.SHIFT_DOWN_MASK), "SearchPrevKey");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F4, 0), "SearchFocus");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F2, 0), "BookmarkNext");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0), "BookmarkPrev");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "EscapeToLog");
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), "ToggleView");
         am.put("ToggleView", new AbstractAction()
         {
@@ -1646,16 +1650,34 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             private static final long serialVersionUID = 1L;
             public void actionPerformed(ActionEvent e) { setFindFocus(); }
         });
-        am.put("SearchNext", new AbstractAction()
+        am.put("BookmarkNext", new AbstractAction()
         {
             private static final long serialVersionUID = 1L;
-            public void actionPerformed(ActionEvent e) { search(true); }
+            public void actionPerformed(ActionEvent e) { m_tbLogTable.gotoNextBookmark(); m_tbLogTable.requestFocusInWindow(); }
         });
-        am.put("SearchPrevKey", new AbstractAction()
+        am.put("BookmarkPrev", new AbstractAction()
         {
             private static final long serialVersionUID = 1L;
-            public void actionPerformed(ActionEvent e) { search(false); }
+            public void actionPerformed(ActionEvent e) { m_tbLogTable.gotoPreBookmark(); m_tbLogTable.requestFocusInWindow(); }
         });
+        am.put("EscapeToLog", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e) { escapeToLog(); }
+        });
+    }
+
+    // Esc (1.39): 진행 중인 검색을 멈추고 포커스를 로그 목록으로 되돌린다. (목록 팝업이 열려 있으면 팝업이 먼저 Esc를 받아 닫힌다)
+    void escapeToLog()
+    {
+        LogSearch search = m_search;
+        if(search != null)
+        {
+            search.cancel();
+            m_search = null;
+            setStatus("검색을 멈췄습니다 (Esc)");
+        }
+        m_tbLogTable.requestFocusInWindow();
     }
 
     static final long SEARCH_PROGRESS_MS = 200;
@@ -1670,7 +1692,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         final String[] arToken = FilterToken.split(strText);
         if(arToken.length == 0)
         {
-            setStatus("검색어를 입력하세요 (Ctrl+F)");
+            setStatus("검색어를 입력하세요 (F4)");
             m_tfSearch.requestFocusInWindow();
             return;
         }

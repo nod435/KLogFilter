@@ -59,6 +59,9 @@ public class LogTable extends JTable implements FocusListener, ActionListener
         m_arbShow       = new boolean[LogFilterTableModel.COMUMN_MAX];
         init();
         setColumnWidth();
+        // Tab / Shift+Tab은 셀 사이가 아니라 다른 항목으로 포커스를 옮긴다 (JTable 기본은 Tab을 셀 이동에 씀, 1.39)
+        setFocusTraversalKeys(java.awt.KeyboardFocusManager.FORWARD_TRAVERSAL_KEYS, null);
+        setFocusTraversalKeys(java.awt.KeyboardFocusManager.BACKWARD_TRAVERSAL_KEYS, null);
     }
 
     void setFilterEngine(FilterEngine engine)
@@ -496,7 +499,7 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                         }
                         repaint();
                     }
-                    // F2: 다음 북마크, Shift+F2: 이전 북마크 (F3은 메시지 검색에 씀)
+                    // F2: 아래(다음) 북마크. Shift+F2는 예전처럼 위(이전) 북마크 (1.39: 위는 F3)
                     else if(!e.isControlDown() && e.getID() == KeyEvent.KEY_PRESSED)
                     {
                         if(e.isShiftDown())
@@ -506,9 +509,14 @@ public class LogTable extends JTable implements FocusListener, ActionListener
                     }
                     return true;
                 case KeyEvent.VK_F3:
-                    // F3: 다음 찾기, Shift+F3: 이전 찾기 (메시지 검색)
+                    // F3: 위(이전) 북마크 (1.39. 메시지 검색의 다음/이전은 검색창에서 Enter / Shift+Enter)
                     if(e.getID() == KeyEvent.KEY_PRESSED)
-                        m_LogFilterMain.search(!e.isShiftDown());
+                        gotoPreBookmark();
+                    return true;
+                case KeyEvent.VK_F4:
+                    // F4: 검색 입력창으로 (1.39)
+                    if(e.getID() == KeyEvent.KEY_PRESSED)
+                        m_LogFilterMain.setFindFocus();
                     return true;
                 case KeyEvent.VK_F:
                     if(e.getID() == KeyEvent.KEY_PRESSED && ( (e.getModifiers() & InputEvent.CTRL_MASK) == InputEvent.CTRL_MASK))

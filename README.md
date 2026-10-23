@@ -51,8 +51,10 @@ dist\KLogFilter.bat [로그파일]   → 실행 (또는 java -jar dist\KLogFilte
 | 동작 | 방법 |
 |---|---|
 | 북마크 토글 | 더블클릭 또는 <kbd>Ctrl</kbd>+<kbd>F2</kbd> (Mark 컬럼에서 메모 입력) |
-| 북마크 이동 | <kbd>F2</kbd> 다음 / <kbd>Shift</kbd>+<kbd>F2</kbd> 이전 |
-| 메시지 검색 | <kbd>Ctrl</kbd>+<kbd>F</kbd> 검색창, <kbd>F3</kbd> 다음 / <kbd>Shift</kbd>+<kbd>F3</kbd> 이전 |
+| 북마크 이동 | <kbd>F2</kbd> 아래(다음) / <kbd>F3</kbd> 위(이전) |
+| 메시지 검색 | <kbd>F4</kbd>(또는 <kbd>Ctrl</kbd>+<kbd>F</kbd>) 검색창으로, 검색창에서 <kbd>Enter</kbd> 다음 / <kbd>Shift</kbd>+<kbd>Enter</kbd> 이전 |
+| 로그 목록으로 | <kbd>Esc</kbd> — 진행 중인 검색을 멈추고 포커스를 로그 목록으로 |
+| 로그 목록에서 나가기 | <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> — 다른 항목으로 포커스 이동 (셀 사이 이동 아님) |
 | Full / Compact 화면 | <kbd>F12</kbd> |
 | 태그 필터에 추가 | Tag 셀에서 <kbd>Alt</kbd>+좌클릭(Show) / <kbd>Alt</kbd>+우클릭(Remove) |
 | 복사 | <kbd>Ctrl</kbd>+<kbd>C</kbd>: 선택 행의 보이는 컬럼 / 우클릭: 셀 하나 |
