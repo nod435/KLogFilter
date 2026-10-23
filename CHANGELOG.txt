@@ -3,6 +3,7 @@ KLogFilter 버전 이력
 버전 규칙: 큰버전.중간버전.빌드날짜시간(yyyyMMddHHmmss). 중간버전은 신규 기능마다 +1.
 새 버전을 추가하면 이 파일의 맨 위에 적는다. (시작 화면에는 버전 이름만 표시된다)
 
+Version 1.40 : 장치 화면 캡처 (F9, View 메뉴, Device select의 버튼) — adb screencap으로 PNG를 받아 실행 폴더에 Screen_날짜_시각.png로 저장, 미리보기 창(다시 캡처·클립보드 복사·다른 이름으로 저장), 수집 중이면 로그에 표시 줄. Linux/macOS용 KLogFilter.sh·build.sh 추가
 Version 1.39 : 단축키 정리 — F2 아래 북마크, F3 위 북마크, F4 검색창, Esc 검색 중단·로그 목록으로 (검색 다음/이전은 검색창에서 Enter / Shift+Enter), 로그 목록에서 Tab은 다른 항목으로
 Version 1.38 : ADB 연결이 끊기면 기본으로 Stop. '연결 대기' 체크(Run/Stop 옆, File 메뉴)를 켜면 다시 연결될 때까지 기다렸다가 이어서 표시. 끊김·재연결·재부팅 표시 줄과 상태 문구는 영문, 끊김·재연결 줄은 진회색 배경에 흰 글자
 Version 1.37 : File > 기록 파일 크기 — adb 기록 파일 하나의 최대 크기 선택 (10·50·100·200·500 MB·1 GB 또는 직접 입력, 기본 100 MB)
@@ -66,4 +67,5 @@ Version 0.3 : 단말 선택 안되는 문제 수정
 [Search]    F4 (Ctrl+F) : 검색창으로, Enter : 다음, Shift+Enter : 이전, Esc : 로그 목록으로
 [Copy]      Ctrl+C : 선택한 줄 복사, 오른쪽 클릭 : 로그 전체 보기 (로그 전체 복사 / 셀 값 복사)
 [View]      F12 : Full / Compact 전환, Tab / Shift+Tab : 로그 목록에서 다른 항목으로
+[Device]    F9 : 장치 화면 캡처
 자세한 사용법은 docs/USER_GUIDE_*.html을 보세요.

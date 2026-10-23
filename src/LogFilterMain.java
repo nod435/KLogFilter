@@ -272,6 +272,13 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             public void actionPerformed(ActionEvent event) { mainFrame.toggleStatsDialog(); }
         });
         view.add(mainFrame.m_miStatsView);
+        // 장치 화면 캡처 (1.40)
+        JMenuItem viewCapture = new JMenuItem("장치 화면 캡처    F9");
+        viewCapture.setToolTipText("adb로 장치 화면을 PNG로 받아 실행 폴더에 Screen_날짜_시각.png로 저장하고 미리보기 (수집 중이면 로그에 표시 줄)");
+        viewCapture.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.captureScreen(); }
+        });
+        view.add(viewCapture);
         mainFrame.updateStatsViewMenu();
         menubar.add(view);
         mainFrame.setJMenuBar(menubar);
@@ -547,6 +554,9 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         addDesc("");
         addDesc("[View]");
         addDesc("F12 : Full / Compact 전환,  Tab / Shift+Tab : 로그 목록에서 다른 항목으로,  Home / End : 첫 줄 / 마지막 줄");
+        addDesc("");
+        addDesc("[Device]");
+        addDesc("F9 : 장치 화면 캡처 (실행 폴더에 Screen_날짜_시각.png, 수집 중이면 로그에 표시 줄)");
         addDesc("");
         addDesc("버전 이력 : CHANGELOG.txt,  사용 가이드 : docs/USER_GUIDE_*.html");
     }
@@ -835,6 +845,14 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         jpCmd.add(m_btnDevice);
 
         jpOptionDevice.add(jpCmd, BorderLayout.NORTH);
+        // 장치 화면 캡처 버튼 (1.40): 목록 아래
+        m_btnCapture = new JButton("화면 캡처 (F9)");
+        m_btnCapture.setMargin(new Insets(1, 4, 1, 4));
+        m_btnCapture.setToolTipText("adb로 장치 화면을 PNG로 받아 실행 폴더에 저장하고 미리보기");
+        m_btnCapture.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) { captureScreen(); }
+        });
+        jpOptionDevice.add(m_btnCapture, BorderLayout.SOUTH);
 
         m_lDeviceList = new JList(listModel);
         JScrollPane vbar = new JScrollPane(m_lDeviceList);
@@ -1591,6 +1609,12 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0), "BookmarkPrev");
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "EscapeToLog");
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), "ToggleView");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F9, 0), "CaptureScreen");
+        am.put("CaptureScreen", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e) { captureScreen(); }
+        });
         am.put("ToggleView", new AbstractAction()
         {
             private static final long serialVersionUID = 1L;
@@ -1903,6 +1927,52 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_source.m_bAutoReconnect = b;
         if(m_miAutoReconnect != null && m_miAutoReconnect.isSelected() != b) m_miAutoReconnect.setSelected(b);
         if(m_chkWaitReconnect != null && m_chkWaitReconnect.isSelected() != b) m_chkWaitReconnect.setSelected(b);
+    }
+
+    // ---- 장치 화면 캡처 (1.40) ----
+    JButton               m_btnCapture;
+    ScreenCapture.Dialog  m_dlgCapture;
+    volatile boolean      m_bCapturing;
+
+    // adb로 장치 화면을 받아 실행 폴더에 Screen_날짜_시각.png로 저장하고 미리보기 창에 보여 준다. 수집 중이면 로그에 표시 줄도 넣는다.
+    void captureScreen()
+    {
+        if(m_bCapturing) { setStatus("화면 캡처 중입니다…"); return; }
+        final String strDevice = m_strSelectedDevice;
+        m_bCapturing = true;
+        setStatus("장치 화면을 캡처하는 중…" + (strDevice != null && strDevice.length() > 0 ? " (" + strDevice + ")" : ""));
+        if(m_btnCapture != null) m_btnCapture.setEnabled(false);
+        new Thread(new Runnable()
+        {
+            public void run()
+            {
+                try
+                {
+                    final long nTime = System.currentTimeMillis();
+                    final File file = ScreenCapture.captureToFile(strDevice, new File(System.getProperty("user.dir")), nTime);
+                    final java.awt.image.BufferedImage img = ScreenCapture.decode(java.nio.file.Files.readAllBytes(file.toPath()));
+                    final boolean bMarked = m_source.addMarker("-------- Screen captured : " + file.getName() + " --------");
+                    runOnEdt(new Runnable()
+                    {
+                        public void run()
+                        {
+                            if(m_dlgCapture == null) m_dlgCapture = new ScreenCapture.Dialog(LogFilterMain.this);
+                            m_dlgCapture.show(img, file);
+                            setStatus("화면 캡처 저장 : " + file.getAbsolutePath() + " (" + img.getWidth() + "×" + img.getHeight() + ")" + (bMarked ? " — 로그에 표시 줄을 넣었습니다" : ""));
+                        }
+                    });
+                }
+                catch(final Exception e)
+                {
+                    runOnEdt(new Runnable() { public void run() { setStatus("화면 캡처 실패 : " + e.getMessage()); } });
+                }
+                finally
+                {
+                    m_bCapturing = false;
+                    runOnEdt(new Runnable() { public void run() { if(m_btnCapture != null) m_btnCapture.setEnabled(true); } });
+                }
+            }
+        }, "ScreenCapture").start();
     }
 
     // ---- 기록 파일 크기 (1.37) ----

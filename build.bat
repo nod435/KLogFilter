@@ -38,6 +38,7 @@ if errorlevel 1 (
 copy /y LogFilterCmd.ini dist\ >nul
 copy /y CHANGELOG.txt dist\ >nul
 copy /y launcher\KLogFilter.bat dist\ >nul
+copy /y launcher\KLogFilter.sh dist\ >nul
 
 echo.
 echo Built KLogFilter %VERSION%  -^>  dist\KLogFilter.jar

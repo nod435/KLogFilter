@@ -507,7 +507,16 @@ public class LogSource
         m_arPendingMarker.add(new String[]{ strBootId, strUptime });
     }
 
-    // AdbProcess 스레드: 다른 곳에서 요청한 재부팅 표시를 쓴다
+    // 다른 스레드가 요청한 일반 표시 줄 (예: 화면 캡처, 1.40). 수집 중이 아니면 무시한다.
+    final List<String> m_arPendingText = java.util.Collections.synchronizedList(new ArrayList<String>());
+    boolean addMarker(String strText)
+    {
+        if(m_feed == null || !isRunning()) return false;
+        m_arPendingText.add(strText);
+        return true;
+    }
+
+    // AdbProcess 스레드: 다른 곳에서 요청한 재부팅·일반 표시를 쓴다
     void writePendingMarkers(LiveFeed feed)
     {
         while(!m_arPendingMarker.isEmpty())
@@ -515,6 +524,8 @@ public class LogSource
             String[] boot = m_arPendingMarker.remove(0);
             writeRebootMarker(feed, boot);
         }
+        while(!m_arPendingText.isEmpty())
+            writeMarker(feed, m_arPendingText.remove(0), null);
     }
 
     /**
