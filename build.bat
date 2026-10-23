@@ -36,6 +36,7 @@ if errorlevel 1 (
   exit /b 1
 )
 copy /y LogFilterCmd.ini dist\ >nul
+copy /y CHANGELOG.txt dist\ >nul
 copy /y launcher\KLogFilter.bat dist\ >nul
 
 echo.
