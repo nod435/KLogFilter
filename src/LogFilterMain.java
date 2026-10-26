@@ -729,9 +729,56 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             T.e("file == null");
             return;
         }
-        m_source.parseFile(file, "UTF-8".equals(m_comboEncode.getSelectedItem()));
         if(m_recentMenu != null)
             m_recentMenu.addEntry(file.getAbsolutePath());
+        // .gz 로그는 압축을 풀어 같은 폴더(쓸 수 없으면 임시 폴더)에 두고 그 파일을 연다 (1.41)
+        if(GzLog.isGzip(file))
+        {
+            openGzip(file);
+            return;
+        }
+        m_source.parseFile(file, "UTF-8".equals(m_comboEncode.getSelectedItem()));
+    }
+
+    // ---- .gz 로그 자동 풀기 (1.41) ----
+    volatile Thread m_thGunzip;
+
+    void openGzip(final File gz)
+    {
+        final Thread th = new Thread(new Runnable()
+        {
+            public void run()
+            {
+                try
+                {
+                    final File out = GzLog.extract(gz, new GzLog.Progress()
+                    {
+                        public boolean onProgress(long nRead, long nTotal, long nWritten)
+                        {
+                            final String s = "압축 푸는 중 : " + gz.getName() + "  " + (nTotal > 0 ? (nRead * 100 / nTotal) + "%" : "") + " (" + (nWritten >> 20) + " MB)";
+                            setStatus(s);
+                            return m_thGunzip == Thread.currentThread();
+                        }
+                    });
+                    if(m_thGunzip != Thread.currentThread()) return;
+                    runOnEdt(new Runnable()
+                    {
+                        public void run()
+                        {
+                            m_source.parseFile(out, "UTF-8".equals(m_comboEncode.getSelectedItem()));
+                            setStatus(gz.getName() + " → " + out.getAbsolutePath() + " 를 열었습니다");
+                        }
+                    });
+                }
+                catch(final Exception e)
+                {
+                    setStatus(".gz 파일을 풀 수 없습니다 : " + gz.getName() + " (" + e.getMessage() + ")");
+                }
+            }
+        }, "Gunzip");
+        m_thGunzip = th;
+        setStatus("압축 푸는 중 : " + gz.getName());
+        th.start();
     }
 
     void startProcess()
