@@ -761,12 +761,19 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                         }
                     });
                     if(m_thGunzip != Thread.currentThread()) return;
+                    // 푼 파일을 원본으로 (1.42, 1.43): 원본 gzip을 지우고, 확장자 없는 gzip(logcat.10)은 푼 파일을 원본 이름으로 바꾼다
+                    final File replaced = GzLog.replaceOriginal(gz, out);
+                    final File open = replaced != null ? replaced : out;
                     runOnEdt(new Runnable()
                     {
                         public void run()
                         {
-                            m_source.parseFile(out, "UTF-8".equals(m_comboEncode.getSelectedItem()));
-                            setStatus(gz.getName() + " → " + out.getAbsolutePath() + " 를 열었습니다");
+                            if(m_recentMenu != null && replaced != null && !replaced.getAbsolutePath().equalsIgnoreCase(gz.getAbsolutePath()))
+                                m_recentMenu.replaceEntry(gz.getAbsolutePath(), replaced.getAbsolutePath());
+                            m_source.parseFile(open, "UTF-8".equals(m_comboEncode.getSelectedItem()));
+                            setStatus(replaced == null ? gz.getName() + " → " + out.getName() + " 로 풀었습니다 (원본 폴더에 쓸 수 없어 임시 폴더에 풂, 원본은 그대로)"
+                                    : open.getName().equals(gz.getName()) ? gz.getName() + " 의 압축을 풀어 같은 이름으로 바꿨습니다"
+                                    : gz.getName() + " → " + open.getName() + " 로 풀고 원본 .gz를 지웠습니다");
                         }
                     });
                 }

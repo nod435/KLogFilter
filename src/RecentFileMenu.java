@@ -89,6 +89,25 @@ public abstract class RecentFileMenu extends JMenu{
 	}
 
 	/**
+	 * Replaces an entry (e.g. a .gz file that was extracted and removed) with a new path at the top. (KLogFilter 1.42)
+	 */
+	public void replaceEntry(String oldPath,String newPath){
+		// remove the old path and close the gap, then add the new path on top
+		String[] kept=new String[this.itemCount];
+		int n=0;
+		for(int index=0;index<this.itemCount;index++){
+			if(!this.recentEntries[index].equalsIgnoreCase(oldPath)){
+				kept[n++]=this.recentEntries[index];
+			}
+		}
+		while(n<this.itemCount){
+			kept[n++]=defaultText;
+		}
+		this.recentEntries=kept;
+		this.addEntry(newPath,true);
+	}
+
+	/**
 	 * Adds a new entry to the menu. Moves everything "down" one row.
 	 * @param filePath The new path to add.
 	 * @param updateFile Whether to update the saved file, only false when called from constructor.
