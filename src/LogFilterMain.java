@@ -279,6 +279,20 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
             public void actionPerformed(ActionEvent event) { mainFrame.captureScreen(); }
         });
         view.add(viewCapture);
+        // 장치 프로퍼티 (1.44)
+        JMenuItem viewProp = new JMenuItem("장치 프로퍼티    F8");
+        viewProp.setToolTipText("연결된 장치의 프로퍼티(getprop)를 실시간으로 보기 · 저장 · 값 바꾸기");
+        viewProp.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.showDeviceProps(); }
+        });
+        view.add(viewProp);
+        // 프로세스 상태 (1.45)
+        JMenuItem viewPs = new JMenuItem("프로세스 상태 (PS)    F7");
+        viewPs.setToolTipText("연결된 장치의 프로세스 목록(ps)과 Status·Info·Stat·Maps·Stack·FD, Kill");
+        viewPs.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent event) { mainFrame.showProcesses(); }
+        });
+        view.add(viewPs);
         mainFrame.updateStatsViewMenu();
         menubar.add(view);
         mainFrame.setJMenuBar(menubar);
@@ -454,6 +468,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         // 장치 통계의 기본은 측정 안 함: 자세히 창의 "측정 시작"을 눌러야 시작한다 (설정 파일의 DEVICE_STATS로 자동 시작하지 않음, 1.33)
         setWaitReconnect(config.bAutoReconnect);
         m_source.setRotateMb(config.nLogFileMaxMb);
+        m_nPsIntervalSec = config.nPsIntervalSec;  m_bPsAuto = config.bPsAuto;
+        m_nPropIntervalSec = config.nPropIntervalSec;  m_bPropAuto = config.bPropAuto;  m_strUpPath = config.strUpPath;
         syncLogFileSizeMenu();
         m_tfTimeFrom.setText(config.strTimeFrom);
         m_tfTimeTo.setText(config.strTimeTo);
@@ -499,6 +515,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.bStatsGraphTemp = m_bStatsGraphTemp;
         m_config.bAutoReconnect = m_source.m_bAutoReconnect;
         m_config.nLogFileMaxMb = m_source.rotateMb();
+        m_config.nPsIntervalSec = m_nPsIntervalSec;  m_config.bPsAuto = m_bPsAuto;
+        m_config.nPropIntervalSec = m_nPropIntervalSec;  m_config.bPropAuto = m_bPropAuto;  m_config.strUpPath = m_strUpPath;
         m_config.nStatsIntervalSec = (int)(m_deviceStats.interval() / 1000);
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
         m_config.strTimeTo    = m_tfTimeTo.getText();
@@ -557,6 +575,8 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         addDesc("");
         addDesc("[Device]");
         addDesc("F9 : 장치 화면 캡처 (실행 폴더에 Screen_날짜_시각.png, 수집 중이면 로그에 표시 줄)");
+        addDesc("F8 : 장치 프로퍼티 (getprop 실시간 보기, 저장·열기, Edit·Add로 setprop, Filter)");
+        addDesc("F7 : 프로세스 상태 PS (Refresh·Kill·Status·Info·Stat·Maps·Stack·FD, Thread, Name·PID·User 필터)");
         addDesc("");
         addDesc("버전 이력 : CHANGELOG.txt,  사용 가이드 : docs/USER_GUIDE_*.html");
     }
@@ -585,11 +605,24 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                 int nSelected    = m_tbLogTable.getSelectedRow();
                 boolean bAtEnd   = nSelected == -1 || nSelected == nOldCount - 1;
 
-                if(m_tmLogTableModel.getData() != view.arList)
+                LogList oldList = m_tmLogTableModel.getData();
+                if(oldList != view.arList)
                 {
+                    // 같은 로그의 다른 목록으로 교체(재필터·최근 줄 먼저 판정 뒤 합치기)면 보던 자리를 지킨다 (1.43):
+                    // 끝을 보고 있었으면 새 목록의 끝으로, 줄을 선택하고 있었으면 그 줄로.
+                    boolean bSameLog = oldList != null && nOldCount > 0 && storeOf(oldList) == storeOf(view.arList);
+                    int nKeepLine = bSameLog && !bAtEnd && nSelected >= 0 && nSelected < oldList.size() ? oldList.lineIndexOf(nSelected) : -1;
                     // 다른 목록으로 교체: 전체 다시 그리기 (선택은 해제됨)
                     m_tmLogTableModel.setData(view.arList);
                     m_tmLogTableModel.fireTableDataChanged();
+                    int nNewCount = m_tmLogTableModel.getRowCount();
+                    if(bSameLog && nNewCount > 0)
+                    {
+                        if(nKeepLine >= 0)
+                            m_tbLogTable.changeSelection(rowOfLine(view.arList, nKeepLine), 0, false, false, true);
+                        else if(bAtEnd)
+                            m_tbLogTable.changeSelection(nNewCount - 1, 0, false, false, true);
+                    }
                 }
                 else
                 {
@@ -608,6 +641,27 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                 m_ipIndicator.repaint();
             }
         });
+    }
+
+    // 목록이 보여 주는 원본 로그 (전체 목록이면 그 자체, 필터 결과면 그 원본)
+    static Object storeOf(LogList list)
+    {
+        return list instanceof FilteredList ? ((FilteredList)list).m_store : list;
+    }
+
+    // 원본 줄 위치 nLine이 목록에서 몇 번째 행인지. 없으면 그 뒤의 가장 가까운 행 (줄 위치는 오름차순)
+    static int rowOfLine(LogList list, int nLine)
+    {
+        int lo = 0, hi = list.size() - 1;
+        while(lo <= hi)
+        {
+            int mid = (lo + hi) >>> 1;
+            int v = list.lineIndexOf(mid);
+            if(v < nLine) lo = mid + 1;
+            else if(v > nLine) hi = mid - 1;
+            else return mid;
+        }
+        return Math.min(lo, list.size() - 1);
     }
 
     void setStatus(final String strText)
@@ -1663,6 +1717,18 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0), "BookmarkPrev");
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "EscapeToLog");
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), "ToggleView");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F7, 0), "Processes");
+        am.put("Processes", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e) { showProcesses(); }
+        });
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F8, 0), "DeviceProps");
+        am.put("DeviceProps", new AbstractAction()
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent e) { showDeviceProps(); }
+        });
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F9, 0), "CaptureScreen");
         am.put("CaptureScreen", new AbstractAction()
         {
@@ -1981,6 +2047,28 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_source.m_bAutoReconnect = b;
         if(m_miAutoReconnect != null && m_miAutoReconnect.isSelected() != b) m_miAutoReconnect.setSelected(b);
         if(m_chkWaitReconnect != null && m_chkWaitReconnect.isSelected() != b) m_chkWaitReconnect.setSelected(b);
+    }
+
+    // ---- 프로세스 상태 (1.45) ----
+    ProcessDialog m_dlgPs;
+    // 자동 갱신 주기 (1.46): 기본 10초, 각 창에서 입력한 값을 설정에 저장
+    int     m_nPsIntervalSec = IntervalField.DEFAULT_SEC, m_nPropIntervalSec = IntervalField.DEFAULT_SEC;
+    boolean m_bPsAuto = true, m_bPropAuto = true;
+    String  m_strUpPath = DevicePropDialog.UP_DEFAULT_PATH;   // 프로퍼티 창 UP 탭의 장치 폴더(또는 파일) 경로 (1.52)
+
+    void showProcesses()
+    {
+        if(m_dlgPs == null) m_dlgPs = new ProcessDialog(this);
+        m_dlgPs.showFor();
+    }
+
+    // ---- 장치 프로퍼티 (1.44) ----
+    DevicePropDialog m_dlgProps;
+
+    void showDeviceProps()
+    {
+        if(m_dlgProps == null) m_dlgProps = new DevicePropDialog(this);
+        m_dlgProps.showFor();
     }
 
     // ---- 장치 화면 캡처 (1.40) ----

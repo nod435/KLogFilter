@@ -443,6 +443,12 @@ public class FilterEngine
             return;
         }
 
+        if(store.size() >= TAIL_FIRST_MIN_LINES)
+        {
+            runFullFilterTailFirst(store);
+            return;
+        }
+
         FilteredList list = new FilteredList(store);
         synchronized(LOCK)
         {
@@ -458,6 +464,88 @@ public class FilterEngine
             m_listener.onDataChanged(REFRESH_SELECT_LAST);
             m_listener.onStatus("Complete");
         }
+    }
+
+    // ---- 큰 목록의 재필터: 최근 줄 먼저 (1.43) ----
+    // 줄이 많으면(실시간 수집이 오래 쌓인 경우) 처음부터 끝까지 다시 판정하는 동안 새 줄이 몇 초~수십 초 화면에 나오지 않았다.
+    // 그래서 최근 TAIL_LINES줄을 먼저 판정해 바로 보여 주고(새 줄도 이어서 붙음), 앞부분은 나눠서 채우는 사이사이 새 줄을 처리한 뒤
+    // 다 채우면 [앞부분 + 최근 부분]을 합친 목록으로 바꾼다.
+    static final int TAIL_FIRST_MIN_LINES = 300000;  // 이보다 많으면 최근 줄 먼저
+    static final int TAIL_LINES           = 100000;  // 먼저 판정할 최근 줄 수
+    static final int HEAD_SLICE_LINES     = 1 << 18; // 앞부분을 이만큼씩 채우고 새 줄을 처리
+
+    private void runFullFilterTailFirst(final LogStore store)
+    {
+        // 1) 최근 줄만 담은 목록을 먼저 만들어 보인다. 이 목록이 m_filtered가 되어 새 줄도 여기에 이어 붙는다.
+        final int nTailFrom = Math.max(0, store.size() - TAIL_LINES);
+        FilteredList tail = new FilteredList(store);
+        synchronized(LOCK)
+        {
+            if(store != m_store) return;
+            m_filtered           = tail;
+            m_hmBookmarkFiltered = new ConcurrentHashMap<Integer, Integer>();
+            m_hmErrorFiltered    = new ConcurrentHashMap<Integer, Integer>();
+            m_nFilteredUpTo      = nTailFrom;     // tail은 nTailFrom부터 판정한다
+        }
+        if(!process(store, tail, nTailFrom, false, "Filtering") || store != m_store)
+            return;
+        m_listener.onDataChanged(REFRESH_SELECT_LAST);
+        m_listener.onStatus("Filtering : 최근 줄을 먼저 보였습니다. 이전 줄을 채우는 중 0%");
+
+        // 2) 앞부분 [0, nTailFrom)을 화면에 보이지 않는 목록에 나눠서 채운다. 사이사이 새로 들어온 줄을 처리한다.
+        FilteredList head = new FilteredList(store);
+        Map<Integer, Integer> hmBookmarkH = new ConcurrentHashMap<Integer, Integer>();
+        Map<Integer, Integer> hmErrorH    = new ConcurrentHashMap<Integer, Integer>();
+        for(int nFrom = 0; nFrom < nTailFrom; )
+        {
+            int nTo = Math.min(nTailFrom, nFrom + HEAD_SLICE_LINES);
+            if(!processRange(store, head, nFrom, nTo, 0, hmBookmarkH, hmErrorH, false, false, "Filtering"))
+                return;                                   // 조건이 바뀌었거나 목록이 교체됨
+            nFrom = nTo;
+            if(!serviceLiveDuringFilter(store))
+                return;
+            m_listener.onStatus("Filtering : 최근 줄을 먼저 보였습니다. 이전 줄을 채우는 중 " + (int)((long)nFrom * 100 / Math.max(1, nTailFrom)) + "%");
+        }
+
+        // 3) 합치기: 이 스레드만 목록을 쓰므로 그 사이 tail에 붙은 줄까지 그대로 옮긴다.
+        FilteredList full = new FilteredList(store);
+        int nHead = head.size();
+        for(int k = 0; k < nHead; k++) full.add(head.lineIndexOf(k));
+        FilteredList tailNow = m_filtered;
+        if(tailNow != tail || store != m_store) return;
+        for(int k = 0; k < tail.size(); k++) full.add(tail.lineIndexOf(k));
+        Map<Integer, Integer> hmBookmark = new ConcurrentHashMap<Integer, Integer>(hmBookmarkH);
+        Map<Integer, Integer> hmError    = new ConcurrentHashMap<Integer, Integer>(hmErrorH);
+        for(Map.Entry<Integer, Integer> e : m_hmBookmarkFiltered.entrySet()) hmBookmark.put(e.getKey(), e.getValue() + nHead);
+        for(Map.Entry<Integer, Integer> e : m_hmErrorFiltered.entrySet())    hmError.put(e.getKey(), e.getValue() + nHead);
+        synchronized(LOCK)
+        {
+            if(store != m_store || m_filtered != tail || m_nChangedFilter == STATUS_CHANGE) return;
+            m_filtered           = full;
+            m_hmBookmarkFiltered = hmBookmark;
+            m_hmErrorFiltered    = hmError;
+            // m_nFilteredUpTo는 그대로: tail이 판정을 마친 위치까지 full도 판정을 마쳤다
+        }
+        m_listener.onDataChanged(REFRESH_KEEP);
+        m_listener.onStatus("Complete");
+    }
+
+    // 앞부분을 채우는 중에 새 줄 처리 요청이 있으면 처리한다. 조건이 바뀌었거나 목록이 교체됐으면 false.
+    private boolean serviceLiveDuringFilter(LogStore store)
+    {
+        boolean bAnalyze;
+        int     nMode;
+        synchronized(LOCK)
+        {
+            if(m_bFilterRequested || store != m_store || m_nChangedFilter == STATUS_CHANGE) return false;
+            bAnalyze = m_bAnalyzeRequested;
+            nMode    = m_nAnalyzeMode;
+            m_bAnalyzeRequested = false;
+            m_nAnalyzeMode      = REFRESH_KEEP;
+        }
+        if(bAnalyze)
+            runAnalysis(nMode);
+        return store == m_store && m_nChangedFilter != STATUS_CHANGE;
     }
 
     // 새로 색인된 줄을 이어서 처리한다.
@@ -486,18 +574,26 @@ public class FilterEngine
      */
     private boolean process(final LogStore store, final FilteredList list, int nFrom, final boolean bFull, final String strWork)
     {
-        // 많은 줄은 여러 코어로 나눠 처리하고, 실시간 수집처럼 조금씩 늘어나는 경우는 바로 순차 처리한다.
-        if(store.size() - nFrom >= CHUNK_LINES * 2 && WORKERS > 1)
-            return processParallel(store, list, nFrom, bFull, strWork);
-
-        final int nTo       = store.size();
-        final int nAnalyzed = m_nAnalyzed;
-        final int nFiltered = list == null ? Integer.MAX_VALUE : (bFull ? 0 : m_nFilteredUpTo);
-        final Map<Integer, Integer> hmErrorAll  = m_hmErrorAll;
-        final Map<Integer, Integer> hmBookmarkF = m_hmBookmarkFiltered;
-        final Map<Integer, Integer> hmErrorF    = m_hmErrorFiltered;
         // 진행률은 재필터이거나, 다 읽은 파일을 분석할 때만 (로딩 중에는 LogSource가 Loading %를 표시)
-        final boolean bProgress = nTo - nFrom >= PROGRESS_MIN_LINES && (bFull || store.m_bComplete);
+        int nTo = store.size();
+        return processRange(store, list, nFrom, nTo, list == null ? Integer.MAX_VALUE : (bFull ? 0 : m_nFilteredUpTo),
+                            m_hmBookmarkFiltered, m_hmErrorFiltered, nTo - nFrom >= PROGRESS_MIN_LINES && (bFull || store.m_bComplete), true, strWork);
+    }
+
+    /**
+     * store의 [nFrom, nTo)를 처리한다. nFiltered 이상인 줄만 list에 판정해 넣고, 북마크·에러 행 위치는 주어진 맵에 넣는다.
+     * bPublish면 긴 작업 중간에 화면에 알린다 (화면에 보이지 않는 목록을 채울 때는 false).
+     */
+    private boolean processRange(final LogStore store, final FilteredList list, int nFrom, final int nTo, final int nFiltered,
+                                 final Map<Integer, Integer> hmBookmarkF, final Map<Integer, Integer> hmErrorF,
+                                 final boolean bProgress, final boolean bPublish, final String strWork)
+    {
+        // 많은 줄은 여러 코어로 나눠 처리하고, 실시간 수집처럼 조금씩 늘어나는 경우는 바로 순차 처리한다.
+        if(nTo - nFrom >= CHUNK_LINES * 2 && WORKERS > 1)
+            return processParallel(store, list, nFrom, nTo, nFiltered, hmBookmarkF, hmErrorF, bProgress, bPublish, strWork);
+
+        final int nAnalyzed = m_nAnalyzed;
+        final Map<Integer, Integer> hmErrorAll  = m_hmErrorAll;
         final long[]  nLastPublish = { System.currentTimeMillis() };
         final int[]   nReached = { nFrom };
 
@@ -523,7 +619,8 @@ public class FilterEngine
                 {
                     nLastPublish[0] = nNow;
                     commit(store, list, nReached[0]);
-                    m_listener.onDataChanged(REFRESH_KEEP);
+                    if(bPublish)
+                        m_listener.onDataChanged(REFRESH_KEEP);
                     if(bProgress)
                         m_listener.onStatus(strWork + " " + (int)((long)(i + 1) * 100 / nTo) + "%");
                 }
@@ -567,15 +664,12 @@ public class FilterEngine
      * [nFrom, 현재 크기)를 CHUNK_LINES씩 나눠 작업 스레드들이 동시에 해석·판정하고,
      * 결과는 이 스레드가 순서대로 합친다. 그래서 필터 결과·에러 위치는 순차 처리와 똑같고, 합치는 동안에도 화면에 보인다.
      */
-    private boolean processParallel(final LogStore store, final FilteredList list, int nFrom, boolean bFull, String strWork)
+    private boolean processParallel(final LogStore store, final FilteredList list, int nFrom, final int nTo, final int nFiltered,
+                                    Map<Integer, Integer> hmBookmarkF, Map<Integer, Integer> hmErrorF,
+                                    boolean bProgress, boolean bPublish, String strWork)
     {
-        final int nTo       = store.size();
         final int nAnalyzed = m_nAnalyzed;
-        final int nFiltered = list == null ? Integer.MAX_VALUE : (bFull ? 0 : m_nFilteredUpTo);
         Map<Integer, Integer> hmErrorAll  = m_hmErrorAll;
-        Map<Integer, Integer> hmBookmarkF = m_hmBookmarkFiltered;
-        Map<Integer, Integer> hmErrorF    = m_hmErrorFiltered;
-        boolean bProgress = nTo - nFrom >= PROGRESS_MIN_LINES && (bFull || store.m_bComplete);
         long    nLastPublish = System.currentTimeMillis();
 
         ArrayDeque<Future<ChunkResult>> window = new ArrayDeque<Future<ChunkResult>>();
@@ -647,7 +741,8 @@ public class FilterEngine
                 {
                     nLastPublish = nNow;
                     commit(store, list, nReached);
-                    m_listener.onDataChanged(REFRESH_KEEP);
+                    if(bPublish)
+                        m_listener.onDataChanged(REFRESH_KEEP);
                     if(bProgress)
                         m_listener.onStatus(strWork + " " + (int)((long)nReached * 100 / nTo) + "%");
                 }
