@@ -469,7 +469,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         setWaitReconnect(config.bAutoReconnect);
         m_source.setRotateMb(config.nLogFileMaxMb);
         m_nPsIntervalSec = config.nPsIntervalSec;  m_bPsAuto = config.bPsAuto;
-        m_nPropIntervalSec = config.nPropIntervalSec;  m_bPropAuto = config.bPropAuto;  m_strUpPath = config.strUpPath;
+        m_nPropIntervalSec = config.nPropIntervalSec;  m_bPropAuto = config.bPropAuto;  m_strUpPath = config.strUpPath;  m_strLguLogPath = config.strLguLogPath;
         syncLogFileSizeMenu();
         m_tfTimeFrom.setText(config.strTimeFrom);
         m_tfTimeTo.setText(config.strTimeTo);
@@ -516,7 +516,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_config.bAutoReconnect = m_source.m_bAutoReconnect;
         m_config.nLogFileMaxMb = m_source.rotateMb();
         m_config.nPsIntervalSec = m_nPsIntervalSec;  m_config.bPsAuto = m_bPsAuto;
-        m_config.nPropIntervalSec = m_nPropIntervalSec;  m_config.bPropAuto = m_bPropAuto;  m_config.strUpPath = m_strUpPath;
+        m_config.nPropIntervalSec = m_nPropIntervalSec;  m_config.bPropAuto = m_bPropAuto;  m_config.strUpPath = m_strUpPath;  m_config.strLguLogPath = m_strLguLogPath;
         m_config.nStatsIntervalSec = (int)(m_deviceStats.interval() / 1000);
         m_config.strTimeFrom  = m_tfTimeFrom.getText();
         m_config.strTimeTo    = m_tfTimeTo.getText();
@@ -960,7 +960,24 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
         m_btnCapture.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) { captureScreen(); }
         });
-        jpOptionDevice.add(m_btnCapture, BorderLayout.SOUTH);
+        // 장치 로그 열기 버튼 (1.59): 화면 캡처 아래 — 장치의 /LGU_data/logs 파일을 받아 연다
+        // 1.60: 그 폴더가 있는 장치에서만 보인다 (처음엔 숨기고, 확인되면 보임)
+        m_btnDeviceLogs = new JButton("장치 로그 열기");
+        m_btnDeviceLogs.setMargin(new Insets(1, 4, 1, 4));
+        m_btnDeviceLogs.setToolTipText("장치의 " + DeviceLogDialog.DEFAULT_PATH + " 폴더에서 로그 파일(.gz 포함)을 골라 PC로 받아 열기");
+        m_btnDeviceLogs.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) { showDeviceLogs(); }
+        });
+        m_btnDeviceLogs.setVisible(false);
+        JPanel jpDeviceBtns = new JPanel(new BorderLayout(0, 2));      // 숨긴 버튼은 자리를 차지하지 않게
+        jpDeviceBtns.add(m_btnCapture, BorderLayout.NORTH);
+        jpDeviceBtns.add(m_btnDeviceLogs, BorderLayout.SOUTH);
+        jpOptionDevice.add(jpDeviceBtns, BorderLayout.SOUTH);
+        m_tmDeviceLogs = new javax.swing.Timer(DEVICE_LOGS_CHECK_MS, new ActionListener() {
+            public void actionPerformed(ActionEvent e) { checkDeviceLogsButton(); }
+        });
+        m_tmDeviceLogs.setInitialDelay(300);
+        m_tmDeviceLogs.start();
 
         m_lDeviceList = new JList(listModel);
         JScrollPane vbar = new JScrollPane(m_lDeviceList);
@@ -981,6 +998,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
                 }
                 if(m_deviceStats != null)
                     m_deviceStats.setDevice(m_strSelectedDevice);     // 장치 통계도 선택한 장치로
+                checkDeviceLogsButton();                              // 고른 장치에 /LGU_data/logs가 있는지 (1.60)
             }
         });
         jpOptionDevice.add(vbar);
@@ -2054,6 +2072,7 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     // 자동 갱신 주기 (1.46): 기본 10초, 각 창에서 입력한 값을 설정에 저장
     int     m_nPsIntervalSec = IntervalField.DEFAULT_SEC, m_nPropIntervalSec = IntervalField.DEFAULT_SEC;
     boolean m_bPsAuto = true, m_bPropAuto = true;
+    String  m_strLguLogPath = DeviceLogDialog.DEFAULT_PATH;  // 장치 로그 열기 창의 장치 폴더 (1.59)
     String  m_strUpPath = DevicePropDialog.UP_DEFAULT_PATH;   // 프로퍼티 창 UP 탭의 장치 폴더(또는 파일) 경로 (1.52)
 
     void showProcesses()
@@ -2069,6 +2088,50 @@ public class LogFilterMain extends JFrame implements INotiEvent, FilterEngine.Li
     {
         if(m_dlgProps == null) m_dlgProps = new DevicePropDialog(this);
         m_dlgProps.showFor();
+    }
+
+    // ---- 장치 로그 열기 (1.59) ----
+    JButton          m_btnDeviceLogs;
+    DeviceLogDialog  m_dlgDeviceLogs;
+
+    // 1.60: 장치에 /LGU_data/logs 폴더가 있을 때만 버튼을 보인다.
+    // 프로그램을 켤 때·장치를 고를 때, 그리고 5초마다 확인한다 (장치를 꽂거나 뽑아도 맞게)
+    static final int        DEVICE_LOGS_CHECK_MS = 5000;
+    javax.swing.Timer       m_tmDeviceLogs;
+    volatile boolean        m_bLogsChecking;
+
+    void checkDeviceLogsButton()
+    {
+        if(m_btnDeviceLogs == null || m_bLogsChecking) return;
+        m_bLogsChecking = true;
+        final String strDevice = m_strSelectedDevice == null ? "" : m_strSelectedDevice.trim();
+        // 창에서 바꾼 경로가 아니라 늘 /LGU_data/logs로 본다 (잘못 넣은 경로 때문에 버튼이 사라져 다시 못 여는 일이 없게)
+        final String strPath = DeviceLogDialog.DEFAULT_PATH;
+        new Thread(new Runnable()
+        {
+            public void run()
+            {
+                String[] r = DevicePropDialog.runAdb(strDevice, 5000, "shell", "[ -d " + DevicePropDialog.shq(strPath) + " ] && echo KLOG_LOGS_YES || echo KLOG_LOGS_NO");
+                final boolean bHave = r[1] == null && r[0].contains("KLOG_LOGS_YES");
+                runOnEdt(new Runnable()
+                {
+                    public void run()
+                    {
+                        m_bLogsChecking = false;
+                        if(m_btnDeviceLogs.isVisible() == bHave) return;
+                        m_btnDeviceLogs.setVisible(bHave);
+                        m_btnDeviceLogs.getParent().revalidate();
+                        m_btnDeviceLogs.getParent().repaint();
+                    }
+                });
+            }
+        }, "DeviceLogsCheck").start();
+    }
+
+    void showDeviceLogs()
+    {
+        if(m_dlgDeviceLogs == null) m_dlgDeviceLogs = new DeviceLogDialog(this);
+        m_dlgDeviceLogs.showFor();
     }
 
     // ---- 장치 화면 캡처 (1.40) ----

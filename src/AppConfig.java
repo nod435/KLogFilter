@@ -46,6 +46,7 @@ public class AppConfig
     static final String INI_PS_AUTO         = "PS_AUTO";                // 프로세스 창 자동 갱신 켬
     static final String INI_PROP_INTERVAL   = "PROP_INTERVAL";          // 프로퍼티 창 실시간 주기(초), 기본 10 (1.46)
     static final String INI_PROP_AUTO       = "PROP_AUTO";              // 프로퍼티 창 실시간 켬
+    static final String INI_LGU_LOG_PATH    = "LGU_LOG_PATH";           // 장치 로그 열기 창의 장치 폴더 (1.59)
     static final String INI_UP_PATH         = "UP_PATH";                // 프로퍼티 창 UP 탭의 장치 폴더(또는 파일) 경로 (1.52)
     static final String INI_STATS_DURATION  = "DEVICE_STATS_DURATION";  // 장치 통계 측정 시간(분), 0 = 계속 (1.27)
     static final String INI_STATS_EXCEL_AUTO = "DEVICE_STATS_EXCEL_AUTO"; // 측정 완료 시 엑셀 자동 저장 (1.28)
@@ -96,6 +97,7 @@ public class AppConfig
     int     nLogFileMaxMb = LogSource.DEFAULT_ROTATE_MB;    // 기록 파일 크기 MB (1.37)
     int     nPsIntervalSec = IntervalField.DEFAULT_SEC, nPropIntervalSec = IntervalField.DEFAULT_SEC;   // 1.46
     boolean bPsAuto = true, bPropAuto = true;
+    String  strLguLogPath = DeviceLogDialog.DEFAULT_PATH;   // 장치 로그 열기 경로 (1.59)
     String  strUpPath = DevicePropDialog.UP_DEFAULT_PATH;   // UP 탭 경로 (1.52, 기본 /LGU_data/UP 폴더)
     int     nStatsIntervalSec = (int)(DeviceStats.INTERVAL_MS / 1000);
     int     nStatsDurationMin = 0;
@@ -148,6 +150,7 @@ public class AppConfig
         config.bPsAuto   = !"false".equalsIgnoreCase(p.getProperty(INI_PS_AUTO, "true").trim());
         config.bPropAuto = !"false".equalsIgnoreCase(p.getProperty(INI_PROP_AUTO, "true").trim());
         config.strUpPath = p.getProperty(INI_UP_PATH, DevicePropDialog.UP_DEFAULT_PATH).trim();
+        config.strLguLogPath = p.getProperty(INI_LGU_LOG_PATH, DeviceLogDialog.DEFAULT_PATH).trim();
         int nInterval = intOf(p, INI_STATS_INTERVAL, config.nStatsIntervalSec);
         config.nStatsIntervalSec = nInterval >= 1 && nInterval <= 3600 ? nInterval : config.nStatsIntervalSec;
         int nDuration = intOf(p, INI_STATS_DURATION, 0);
@@ -229,6 +232,7 @@ public class AppConfig
         p.setProperty(INI_PROP_INTERVAL, "" + nPropIntervalSec);
         p.setProperty(INI_PROP_AUTO, "" + bPropAuto);
         p.setProperty(INI_UP_PATH, strUpPath == null ? "" : strUpPath);
+        p.setProperty(INI_LGU_LOG_PATH, strLguLogPath == null ? "" : strLguLogPath);
         for(int nIndex = 0; nIndex < LogColor.HIGHLIGHT_COUNT; nIndex++)
         {
             p.setProperty(INI_HIGHLIGHT_ + nIndex,       arHighlight[nIndex] == null ? "" : arHighlight[nIndex]);
